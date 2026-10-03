@@ -8,12 +8,14 @@ import "./styles.css";
 import "./demo.css";
 const VisualsPage = lazy(() => import("./VisualsPage"));
 const AuthPage = lazy(() => import("./components/ui/auth-07"));
-const DashboardPage = lazy(() => import("./DashboardPage"));
+const NetworkTestPage = lazy(() => import("./NetworkTestPage"));
 const path = location.pathname.replace(/\/$/, "");
 const params = new URLSearchParams(location.search);
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {location.pathname.replace(/\/$/, "") === "/visuals" ? (
+    {path === "/test" ? (
+      <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening the network…</div>}><NetworkTestPage /></Suspense>
+    ) : location.pathname.replace(/\/$/, "") === "/visuals" ? (
       <Suspense fallback={<div style={{padding:40}}>Opening the visual playground…</div>}><VisualsPage /></Suspense>
     ) : params.has("film") ? (
       <DemoFilm theme={params.get("theme") === "light" ? "light" : "dark"} />
@@ -25,7 +27,7 @@ createRoot(document.getElementById("root")!).render(
           </Suspense>
         ) : path === "/dashboard" ? (
           <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening your workspace…</div>}>
-            <DashboardPage />
+            <NetworkTestPage workspace />
           </Suspense>
         ) : <App />}
       </ClerkProvider>
