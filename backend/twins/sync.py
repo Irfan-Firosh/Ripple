@@ -1,4 +1,5 @@
 """SpacetimeDB is the shared state: build progress, twins, and the Ask-the-twin queue."""
+import sys
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -40,21 +41,20 @@ def _build_one(stdb, client, run_id: str, brand_user_id: str, account: Account, 
     def status(value: str, error: str | None = None) -> None:
         stdb.call("set_twin_job_status", run_id, uid, name, value, opt(error[:MAX_ERROR] if error else None))
 
-    status("building")
     try:
+        status("building")
         twin = build_twin(client, account, brand_user_id, min_posts=min_posts)
-    except NotEnoughPosts as exc:
-        status("skipped", str(exc))
-        return "skipped"
-    except (TwinLLMError, anthropic.APIError) as exc:
-        status("failed", str(exc))
-        return "failed"
-    try:
         stdb.call("publish_twin", *_twin_args(run_id, twin))
+        return "ready"
+    except NotEnoughPosts as exc:
+        outcome, error = "skipped", str(exc)
+    except Exception as exc:  # one account must never abort the whole run
+        outcome, error = "failed", f"{type(exc).__name__}: {exc}"
+    try:
+        status(outcome, error)
     except StdbError as exc:
-        status("failed", str(exc))
-        return "failed"
-    return "ready"
+        _log(f"@{name}: could not record {outcome} status: {exc}")
+    return outcome
 
 
 def run_build(stdb, client, brand_username: str, *, min_posts: int = 3, workers: int = 4,
@@ -65,10 +65,15 @@ def run_build(stdb, client, brand_username: str, *, min_posts: int = 3, workers:
     stdb.call("start_twin_build_run", run_id, brand.user_id, len(accounts))
     for a in accounts:
         stdb.call("set_twin_job_status", run_id, a.user.user_id, a.user.username, "queued", opt(None))
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        results = Counter(pool.map(lambda a: _build_one(stdb, client, run_id, brand.user_id, a, min_posts), accounts))
-    status = "completed" if not results["failed"] else ("partial" if results["ready"] else "failed")
-    stdb.call("complete_twin_build_run", run_id, status)
+    results: Counter = Counter()
+    try:
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            results.update(pool.map(lambda a: _build_one(stdb, client, run_id, brand.user_id, a, min_posts), accounts))
+    finally:  # never leave the run stuck at "running"
+        status = "completed" if not results["failed"] else ("partial" if results["ready"] else "failed")
+        if sum(results.values()) < len(accounts):
+            status = "partial" if results["ready"] else "failed"
+        stdb.call("complete_twin_build_run", run_id, status)
     return BuildSummary(run_id, results["ready"], results["failed"], results["skipped"], status)
 
 
@@ -91,19 +96,29 @@ def load_twin(stdb, user_id: str) -> Twin:
                 stats=stats, persona=persona, evidence=evidence, model=r["model"])
 
 
+def _log(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+
+
 def answer_pending(stdb, client) -> int:
     handled = 0
     for q in stdb.sql("SELECT * FROM twin_question WHERE status = 'pending'"):
+        qid = q["question_id"]
         try:
-            stdb.call("claim_twin_question", q["question_id"])
-        except StdbError:
-            continue  # another worker claimed it first
+            stdb.call("claim_twin_question", qid)
+        except StdbError as exc:
+            if "already claimed" not in str(exc):  # a lost race is normal; anything else is not
+                _log(f"question {qid}: {exc}")
+            continue
         try:
             answer = ask_twin(client, load_twin(stdb, q["user_id"]), q["draft"], q["question"])
-            stdb.call("answer_twin_question", q["question_id"], answer.action, answer.confidence,
+            stdb.call("answer_twin_question", qid, answer.action, answer.confidence,
                       answer.answer, answer.cited_post_ids)
         except (TwinLLMError, anthropic.APIError, LookupError, ValueError, StdbError) as exc:
-            stdb.call("fail_twin_question", q["question_id"], str(exc)[:MAX_ERROR])
+            try:
+                stdb.call("fail_twin_question", qid, str(exc)[:MAX_ERROR])
+            except StdbError as fail_exc:
+                _log(f"question {qid}: left in 'answering'; could not mark failed: {fail_exc}")
         handled += 1
     return handled
 
@@ -111,7 +126,10 @@ def answer_pending(stdb, client) -> int:
 def run_worker(stdb, client, *, poll_seconds: float = 2.0, max_loops: int | None = None, sleep=time.sleep) -> None:
     loops = 0
     while max_loops is None or loops < max_loops:
-        if answer_pending(stdb, client):
-            print(f"answered pending twin questions at {datetime.now(timezone.utc):%H:%M:%S}", flush=True)
+        try:
+            if answer_pending(stdb, client):
+                print(f"answered pending twin questions at {datetime.now(timezone.utc):%H:%M:%S}", flush=True)
+        except Exception as exc:  # keep polling through transient SpacetimeDB/Claude errors
+            _log(f"worker poll failed: {type(exc).__name__}: {exc}")
         loops += 1
         sleep(poll_seconds)

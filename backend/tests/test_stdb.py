@@ -56,3 +56,17 @@ def test_call_sends_json_array_and_raises_on_reducer_error():
     assert json.loads(session.posts[0][1]) == ["1", "draft", ""]
     with pytest.raises(StdbError, match="530"):
         client.call("publish_twin", "x")
+
+
+def test_network_errors_are_wrapped():
+    import requests
+
+    class Boom:
+        def post(self, *a, **k):
+            raise requests.ConnectionError("dns down")
+
+    client = StdbClient("https://h", "db", session=Boom())
+    with pytest.raises(StdbError, match="dns down"):
+        client.sql("SELECT * FROM x_user")
+    with pytest.raises(StdbError, match="dns down"):
+        client.call("ask_twin", "1")

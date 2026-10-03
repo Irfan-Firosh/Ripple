@@ -47,8 +47,14 @@ class StdbClient:
         if token:
             self._headers["Authorization"] = f"Bearer {token}"
 
+    def _post(self, path: str, data: bytes | str):
+        try:
+            return self._session.post(f"{self._base}/{path}", data=data, headers=self._headers, timeout=60)
+        except requests.RequestException as exc:
+            raise StdbError(f"{path} -> network error: {exc}") from exc
+
     def sql(self, query: str) -> list[dict]:
-        r = self._session.post(f"{self._base}/sql", data=query.encode(), headers=self._headers, timeout=60)
+        r = self._post("sql", query.encode())
         if r.status_code != 200:
             raise StdbError(f"sql -> HTTP {r.status_code}: {r.text[:200]}")
         rows = []
@@ -61,8 +67,7 @@ class StdbClient:
 
     def call(self, reducer: str, *args) -> None:
         for attempt in range(4):
-            r = self._session.post(f"{self._base}/call/{reducer}", data=json.dumps(list(args)),
-                                   headers=self._headers, timeout=60)
+            r = self._post(f"call/{reducer}", json.dumps(list(args)))
             if r.status_code == 200:
                 return
             if r.status_code < 500 or r.status_code == 530:  # 530 = the reducer threw

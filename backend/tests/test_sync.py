@@ -80,3 +80,58 @@ def test_answer_pending_fails_question_on_llm_error():
     assert answer_pending(db, FakeClient([None, None])) == 1
     [(qid, err)] = db.reducers("fail_twin_question")
     assert qid == 7 and "emit_answer" in err
+
+
+def test_run_build_survives_status_reducer_failure_and_still_completes():
+    db = audience_db()
+    original_call = db.call
+
+    def call(reducer, *args):  # SpacetimeDB hiccup only when bob goes to "building"
+        if reducer == "set_twin_job_status" and args[2] == "bob" and args[3] == "building":
+            db.calls.append((reducer, args))
+            raise StdbError("set_twin_job_status -> HTTP 503: unavailable")
+        return original_call(reducer, *args)
+
+    db.call = call
+    summary = run_build(db, FakeClient([{**PERSONA, "evidence_post_ids": ["a2"]}]), "spacetimedb",
+                        workers=1, run_id="run1")
+    assert (summary.ready, summary.failed, summary.skipped, summary.status) == (1, 1, 1, "partial")
+    assert db.reducers("complete_twin_build_run") == [("run1", "partial")]
+
+
+def test_run_build_min_posts_zero_with_postless_account_fails_that_job_only():
+    db = audience_db()
+    db.tables["x_post"] = [p for p in db.tables["x_post"] if p["author_user_id"] != "3"]  # carol has no posts
+    summary = run_build(db, FakeClient([PERSONA, PERSONA]), "spacetimedb", workers=1, run_id="r", min_posts=0)
+    assert (summary.ready, summary.failed, summary.status) == (2, 1, "partial")
+
+
+def test_answer_pending_reports_non_race_claim_errors(capsys):
+    db = twin_db()
+    db.tables["twin_question"] = db.tables["twin_question"][:1]
+    db.fail_on.add("claim_twin_question")
+    assert answer_pending(db, FakeClient([])) == 0
+    assert "claim_twin_question" in capsys.readouterr().err
+
+
+def test_answer_pending_survives_fail_reducer_error():
+    db = twin_db()
+    db.tables["twin_question"] = db.tables["twin_question"][:1]
+    db.fail_on.add("fail_twin_question")
+    assert answer_pending(db, FakeClient([None, None])) == 1  # LLM fails, then marking failed also fails
+
+
+def test_run_worker_survives_poll_errors(capsys):
+    from twins.sync import run_worker
+
+    class Flaky:
+        def __init__(self):
+            self.n = 0
+
+        def sql(self, q):
+            self.n += 1
+            raise StdbError("sql -> HTTP 503")
+
+    db = Flaky()
+    run_worker(db, FakeClient([]), poll_seconds=0, max_loops=2, sleep=lambda s: None)
+    assert db.n == 2 and "503" in capsys.readouterr().err

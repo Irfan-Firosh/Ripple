@@ -34,6 +34,7 @@ def test_build_twin_combines_stats_and_persona():
 def test_evidence_falls_back_to_top_posts():
     twin = build_twin(FakeClient([{**PERSONA, "evidence_post_ids": ["nope"]}]), account(n=7), "100")
     assert [p.post_id for p in twin.evidence] == ["p7", "p6", "p5", "p4", "p3"]
+    assert twin.persona.evidence_post_ids == ["p7", "p6", "p5", "p4", "p3"]  # fallback is persisted
 
 
 def test_not_enough_posts():

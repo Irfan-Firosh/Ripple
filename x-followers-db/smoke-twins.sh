@@ -13,6 +13,7 @@ sql() { spacetime sql --no-config -s "$SERVER" "$DB" "$1" 2>/dev/null; }
 expect() { echo "$1" | grep -q "$2" || { echo "FAIL: expected '$2' in:"; echo "$1"; exit 1; }; }
 
 echo "publishing to scratch db $DB..."
+spacetime delete --no-config -s "$SERVER" "$DB" -y >/dev/null 2>&1 || true   # start from an empty scratch DB
 spacetime publish --no-config "$DB" -s "$SERVER" --module-path . -y >/dev/null
 
 call start_twin_build_run '"run1"' '"100"' 3
@@ -35,6 +36,12 @@ must_fail ask_twin '"1"' '"   "' '""'
 must_fail publish_twin '"run1"' '"3"' '"c"' '"100"' 1 0 0 0 0 0 0 '[]' '[{"topic":"x","affinity":2}]' \
   '"t"' '"s"' '[]' '[]' '[]' '[]' '"m"'
 must_fail answer_twin_question 1 '"reply"' 0.5 '"again"' '[]'   # already answered
+# Per-sender cap counts questions being answered, not just pending ones (questions 2..4 below).
+call ask_twin '"1"' '"draft two"' '""'
+call ask_twin '"1"' '"draft three"' '""'
+call ask_twin '"1"' '"draft four"' '""'
+call claim_twin_question 2
+must_fail ask_twin '"1"' '"draft five"' '""'
 
 echo "deleting scratch db $DB..."
 spacetime delete --no-config -s "$SERVER" "$DB" -y >/dev/null 2>&1 || echo "note: delete $DB manually"

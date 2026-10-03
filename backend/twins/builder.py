@@ -48,9 +48,8 @@ def build_twin(client, account: Account, brand_user_id: str, *, min_posts: int =
     persona = call_tool(client, system=SYSTEM, user=_prompt(account, stats.model_dump_json(), sample),
                         tool_name="emit_twin", description="Emit the behavioural persona for this account.",
                         output_model=TwinPersona)
-    given = {p.post_id for p in sample}
-    valid_ids = [i for i in persona.evidence_post_ids if i in given]
-    persona = persona.model_copy(update={"evidence_post_ids": valid_ids})
-    evidence = [p for p in sample if p.post_id in set(valid_ids)] or sample[:FALLBACK_EVIDENCE]
+    valid_ids = set(persona.evidence_post_ids)
+    evidence = [p for p in sample if p.post_id in valid_ids] or sample[:FALLBACK_EVIDENCE]
+    persona = persona.model_copy(update={"evidence_post_ids": [p.post_id for p in evidence]})
     return Twin(user_id=account.user.user_id, username=account.user.username, brand_user_id=brand_user_id,
                 stats=stats, persona=persona, evidence=evidence, model=MODEL)

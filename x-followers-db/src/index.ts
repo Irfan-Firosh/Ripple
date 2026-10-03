@@ -434,7 +434,8 @@ const TWIN_RUN_END = ['completed', 'partial', 'failed'];
 const TWIN_ACTIONS = ['reply', 'quote', 'repost', 'like', 'ignore'];
 const MAX_DRAFT = 1000;
 const MAX_QUESTION = 300;
-const MAX_PENDING_PER_SENDER = 3;
+const MAX_OPEN_PER_SENDER = 3; // pending + answering
+const MAX_OPEN_TOTAL = 50; // anonymous identities are free to mint, so also cap the whole queue (each question is a paid LLM call)
 
 function setTwinJob(ctx: Ctx, runId: string, userId: string, username: string, status: string, error: string | undefined) {
   if (!TWIN_JOB_STATUSES.includes(status)) throw new SenderError(`invalid twin job status ${status}`);
@@ -503,8 +504,11 @@ export const askTwin = spacetimedb.reducer(
     if (!ctx.db.twin.userId.find(userId)) throw new SenderError('no twin for that user');
     if (draft.trim().length === 0 || draft.length > MAX_DRAFT) throw new SenderError(`draft must be 1..${MAX_DRAFT} chars`);
     if (question.length > MAX_QUESTION) throw new SenderError(`question must be at most ${MAX_QUESTION} chars`);
-    const pending = [...ctx.db.twinQuestion.status.filter('pending')].filter(q => q.askedBy.equals(ctx.sender));
-    if (pending.length >= MAX_PENDING_PER_SENDER) throw new SenderError('too many pending questions');
+    const open = [...ctx.db.twinQuestion.status.filter('pending'), ...ctx.db.twinQuestion.status.filter('answering')];
+    if (open.length >= MAX_OPEN_TOTAL) throw new SenderError('twin question queue is full; try again shortly');
+    if (open.filter(q => q.askedBy.equals(ctx.sender)).length >= MAX_OPEN_PER_SENDER) {
+      throw new SenderError('too many open questions');
+    }
     ctx.db.twinQuestion.insert({
       questionId: 0n, userId, draft, question, askedBy: ctx.sender, status: 'pending',
       action: undefined, confidence: undefined, answer: undefined, citedPostIds: [], error: undefined,
