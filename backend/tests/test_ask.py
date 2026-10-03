@@ -8,7 +8,7 @@ TWIN = Twin(
     user_id="1", username="alice", brand_user_id="100",
     stats=AccountStats(post_count=3, reply_share=0.3, quote_share=0.1, mention_rate=0.3, avg_likes=10,
                        avg_impressions=100, engagement_rate=0.05, active_hours_utc=[15], top_mentions=[], x_topics=[]),
-    persona=TwinPersona(topics=[{"topic": "databases", "affinity": 0.9}], tone="dry", format_prefs=[],
+    persona=TwinPersona(topics=[{"topic": "backend_infra", "affinity": 0.9}], tone="dry", format_prefs=[],
                         hot_buttons=["benchmarks"], ignores=["memes"], persona_summary="DB engineer.",
                         evidence_post_ids=["p2"]),
     evidence=[XPost.model_validate(post_row("p2", "1", text="bench!"))],

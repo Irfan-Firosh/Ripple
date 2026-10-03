@@ -26,7 +26,7 @@ def test_run_build_publishes_skips_and_fails_through_reducers():
     assert ("bob", "failed") in statuses and ("carol", "skipped") in statuses
     [pub] = db.reducers("publish_twin")
     assert pub[:4] == ("run1", "1", "alice", "100")
-    assert pub[12] == [{"topic": "databases", "affinity": 0.8}] and pub[18] == ["a2"]
+    assert pub[12] == [{"topic": "backend_infra", "affinity": 0.8}] and pub[18] == ["a2"]
     assert db.reducers("complete_twin_build_run") == [("run1", "partial")]
 
 
@@ -150,3 +150,12 @@ def test_load_twin_fetches_evidence_with_one_author_query():
     stdb = twin_db()
     load_twin(stdb, "1")
     assert [q for q in stdb.queries if "FROM x_post" in q] == ["SELECT * FROM x_post WHERE author_user_id = '1'"]
+
+
+def test_run_build_publishes_the_niche_catalog_first():
+    from twins.niches import NICHES
+    db = audience_db()
+    run_build(db, FakeClient([PERSONA, PERSONA, PERSONA]), "spacetimedb", workers=1, run_id="r")
+    names = [r for r, _ in db.calls]
+    assert names[:len(NICHES)] == ["upsert_niche"] * len(NICHES)
+    assert db.reducers("upsert_niche")[0] == (NICHES[0].slug, NICHES[0].label, NICHES[0].description)

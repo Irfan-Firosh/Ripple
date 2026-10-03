@@ -1,7 +1,9 @@
 """Data shapes shared by every twin module. X fields mirror the snake_case SQL columns."""
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import BaseModel, BeforeValidator, Field, field_validator
+
+from .niches import NICHE_SLUGS, normalize_niche
 
 MODEL = "claude-haiku-4-5-20251001"
 
@@ -71,7 +73,8 @@ class AccountStats(BaseModel):
 
 
 class Topic(BaseModel):
-    topic: Text(60)
+    topic: Annotated[Literal[NICHE_SLUGS], BeforeValidator(normalize_niche),
+                     Field(description="A niche slug from the catalog")]
     affinity: float = Field(ge=0, le=1)
 
 
@@ -83,6 +86,15 @@ class TwinPersona(BaseModel):
     ignores: Items(str, 6, description="Content they scroll past")
     persona_summary: Text(500, description="At most 500 characters")
     evidence_post_ids: Items(str, 10, description="IDs of the given posts that best show this persona")
+
+    @field_validator("topics")
+    @classmethod
+    def _merge_duplicate_niches(cls, topics: list[Topic]) -> list[Topic]:
+        best: dict[str, Topic] = {}
+        for t in topics:
+            if t.topic not in best or t.affinity > best[t.topic].affinity:
+                best[t.topic] = t
+        return sorted(best.values(), key=lambda t: -t.affinity)
 
 
 class Twin(BaseModel):

@@ -18,6 +18,8 @@ Live database: `ripple-mhacks` on maincloud.
 | `x_ingestion_run` | `ingestion_run_id` | counters + checkpoint so an import can resume |
 | `twin` | `user_id` | **AI-inferred** persona + stats per person (Claude Haiku 4.5, written by `backend/twins`) |
 | `twin_audience` | `brand_user_id:user_id` | which brand audiences each twin belongs to (a person following two brands has one twin, two links) |
+| `niche` | `slug` | the fixed niche catalog every twin is rated against (from `backend/twins/niches.py`) |
+| `twin_niche` | `user_id:niche` | one row per person per niche with an affinity 0–1; count a niche with `WHERE niche = '…'` |
 | `twin_build_run` | `run_id` | live counters for a twin build (ready / failed / skipped) |
 | `twin_build_job` | `run_id:user_id` | per-account build status: queued → building → ready / failed / skipped |
 | `twin_question` | `question_id` | Ask-the-twin queue: anyone calls `ask_twin`; the backend worker claims and answers |

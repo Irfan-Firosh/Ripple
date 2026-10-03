@@ -216,6 +216,27 @@ const twin = table(
   }
 );
 
+// Fixed niche catalog (owned by backend/twins/niches.py) and one row per person per niche, so niche
+// membership is a plain indexed query: SELECT * FROM twin_niche WHERE niche = 'game_dev'.
+const niche = table(
+  { name: 'niche', public: true },
+  {
+    slug: t.string().primaryKey(),
+    label: t.string(),
+    description: t.string(),
+  }
+);
+
+const twinNiche = table(
+  { name: 'twin_niche', public: true },
+  {
+    twinNicheId: t.string().primaryKey(), // `${userId}:${niche}`
+    userId: t.string().index('btree'),
+    niche: t.string().index('btree'),
+    affinity: t.f64(),
+  }
+);
+
 const twinAudience = table(
   { name: 'twin_audience', public: true },
   {
@@ -289,6 +310,8 @@ const spacetimedb = schema({
   twinBuildJob,
   twinQuestion,
   twinAudience,
+  niche,
+  twinNiche,
 });
 export default spacetimedb;
 
@@ -499,6 +522,8 @@ export const setTwinJobStatus = spacetimedb.reducer(
 export const publishTwin = spacetimedb.reducer({ runId: t.string(), ...twinFields }, (ctx, { runId, ...fields }) => {
   requireAdmin(ctx);
   if (fields.topics.some(tp => tp.affinity < 0 || tp.affinity > 1)) throw new SenderError('topic affinity must be 0..1');
+  const unknown = fields.topics.find(tp => !ctx.db.niche.slug.find(tp.topic));
+  if (unknown) throw new SenderError(`unknown niche ${unknown.topic}; upsert_niche it first`);
   if (fields.activeHoursUtc.some(h => h > 23)) throw new SenderError('active hour must be 0..23');
   const row = { ...fields, buildRunId: runId, updatedAt: ctx.timestamp } as Row<'twin'>;
   if (ctx.db.twin.userId.find(fields.userId)) ctx.db.twin.userId.update(row);
@@ -512,8 +537,22 @@ export const publishTwin = spacetimedb.reducer({ runId: t.string(), ...twinField
   };
   if (ctx.db.twinAudience.twinAudienceId.find(link.twinAudienceId)) ctx.db.twinAudience.twinAudienceId.update(link);
   else ctx.db.twinAudience.insert(link);
+  // Replace this person's niche rows with the new rating.
+  for (const old of [...ctx.db.twinNiche.userId.filter(fields.userId)]) ctx.db.twinNiche.twinNicheId.delete(old.twinNicheId);
+  for (const tp of fields.topics) {
+    ctx.db.twinNiche.insert({ twinNicheId: `${fields.userId}:${tp.topic}`, userId: fields.userId, niche: tp.topic, affinity: tp.affinity });
+  }
   setTwinJob(ctx, runId, fields.userId, fields.username, 'ready', undefined);
 });
+
+export const upsertNiche = spacetimedb.reducer(
+  { slug: t.string(), label: t.string(), description: t.string() },
+  (ctx, row) => {
+    requireAdmin(ctx);
+    if (ctx.db.niche.slug.find(row.slug)) ctx.db.niche.slug.update(row);
+    else ctx.db.niche.insert(row);
+  }
+);
 
 export const completeTwinBuildRun = spacetimedb.reducer(
   { runId: t.string(), status: t.string() },

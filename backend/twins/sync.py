@@ -12,6 +12,7 @@ from .ask import ask_twin
 from .builder import NotEnoughPosts, build_twin
 from .llm import TwinLLMError
 from .models import Account, AccountStats, Twin, TwinPersona, XPost
+from .niches import NICHES
 from .source import load_audience
 from .stdb import StdbError, opt, sql_str
 
@@ -69,6 +70,8 @@ def _build_one(stdb, client, run_id: str, brand_user_id: str, account: Account, 
 
 def run_build(stdb, client, brand_username: str, *, min_posts: int = 0, workers: int = 4,
               limit: int | None = None, run_id: str | None = None) -> BuildSummary:
+    for niche in NICHES:  # keep the catalog in SpacetimeDB in step with the code
+        stdb.call("upsert_niche", niche.slug, niche.label, niche.description)
     brand, accounts = load_audience(stdb, brand_username)
     accounts = accounts[:limit] if limit else accounts
     run_id = run_id or f"twins-{brand.username.lower()}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}"

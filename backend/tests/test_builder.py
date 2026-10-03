@@ -5,7 +5,7 @@ from twins.builder import NotEnoughPosts, build_twin, render_posts
 from twins.models import MODEL, Account, XPost, XUser
 
 PERSONA = {
-    "topics": [{"topic": "databases", "affinity": 0.8}],
+    "topics": [{"topic": "backend_infra", "affinity": 0.8}],
     "tone": "dry, technical",
     "format_prefs": ["short replies"],
     "hot_buttons": ["benchmarks"],
@@ -62,3 +62,13 @@ def test_sparse_account_prompt_warns_model():
     client = FakeClient([PERSONA])
     build_twin(client, account(n=2), "100")
     assert "only 2 posts" in client.calls[0]["messages"][0]["content"]
+
+
+def test_prompt_and_schema_restrict_topics_to_the_niche_catalog():
+    from twins.niches import NICHE_SLUGS
+    client = FakeClient([PERSONA])
+    build_twin(client, account(), "100")
+    call = client.calls[0]
+    assert all(f"{slug}:" in call["system"] for slug in NICHE_SLUGS)
+    schema = call["tools"][0]["input_schema"]
+    assert set(schema["$defs"]["Topic"]["properties"]["topic"]["enum"]) == set(NICHE_SLUGS)
