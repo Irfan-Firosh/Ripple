@@ -1,4 +1,5 @@
 """Data shapes shared by every twin module. X fields mirror the snake_case SQL columns."""
+import json
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, Field, field_validator
@@ -22,9 +23,26 @@ def Text(limit: int, **field):  # noqa: N802 - reads like a type
     return Annotated[str, BeforeValidator(lambda v: _shorten(v, limit)), Field(min_length=1, max_length=limit, **field)]
 
 
+def _as_list(value):
+    """LLMs sometimes send a list as a JSON string or a comma-separated string."""
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    return [part.strip() for part in text.split(",") if part.strip()]
+
+
 def Items(item, limit: int, **field):  # noqa: N802
-    return Annotated[list[item], BeforeValidator(lambda v: v[:limit] if isinstance(v, list) else v),
-                     Field(max_length=limit, **field)]
+    def clip(value):
+        value = _as_list(value)
+        return value[:limit] if isinstance(value, list) else value
+    return Annotated[list[item], BeforeValidator(clip), Field(max_length=limit, **field)]
 
 
 class XUser(BaseModel):

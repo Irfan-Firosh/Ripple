@@ -52,3 +52,12 @@ def test_duplicate_niches_merge_keeping_highest_affinity():
                                                        {"topic": "game_dev", "affinity": 0.5},
                                                        {"topic": "Gaming", "affinity": 0.4}]})
     assert [(t.topic, t.affinity) for t in p.topics] == [("game_dev", 0.5), ("gaming", 0.4)]
+
+
+def test_list_fields_sent_as_strings_are_parsed():
+    # Seen live from Haiku: lists arrive as a JSON-encoded string or a comma-separated string.
+    p = TwinPersona.model_validate({**BASE, "format_prefs": '["Direct replies", "Short threads"]',
+                                    "hot_buttons": "Brief replies, casual comments, emoji usage", "ignores": ""})
+    assert p.format_prefs == ["Direct replies", "Short threads"]
+    assert p.hot_buttons == ["Brief replies", "casual comments", "emoji usage"]
+    assert p.ignores == []
