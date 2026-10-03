@@ -14,19 +14,15 @@ const xUserFields = {
   createdAt: str(),
   url: str(),
   profileImageUrl: str(),
-  profileBannerUrl: str(),
   protected: bool(),
   verified: bool(),
   verifiedType: str(),
-  isIdentityVerified: bool(),
   followersCount: u64(),
   followingCount: u64(),
   listedCount: u64(),
   postCount: u64(),
   likeCount: u64(),
   mediaCount: u64(),
-  pinnedPostId: str(),
-  mostRecentPostId: str(),
 };
 
 const xPostFields = {
@@ -35,15 +31,9 @@ const xPostFields = {
   text: t.string(),
   createdAt: t.string(),
   lang: str(),
-  conversationId: str(),
   inReplyToUserId: str(),
   isReply: t.bool(),
   isQuote: t.bool(),
-  isRepost: t.bool(),
-  replySettings: str(),
-  possiblySensitive: bool(),
-  source: str(),
-  communityId: str(),
   impressionCount: u64(),
   likeCount: u64(),
   replyCount: u64(),
@@ -55,21 +45,17 @@ const xPostFields = {
 const postReferenceFields = {
   postId: t.string(),
   referencedPostId: t.string(),
-  referenceType: t.string(), // replied_to | quoted | retweeted, as returned by X
+  referenceType: t.string(), // replied_to | quoted, as returned by X (retweets are excluded)
 };
 
 const postEntityFields = {
   postId: t.string(),
   entityType: t.string(), // hashtag | cashtag | mention | url
-  value: t.string(),
+  value: t.string(), // tag, @username, or expanded URL
   startOffset: t.u32(),
   endOffset: t.u32(),
   mentionedUserId: str(),
-  mentionedUsername: str(),
-  url: str(),
-  expandedUrl: str(),
-  displayUrl: str(),
-  title: str(),
+  title: str(), // url entities: linked page title/description when X has them
   description: str(),
 };
 
@@ -77,7 +63,6 @@ const contextAnnotationFields = {
   postId: t.string(),
   domainId: t.string(),
   domainName: t.string(),
-  domainDescription: str(),
   entityIdFromX: t.string(),
   entityName: t.string(),
   entityDescription: str(),
@@ -86,12 +71,8 @@ const contextAnnotationFields = {
 const postMediaFields = {
   postId: t.string(),
   mediaKey: t.string(),
-  type: t.string(),
-  url: str(),
-  previewImageUrl: str(),
-  width: t.option(t.u32()),
-  height: t.option(t.u32()),
-  durationMs: u64(),
+  type: t.string(), // photo | video | animated_gif
+  url: str(), // photo url, or preview image for video/gif
   altText: str(),
   viewCount: u64(),
 };
@@ -103,7 +84,6 @@ const runCounterFields = {
   followersSkippedProtected: t.u32(),
   followersFailed: t.u32(),
   postsSaved: t.u32(),
-  paginationCursor: str(),
   lastProcessedUserId: str(),
   errorSummary: str(),
 };
@@ -135,6 +115,7 @@ const audienceMembership = table(
     followerUserId: t.string().index('btree'),
     discoveredAt: t.timestamp(),
     ingestionRunId: t.string(),
+    source: t.string().default('follower'), // follower | liked:<post_id> | reposted:<post_id>
   }
 );
 
@@ -254,7 +235,6 @@ export const startIngestionRun = spacetimedb.reducer(
       followersSkippedProtected: 0,
       followersFailed: 0,
       postsSaved: 0,
-      paginationCursor: undefined,
       lastProcessedUserId: undefined,
       errorSummary: undefined,
     });
@@ -302,8 +282,8 @@ export const upsertXUser = spacetimedb.reducer(xUserFields, (ctx, user) => {
 });
 
 export const upsertAudienceMembership = spacetimedb.reducer(
-  { brandUserId: t.string(), followerUserId: t.string(), ingestionRunId: t.string() },
-  (ctx, { brandUserId, followerUserId, ingestionRunId }) => {
+  { brandUserId: t.string(), followerUserId: t.string(), ingestionRunId: t.string(), source: t.string() },
+  (ctx, { brandUserId, followerUserId, ingestionRunId, source }) => {
     requireAdmin(ctx);
     const membershipId = `${brandUserId}:${followerUserId}`;
     // First discovery wins; reruns don't move discoveredAt.
@@ -314,6 +294,7 @@ export const upsertAudienceMembership = spacetimedb.reducer(
       followerUserId,
       discoveredAt: ctx.timestamp,
       ingestionRunId,
+      source,
     });
   }
 );

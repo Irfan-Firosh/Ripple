@@ -2,7 +2,7 @@
 # Writes one fake brand -> follower -> post chain through every reducer, checks it, then deletes it.
 set -euo pipefail
 
-DB="${DB:-spacetime-x-followers}"
+DB="${DB:-ripple-mhacks}"
 SERVER="${SERVER:-maincloud}"
 N='{"none":[]}'
 s() { printf '{"some":%s}' "$1"; }
@@ -13,31 +13,30 @@ echo "writing test rows..."
 call start_ingestion_run '"smoke-run"' '"smoke_brand"' 1
 
 call upsert_x_user '"smoke-brand"' '"smoke_brand"' '"Smoke Brand"' "$N" "$N" "$(s '"2020-01-01T00:00:00.000Z"')" \
-  "$N" "$N" "$N" "$(s false)" "$(s true)" "$(s '"business"')" "$N" \
-  "$(s 1000)" "$(s 10)" "$(s 5)" "$(s 200)" "$N" "$(s 30)" "$N" "$N"
+  "$N" "$N" "$(s false)" "$(s true)" "$(s '"business"')" "$(s 1000)" "$(s 10)" "$(s 5)" "$(s 200)" "$N" "$(s 30)"
 call upsert_x_user '"smoke-follower"' '"smoke_follower"' '"Smoke Follower"' "$(s '"building consumer apps | photographer"')" \
-  "$(s '"Detroit"')" "$(s '"2019-05-01T00:00:00.000Z"')" "$N" "$N" "$N" "$(s false)" "$(s false)" "$N" "$N" \
-  "$(s 150)" "$(s 300)" "$(s 2)" "$(s 900)" "$(s 4000)" "$(s 12)" "$N" "$(s '"smoke-post"')"
-call upsert_audience_membership '"smoke-brand"' '"smoke-follower"' '"smoke-run"'
+  "$(s '"Detroit"')" "$(s '"2019-05-01T00:00:00.000Z"')" "$N" "$N" "$(s false)" "$(s false)" "$N" \
+  "$(s 150)" "$(s 300)" "$(s 2)" "$(s 900)" "$(s 4000)" "$(s 12)"
+call upsert_audience_membership '"smoke-brand"' '"smoke-follower"' '"smoke-run"' '"follower"'
 
-call upsert_x_post '"smoke-post"' '"smoke-follower"' '"@smoke_brand AI agents are getting way too complicated #ai"' \
-  '"2026-10-01T12:00:00.000Z"' "$(s '"en"')" "$(s '"smoke-parent"')" "$(s '"smoke-brand"')" true false false \
-  "$(s '"everyone"')" "$(s false)" "$N" "$N" "$(s 500)" "$(s 12)" "$(s 3)" "$(s 0)" "$(s 1)" "$(s 2)"
+post() {  # $1 = impression count
+  call upsert_x_post '"smoke-post"' '"smoke-follower"' '"@smoke_brand AI agents are getting way too complicated #ai"' \
+    '"2026-10-01T12:00:00.000Z"' "$(s '"en"')" "$(s '"smoke-brand"')" true false \
+    "$(s "$1")" "$(s 12)" "$(s 3)" "$(s 0)" "$(s 1)" "$(s 2)"
+}
+post 500
 call upsert_post_reference '"smoke-post"' '"smoke-parent"' '"replied_to"'
-call upsert_post_entity '"smoke-post"' '"mention"' '"smoke_brand"' 0 12 "$(s '"smoke-brand"')" "$(s '"smoke_brand"')" \
-  "$N" "$N" "$N" "$N" "$N"
-call upsert_post_entity '"smoke-post"' '"hashtag"' '"ai"' 55 58 "$N" "$N" "$N" "$N" "$N" "$N" "$N"
-call upsert_context_annotation '"smoke-post"' '"131"' '"Unified Twitter Taxonomy"' "$N" '"smoke-ai"' \
+call upsert_post_entity '"smoke-post"' '"mention"' '"smoke_brand"' 0 12 "$(s '"smoke-brand"')" "$N" "$N"
+call upsert_post_entity '"smoke-post"' '"hashtag"' '"ai"' 55 58 "$N" "$N" "$N"
+call upsert_context_annotation '"smoke-post"' '"131"' '"Unified Twitter Taxonomy"' '"smoke-ai"' \
   '"Artificial intelligence"' "$N"
-call upsert_post_media '"smoke-post"' '"3_smoke"' '"photo"' "$(s '"https://pbs.twimg.com/media/smoke.jpg"')" "$N" \
-  "$(s 1200)" "$(s 800)" "$N" "$(s '"a screenshot"')" "$N"
+call upsert_post_media '"smoke-post"' '"3_smoke"' '"photo"' "$(s '"https://pbs.twimg.com/media/smoke.jpg"')" \
+  "$(s '"a screenshot"')" "$N"
 
 # Same post again should update, not duplicate.
-call upsert_x_post '"smoke-post"' '"smoke-follower"' '"@smoke_brand AI agents are getting way too complicated #ai"' \
-  '"2026-10-01T12:00:00.000Z"' "$(s '"en"')" "$(s '"smoke-parent"')" "$(s '"smoke-brand"')" true false false \
-  "$(s '"everyone"')" "$(s false)" "$N" "$N" "$(s 600)" "$(s 15)" "$(s 3)" "$(s 0)" "$(s 1)" "$(s 2)"
+post 600
 
-call update_ingestion_run '"smoke-run"' "$(s '"smoke-brand"')" 1 1 1 0 0 1 "$N" "$(s '"smoke-follower"')" "$N"
+call update_ingestion_run '"smoke-run"' "$(s '"smoke-brand"')" 1 1 1 0 0 1 "$(s '"smoke-follower"')" "$N"
 call complete_ingestion_run '"smoke-run"' '"completed"' "$N"
 
 if spacetime call -s "$SERVER" --anonymous "$DB" upsert_post_reference '"x"' '"y"' '"quoted"' >/dev/null 2>&1; then

@@ -2,7 +2,7 @@
 
 SpacetimeDB module that stores **raw** public X data for a brand's followers. No AI-inferred fields live here; personas go in a separate system later.
 
-Live database: `spacetime-x-followers` on maincloud.
+Live database: `ripple-mhacks` on maincloud.
 
 ## Tables
 
@@ -19,12 +19,25 @@ Live database: `spacetime-x-followers` on maincloud.
 
 All upsert reducers are idempotent. Tables are publicly readable; only the publishing identity can write (add more with `add_admin`).
 
+## Importing followers from X
+
+Needs `X_BEARER_TOKEN` in the repo-root `.env` and credits on the X developer account. Raw responses are cached in `data/x_raw/<username>/` (gitignored). Rerunning only calls X for anything that isn't cached yet.
+
+The import makes 1 followers call (the N most recent followers, $0.010 each), then 1 timeline call per public follower (at most `--posts` posts, $0.005 each). The worst case is `N * (0.01 + 0.005 * posts)`, so 95 followers x 25 posts is about $13.90.
+
+```bash
+cd ingest
+../../.venv-x/bin/python ingest_x.py --followers 95 --posts 25   # real run (costs credits)
+../../.venv-x/bin/python ingest_x.py --followers 1 --offline     # reload cached data only, never calls X
+../../.venv-x/bin/python check_fill.py                           # per-column fill report
+```
+
 ## Commands
 
 ```bash
 npm install
 spacetime build
-spacetime publish spacetime-x-followers -s maincloud --module-path .   # update the live DB
+spacetime publish ripple-mhacks -s maincloud --module-path .   # update the live DB
 ./smoke-test.sh                                                        # write, verify, delete a fake row chain
-spacetime sql -s maincloud spacetime-x-followers "SELECT * FROM x_user"
+spacetime sql -s maincloud ripple-mhacks "SELECT * FROM x_user"
 ```

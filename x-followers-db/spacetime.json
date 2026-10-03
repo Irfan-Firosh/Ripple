@@ -1,5 +1,5 @@
 {
   "server": "maincloud",
   "module-path": ".",
-  "database": "spacetime-x-followers"
+  "database": "ripple-mhacks"
 }
