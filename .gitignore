@@ -19,3 +19,7 @@ playwright-report/
 # Raw X API cache (follower data, not committed)
 data/x_raw/
 data/backups/
+
+# Python caches
+__pycache__/
+.pytest_cache/
