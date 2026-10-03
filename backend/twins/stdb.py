@@ -35,6 +35,8 @@ def decode(value, ty: dict):
             return value[0]
         return {n: decode(v, e["algebraic_type"]) for n, v, e in zip(names, value, elements)}
     if "Array" in ty:
+        if isinstance(value, str) and "U8" in ty["Array"]:  # array<u8> comes back hex-encoded
+            return list(bytes.fromhex(value))
         return [decode(v, ty["Array"]) for v in value]
     return value
 

@@ -70,3 +70,9 @@ def test_network_errors_are_wrapped():
         client.sql("SELECT * FROM x_user")
     with pytest.raises(StdbError, match="dns down"):
         client.call("ask_twin", "1")
+
+
+def test_decode_u8_array_from_hex_string():
+    # SpacetimeDB SQL returns array<u8> as a hex string (seen live: active_hours_utc -> "040e0f1016")
+    assert decode("040e0f1016", {"Array": {"U8": []}}) == [4, 14, 15, 16, 22]
+    assert decode("", {"Array": {"U8": []}}) == []
