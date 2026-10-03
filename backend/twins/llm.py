@@ -24,7 +24,7 @@ def call_tool(client, *, system: str, user: str, tool_name: str, description: st
     reason = "no attempts made"
     for _ in range(ATTEMPTS):
         response = client.messages.create(
-            model=MODEL, max_tokens=max_tokens, temperature=0, system=system,
+            model=MODEL, max_tokens=max_tokens, system=system,
             tools=[tool], tool_choice={"type": "tool", "name": tool_name},
             messages=[{"role": "user", "content": user}],
         )

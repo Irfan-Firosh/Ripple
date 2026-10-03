@@ -18,7 +18,7 @@ def test_returns_validated_model_and_sends_forced_tool():
     client = FakeClient([{"score": 0.4}])
     assert run(client) == Out(score=0.4)
     call = client.calls[0]
-    assert call["model"] == MODEL and call["temperature"] == 0
+    assert call["model"] == MODEL and "temperature" not in call  # anthropic>=1.x rejects sampling params
     assert call["tool_choice"] == {"type": "tool", "name": "emit"}
     assert call["tools"][0]["input_schema"]["properties"]["score"]["maximum"] == 1
 

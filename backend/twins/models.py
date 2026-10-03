@@ -1,9 +1,28 @@
 """Data shapes shared by every twin module. X fields mirror the snake_case SQL columns."""
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 
 MODEL = "claude-haiku-4-5-20251001"
+
+
+def _shorten(value, limit: int):
+    """LLMs ignore maxLength on prose: clip at a word boundary instead of rejecting the whole output."""
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
+
+
+def Text(limit: int, **field):  # noqa: N802 - reads like a type
+    return Annotated[str, BeforeValidator(lambda v: _shorten(v, limit)), Field(min_length=1, max_length=limit, **field)]
+
+
+def Items(item, limit: int, **field):  # noqa: N802
+    return Annotated[list[item], BeforeValidator(lambda v: v[:limit] if isinstance(v, list) else v),
+                     Field(max_length=limit, **field)]
 
 
 class XUser(BaseModel):
@@ -52,18 +71,18 @@ class AccountStats(BaseModel):
 
 
 class Topic(BaseModel):
-    topic: str = Field(min_length=1, max_length=60)
+    topic: Text(60)
     affinity: float = Field(ge=0, le=1)
 
 
 class TwinPersona(BaseModel):
-    topics: list[Topic] = Field(min_length=1, max_length=8)
-    tone: str = Field(min_length=1, max_length=160)
-    format_prefs: list[str] = Field(max_length=6)
-    hot_buttons: list[str] = Field(max_length=6, description="What reliably makes them reply, quote or repost")
-    ignores: list[str] = Field(max_length=6, description="Content they scroll past")
-    persona_summary: str = Field(min_length=1, max_length=500)
-    evidence_post_ids: list[str] = Field(max_length=10, description="IDs of the given posts that best show this persona")
+    topics: Annotated[Items(Topic, 8), Field(min_length=1)]
+    tone: Text(160, description="At most 160 characters")
+    format_prefs: Items(str, 6)
+    hot_buttons: Items(str, 6, description="What reliably makes them reply, quote or repost")
+    ignores: Items(str, 6, description="Content they scroll past")
+    persona_summary: Text(500, description="At most 500 characters")
+    evidence_post_ids: Items(str, 10, description="IDs of the given posts that best show this persona")
 
 
 class Twin(BaseModel):
@@ -82,5 +101,5 @@ Action = Literal["reply", "quote", "repost", "like", "ignore"]
 class TwinAnswer(BaseModel):
     action: Action
     confidence: float = Field(ge=0, le=1)
-    answer: str = Field(min_length=1, max_length=800, description="First person, in this account's voice")
+    answer: Text(800, description="First person, in this account's voice; at most 800 characters")
     cited_post_ids: list[str] = Field(description="IDs of your own posts that justify the answer")
