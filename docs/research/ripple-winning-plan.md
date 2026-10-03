@@ -29,6 +29,8 @@ These override anything below that conflicts with them.
 - **Target:** a **specific X page (account)** to scrape. It is chosen later, and this plan gets updated then.
 - **Backend: SpacetimeDB is Ripple's backend**: scraped posts, the graph, twins, drafts, model outputs, the simulation itself (scheduled `tick` reducer) and results. See [spacetime-backend.md](spacetime-backend.md). It's live on Maincloud as `ripple-mhacks`. Neon's role is open.
 
+**Dev infrastructure diagram (Lucid):** https://lucid.app/lucidchart/98e15453-d4db-417a-b9ca-56ab9d30761a/view
+
 ## 1. The idea in one breath
 
 > **Ripple lets you test a post on a digital twin of your social network before you test it on real people.**
