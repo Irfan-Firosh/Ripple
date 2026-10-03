@@ -17,14 +17,18 @@ spacetime delete --no-config -s "$SERVER" "$DB" -y >/dev/null 2>&1 || true   # s
 spacetime publish --no-config "$DB" -s "$SERVER" --module-path . -y >/dev/null
 
 call start_twin_build_run '"run1"' '"100"' 3
+call start_twin_build_run '"run1"' '"100"' 3            # retried start (lost reply) is a no-op
+must_fail start_twin_build_run '"run1"' '"999"' 3       # same id, different brand
 call set_twin_job_status '"run1"' '"1"' '"alice"' '"queued"' "$N"
 call publish_twin '"run1"' '"1"' '"alice"' '"100"' 3 0.3 0.1 0.3 10 100 0.05 '[15]' \
   '[{"topic":"databases","affinity":0.9}]' '"dry"' '"DB engineer."' '["benchmarks"]' '["memes"]' '[]' '["p2"]' '"m"'
 call set_twin_job_status '"run1"' '"2"' '"bob"' '"skipped"' "$(s '"@bob: 1 posts, need 3"')"
-call set_twin_job_status '"run1"' '"2"' '"bob"' '"skipped"' "$(s '"again"')"   # must NOT double count
+must_fail set_twin_job_status '"run1"' '"2"' '"bob"' '"skipped"' "$(s '"again"')"   # finished jobs are final
+must_fail set_twin_job_status '"run1"' '"1"' '"alice"' '"failed"' "$N"                 # ready can't become failed
 call complete_twin_build_run '"run1"' '"partial"'
 expect "$(sql "SELECT status, ready, failed, skipped FROM twin_build_run WHERE run_id = 'run1'")" 'partial.*| *1 *| *0 *| *1'
 expect "$(sql "SELECT status FROM twin_build_job WHERE job_id = 'run1:1'")" 'ready'
+expect "$(sql "SELECT brand_user_id, user_id FROM twin_audience WHERE twin_audience_id = '100:1'")" '"100".*"1"'
 
 call ask_twin '"1"' '"Our DB is 10x faster"' '""'
 call claim_twin_question 1

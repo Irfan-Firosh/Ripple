@@ -216,6 +216,17 @@ const twin = table(
   }
 );
 
+const twinAudience = table(
+  { name: 'twin_audience', public: true },
+  {
+    twinAudienceId: t.string().primaryKey(), // `${brandUserId}:${userId}`
+    brandUserId: t.string().index('btree'),
+    userId: t.string().index('btree'),
+    lastBuildRunId: t.string(),
+    updatedAt: t.timestamp(),
+  }
+);
+
 const twinBuildRun = table(
   { name: 'twin_build_run', public: true },
   {
@@ -277,6 +288,7 @@ const spacetimedb = schema({
   twinBuildRun,
   twinBuildJob,
   twinQuestion,
+  twinAudience,
 });
 export default spacetimedb;
 
@@ -435,7 +447,6 @@ const TWIN_ACTIONS = ['reply', 'quote', 'repost', 'like', 'ignore'];
 const MAX_DRAFT = 1000;
 const MAX_QUESTION = 300;
 const MAX_OPEN_PER_SENDER = 3; // pending + answering
-const MAX_OPEN_TOTAL = 50; // anonymous identities are free to mint, so also cap the whole queue (each question is a paid LLM call)
 
 function setTwinJob(ctx: Ctx, runId: string, userId: string, username: string, status: string, error: string | undefined) {
   if (!TWIN_JOB_STATUSES.includes(status)) throw new SenderError(`invalid twin job status ${status}`);
@@ -443,11 +454,14 @@ function setTwinJob(ctx: Ctx, runId: string, userId: string, username: string, s
   if (!run) throw new SenderError(`unknown twin build run ${runId}`);
   const jobId = `${runId}:${userId}`;
   const prev = ctx.db.twinBuildJob.jobId.find(jobId);
+  if (prev && TWIN_TERMINAL.includes(prev.status)) {
+    throw new SenderError(`twin job ${jobId} already finished as ${prev.status}`);
+  }
   const row = { jobId, runId, userId, username, status, error, updatedAt: ctx.timestamp } as Row<'twinBuildJob'>;
   if (prev) ctx.db.twinBuildJob.jobId.update(row);
   else ctx.db.twinBuildJob.insert(row);
-  // Count each job once, on its first move into a terminal status.
-  if (TWIN_TERMINAL.includes(status) && !(prev && TWIN_TERMINAL.includes(prev.status))) {
+  // Finished jobs are final (checked above), so each job is counted exactly once.
+  if (TWIN_TERMINAL.includes(status)) {
     ctx.db.twinBuildRun.runId.update({
       ...run,
       ready: run.ready + (status === 'ready' ? 1 : 0),
@@ -461,7 +475,12 @@ export const startTwinBuildRun = spacetimedb.reducer(
   { runId: t.string(), brandUserId: t.string(), requested: t.u32() },
   (ctx, { runId, brandUserId, requested }) => {
     requireAdmin(ctx);
-    if (ctx.db.twinBuildRun.runId.find(runId)) throw new SenderError(`twin build run ${runId} already exists`);
+    const existing = ctx.db.twinBuildRun.runId.find(runId);
+    if (existing) {
+      // A retry after a lost HTTP reply is fine; reusing the id for a different build is not.
+      if (existing.brandUserId === brandUserId && existing.requested === requested) return;
+      throw new SenderError(`twin build run ${runId} already exists`);
+    }
     ctx.db.twinBuildRun.insert({
       runId, brandUserId, status: 'running', requested, ready: 0, failed: 0, skipped: 0,
       startedAt: ctx.timestamp, completedAt: undefined,
@@ -484,6 +503,15 @@ export const publishTwin = spacetimedb.reducer({ runId: t.string(), ...twinField
   const row = { ...fields, buildRunId: runId, updatedAt: ctx.timestamp } as Row<'twin'>;
   if (ctx.db.twin.userId.find(fields.userId)) ctx.db.twin.userId.update(row);
   else ctx.db.twin.insert(row);
+  const link = {
+    twinAudienceId: `${fields.brandUserId}:${fields.userId}`,
+    brandUserId: fields.brandUserId,
+    userId: fields.userId,
+    lastBuildRunId: runId,
+    updatedAt: ctx.timestamp,
+  };
+  if (ctx.db.twinAudience.twinAudienceId.find(link.twinAudienceId)) ctx.db.twinAudience.twinAudienceId.update(link);
+  else ctx.db.twinAudience.insert(link);
   setTwinJob(ctx, runId, fields.userId, fields.username, 'ready', undefined);
 });
 
@@ -505,7 +533,6 @@ export const askTwin = spacetimedb.reducer(
     if (draft.trim().length === 0 || draft.length > MAX_DRAFT) throw new SenderError(`draft must be 1..${MAX_DRAFT} chars`);
     if (question.length > MAX_QUESTION) throw new SenderError(`question must be at most ${MAX_QUESTION} chars`);
     const open = [...ctx.db.twinQuestion.status.filter('pending'), ...ctx.db.twinQuestion.status.filter('answering')];
-    if (open.length >= MAX_OPEN_TOTAL) throw new SenderError('twin question queue is full; try again shortly');
     if (open.filter(q => q.askedBy.equals(ctx.sender)).length >= MAX_OPEN_PER_SENDER) {
       throw new SenderError('too many open questions');
     }

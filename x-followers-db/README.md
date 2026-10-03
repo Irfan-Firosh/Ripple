@@ -16,7 +16,8 @@ Live database: `ripple-mhacks` on maincloud.
 | `x_context_annotation` | `post_id:domain_id:entity_id` | X's own topic annotations |
 | `x_post_media` | `post_id:media_key` | metadata + URLs only |
 | `x_ingestion_run` | `ingestion_run_id` | counters + checkpoint so an import can resume |
-| `twin` | `user_id` | **AI-inferred** persona + stats per audience member (Claude Haiku 4.5, written by `backend/twins`) |
+| `twin` | `user_id` | **AI-inferred** persona + stats per person (Claude Haiku 4.5, written by `backend/twins`) |
+| `twin_audience` | `brand_user_id:user_id` | which brand audiences each twin belongs to (a person following two brands has one twin, two links) |
 | `twin_build_run` | `run_id` | live counters for a twin build (ready / failed / skipped) |
 | `twin_build_job` | `run_id:user_id` | per-account build status: queued → building → ready / failed / skipped |
 | `twin_question` | `question_id` | Ask-the-twin queue: anyone calls `ask_twin`; the backend worker claims and answers |
