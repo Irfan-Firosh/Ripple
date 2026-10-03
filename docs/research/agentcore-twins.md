@@ -263,3 +263,15 @@ That is comfortably within free credits.
   | "Top 10 skincare tips for autumn" | **ignore** | 0.99 | "Not relevant to my focus areas." |
 
 - **Bug found and fixed live:** SpacetimeDB's SQL returns `array<u8>` columns as hex strings (`"040e0f1016"`). This broke `load_twin` for the first question (#1, marked `failed` by the worker as designed). It is fixed in the `twins/stdb.py` decoder, with a regression test.
+
+### Run 2: every audience member (2026-10-03)
+
+- **Build `twins-spacetimedb-20261003T221416`:** **95/95 twins ready, 0 failed, 0 skipped**, with 8 workers.
+- **No accounts are skipped any more.** Accounts with 1–2 posts get a tentative twin. Accounts with no posts (10 of them) get a **profile-only** twin built from bio and follower counts.
+  - Their affinities are capped at 0.5, and the summary says "Profile-only estimate".
+  - `post_count` is 0, which tells the simulation to trust them less.
+- **New `twin_audience` table:** links each twin to the brand audiences it belongs to (95 links). One person keeps one twin across brands.
+- **Build jobs are final once finished,** so counters can't double count. A retried run start is a no-op. There is no whole-queue question cap; the per-sender cap stays at 3 open questions.
+- **Ask-the-twin via the queue:**
+  - @clockwork_labs → **repost 0.85** on the SpacetimeDB draft.
+  - Profile-only @thisistehks (a solo indie dev) → **reply 0.85** on "free multiplayer template for indie games on SpacetimeDB".
