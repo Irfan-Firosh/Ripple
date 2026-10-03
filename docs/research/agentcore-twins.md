@@ -16,19 +16,167 @@ Researched 2026-10-03.
 
 **Key design rule:** AgentCore is called **once per account to build its twin**, and **on demand for explanations**. It is **not** called during the simulation. The cascade uses the policy model's `edge_prob` values inside SpacetimeDB, so there are no LLM calls per agent per tick. That keeps it fast, cheap, and deterministic.
 
-## Flow
+## What AgentCore is (the three parts we use)
 
-1. The Fetch **Graph Builder** finishes the interaction graph for the chosen X page.
-2. For each account (in batches), the Fetch agent calls AgentCore:
-   - `boto3.client("bedrock-agentcore").invoke_agent_runtime(agentRuntimeArn=…, runtimeSessionId=<handle-based id ≥33 chars>, payload={account's posts + interactions})`
-   - ([invoke example](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-get-started-cli.html)).
-3. **TwinBuilder** is a Strands agent on Runtime using a Bedrock model such as Claude or Nova. It:
-   - extracts topic affinity, tone and format preferences, reply/quote/repost tendencies, active hours, and network role;
-   - writes long-term records to **AgentCore Memory** under the namespace `/twins/{handle}/`, by direct long-term ingestion or a custom extraction strategy;
-   - returns the structured twin JSON.
-4. The Fetch agent writes the twin summary into SpacetimeDB's `twin` table through the HTTP reducer API (proven).
-5. The policy model trains and scores on twin features plus content features, then writes `edge_prob`.
-6. **Explanations (optional):** "why did @x engage with draft B?" opens an Ask-the-twin session that retrieves `/twins/x/` memory and answers in persona. The answer is shown in the ASI:One detail card and the web node panel.
+| Part                     | What it is                                                                                                                                                                                                | Our use                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| **Runtime**              | Managed hosting for an agent. You write a Python file with `BedrockAgentCoreApp` and an `@app.entrypoint` function. AWS containerises it and serves `POST /invocations` and `GET /ping` on port 8080. Each session runs in its own microVM. | Hosts the **TwinBuilder** and **Ask-the-twin** agent (one deployment, two actions). |
+| **Memory**               | Managed store. **Short-term** memory holds raw events per actor and session. **Long-term** memory holds records, organised by **namespace** (for example `/twins/{actorId}/`) and searchable by meaning. | One memory resource, `ripple_twins`. Each X handle is an `actorId`, and each twin is a namespace. |
+| **Bedrock model**        | The LLM, called through Bedrock (Claude Haiku 4.5, `global.anthropic.claude-haiku-4-5-20251001-v1:0`, as used in the AWS samples).                                                                         | Reads an account's posts and produces a structured persona.                |
+
+Think of Runtime as "a Lambda for agents, with long sessions", Memory as "a vector database scoped per twin", and Bedrock as the brain.
+
+## Implementation
+
+### Design rule: numbers in Python, judgement in the LLM
+
+A twin has two halves:
+
+| Half                     | Fields                                                                                                                                        | Computed by                                                     | Why                                                                     |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **Behavioural numbers**  | `post_count`, `reply_rate`, `quote_rate`, `mention_rate`, `avg_likes`, `active_hours`, `network_role` (hub / bridge / leaf from graph degree and betweenness) | Fetch **Graph Builder**, deterministically from scraped `x_post` and `interaction` rows | Reproducible, free, testable. An LLM must not invent rates.              |
+| **Semantic persona**     | `topics[{topic, affinity 0–1}]`, `tone`, `format_prefs` (threads, media, links), `hot_buttons` (what makes them reply), `ignores`, `persona_summary` (≤500 characters), `evidence_post_ids` | **AgentCore TwinBuilder** (Bedrock LLM, structured output)      | This is the part that needs reading comprehension, so it is what AgentCore is for. |
+
+The policy model uses both halves as features: the numbers directly, and the topics as an affinity vector matched against the draft's topics.
+
+### End-to-end sequence
+
+1. The **Fetch Graph Builder** finishes the graph and computes the behavioural numbers for each account.
+2. For each account, in parallel batches of about 10, the **Fetch agent** calls the Runtime:
+   - `invoke_agent_runtime(agentRuntimeArn, runtimeSessionId, payload)`
+   - payload: `{"action": "build_twin", "handle", "posts": [text, created_at, metrics…], "stats": {…numbers}}`
+3. **TwinBuilder**, running in the Runtime microVM:
+   1. A Strands `Agent` calls `structured_output(TwinPersona, prompt)` and gets back a validated Pydantic object.
+   2. It writes the persona to Memory with `batch_create_memory_records` (direct writes with no extraction wait, up to 100 records per call, ≤16k characters each, one namespace per record). Records written:
+      - `/twins/{handle}/profile/`: `persona_summary`, plus one record per topic and per hot-button.
+      - `/twins/{handle}/posts/`: the account's most telling 10–20 posts verbatim. These are what Ask-the-twin cites.
+   3. It returns the persona JSON.
+4. The **Fetch agent** merges numbers and persona, then calls the SpacetimeDB reducer `upsert_twin`. Only Fetch holds the SpacetimeDB token; AgentCore never talks to SpacetimeDB.
+5. The **policy model** scores drafts and writes `edge_prob`. The **simulation ticks inside SpacetimeDB** with no AgentCore calls.
+6. **Ask-the-twin**, on demand, when a user clicks a node or asks in ASI:One "why would @x engage?":
+   - payload: `{"action": "ask_twin", "handle", "draft", "question"}`
+   - The agent calls `retrieve_memories(namespace_path="/twins/{handle}/", query=draft, top_k=8)` and answers in persona, citing the retrieved posts.
+   - It reuses that twin's `runtimeSessionId`, so repeated questions hit a warm microVM.
+
+### Runtime agent (sketch: `agents/twins/twin_agent.py`)
+
+```python
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from bedrock_agentcore.memory import MemoryClient
+from strands import Agent
+from strands.models import BedrockModel
+from pydantic import BaseModel, Field
+
+MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+MEMORY_ID = os.environ["RIPPLE_TWIN_MEMORY_ID"]
+
+class Topic(BaseModel):
+    topic: str
+    affinity: float = Field(ge=0, le=1)
+
+class TwinPersona(BaseModel):
+    topics: list[Topic]
+    tone: str
+    format_prefs: list[str]
+    hot_buttons: list[str]      # what reliably makes them reply or quote
+    ignores: list[str]
+    persona_summary: str = Field(max_length=500)
+    evidence_post_ids: list[str]
+
+app = BedrockAgentCoreApp()
+memory = MemoryClient()
+model = BedrockModel(model_id=MODEL_ID, temperature=0.0)
+
+@app.entrypoint
+def handler(payload: dict) -> dict:
+    if payload["action"] == "build_twin":
+        return build_twin(payload)
+    if payload["action"] == "ask_twin":
+        return ask_twin(payload)
+    raise ValueError("unknown action")
+
+def build_twin(p):
+    agent = Agent(model=model, system_prompt=BUILDER_PROMPT)
+    persona = agent.structured_output(TwinPersona, render_posts(p["posts"], p["stats"]))
+    memory.gmdp_client.batch_create_memory_records(
+        memoryId=MEMORY_ID, records=to_records(p["handle"], persona, p["posts"]))
+    return persona.model_dump()
+
+def ask_twin(p):
+    hits = memory.retrieve_memories(memory_id=MEMORY_ID,
+        namespace_path=f"/twins/{p['handle']}/", query=p["draft"], top_k=8)
+    agent = Agent(model=model, system_prompt=persona_prompt(p["handle"], hits))
+    return {"answer": str(agent(p["question"] + "\n\nDraft:\n" + p["draft"]))}
+
+if __name__ == "__main__":
+    app.run()
+```
+
+### Fetch-side client (sketch: `agents/twins_client.py`)
+
+```python
+client = boto3.client("bedrock-agentcore", region_name=REGION)
+
+def session_id(handle: str) -> str:   # must be at least 33 characters, stable per twin
+    return "ripple-twin-" + hashlib.sha256(handle.encode()).hexdigest()[:32]
+
+def build_twin(handle, posts, stats) -> dict:
+    r = client.invoke_agent_runtime(agentRuntimeArn=TWIN_ARN,
+        runtimeSessionId=session_id(handle), qualifier="DEFAULT",
+        payload=json.dumps({"action": "build_twin", "handle": handle,
+                            "posts": posts, "stats": stats}).encode())
+    return json.loads(b"".join(r["response"]))
+```
+
+This is the only module that touches AWS. If AgentCore is down, the same `TwinPersona` prompt can run against xAI Grok locally, which gives the fallback listed under Risks.
+
+### One-time setup (hour 0–1)
+
+1. Install the AWS CLI. Run `aws configure` (or SSO) with an IAM user that has AgentCore, Bedrock, ECR, CodeBuild and IAM role-creation rights.
+2. In the **Bedrock console**, enable model access for Claude Haiku 4.5 in the chosen region (`us-east-1` or `us-west-2`; both appear in the AWS samples).
+3. Install the tooling: `uv pip install bedrock-agentcore strands-agents bedrock-agentcore-starter-toolkit boto3`.
+4. Create the memory once:
+   - Call `MemoryClient().create_memory_and_wait(name="ripple_twins")`.
+   - No extraction strategies are needed, because we write records directly.
+   - Save the ID as `RIPPLE_TWIN_MEMORY_ID` in `.env`.
+5. Deploy the agent:
+   - `agentcore configure -e twin_agent.py` (this auto-creates the execution role and ECR repository), then `agentcore launch`. The result gives the **agent ARN**; save it as `RIPPLE_TWIN_AGENT_ARN` in `.env`.
+   - The execution role also needs `bedrock-agentcore:BatchCreateMemoryRecords` and `bedrock-agentcore:RetrieveMemoryRecords` on the memory.
+   - The CLI verbs differ by toolkit version (`configure` / `launch` / `deploy`, or the newer `create`). Use whatever `agentcore --help` shows.
+6. Smoke test:
+   - Run `agentcore invoke '{"action":"build_twin",…}'` with one real account from `x_post`.
+   - Then check that `retrieve_memories` returns its records.
+
+### Optional upgrade: IngestData
+
+AgentCore Memory added **`IngestData`** on 2026-09-08 ([announcement](https://aws.amazon.com/about-aws/whats-new/2026/09/agentcore-memory-direct-ingest/), [docs](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/long-term-ingest-data.html)).
+
+- It takes raw posts as a JSON payload and runs the memory's built-in **semantic** strategy to extract facts into `/twins/{actorId}/facts/`, with no short-term event stored.
+- This would give Ask-the-twin richer recall with no extra code.
+- **Skip it for the MVP.** Extraction is asynchronous (seconds to minutes), and the API is new. `batch_create_memory_records` is synchronous and deterministic.
+
+### Is Runtime strictly needed?
+
+Honestly, no. TwinBuilder could be a plain Bedrock `converse` call from the Fetch service, writing to Memory directly.
+
+Runtime earns its place because it gives:
+- an isolated, observable, managed agent;
+- warm per-twin sessions for Ask-the-twin;
+- a clean "twin factory" service boundary for the architecture story.
+
+**Keep it**, but the `twins_client.py` boundary means it can be swapped out in minutes if it fights back.
+
+### Verification status
+
+- **Confirmed from AWS docs and SDK source:**
+  - `BedrockAgentCoreApp` / `@app.entrypoint`;
+  - the `invoke_agent_runtime` signature and response streaming;
+  - `MemoryClient.create_memory_and_wait`;
+  - `retrieve_memories(namespace | namespace_path, query, top_k)`;
+  - the `batch_create_memory_records` limits (100 records, 16k characters, one namespace);
+  - `IngestData`;
+  - Strands `structured_output` with Pydantic.
+- **Not yet run:** this machine has no AWS CLI, credentials or `boto3`. The setup steps above are the first task for whoever owns AWS.
 
 ## Verified facts (sources)
 
