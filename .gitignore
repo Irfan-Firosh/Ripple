@@ -1,0 +1,16 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
