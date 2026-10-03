@@ -241,3 +241,25 @@ That is comfortably within free credits.
 | Per-account LLM profiling latency for hundreds of accounts | Batch calls, run them in parallel sessions, and cache twins in SpacetimeDB; pre-build twins for the demo page |
 | Twins of real X accounts stored in AWS Memory (privacy)    | Public behavior only, no sensitive attributes, a delete-by-namespace path, and aggregate display in the UI    |
 | Two clouds plus Fetch increases moving parts               | One adapter module (`twins_client.py`) owns all AgentCore calls; fall back to a local profiler if AWS is down |
+
+## Live run (2026-10-03, Claude Haiku 4.5 on `ripple-mhacks`)
+
+- **Build `twins-spacetimedb-20261003T220255`:**
+  - 95 audience accounts of @spacetimedb.
+  - **78 twins ready, 0 failed, 17 skipped** (fewer than 3 posts).
+  - Run status `completed`, in about 2 minutes with 4 workers.
+  - A 3-account pilot ran first (`…T220237`: 2 ready, 1 skipped).
+- **Real-time sync verified:** `spacetime subscribe` on `twin_build_job` / `twin_build_run` / `twin_question` received every transition live:
+  - jobs: queued → building → ready / skipped
+  - questions: pending → answering → answered
+- **Example persona (@clockwork_labs):**
+  - Tone: "Professional yet approachable; enthusiastic about technical achievements and community engagement; transparent about company updates and product launches."
+  - The summary identifies it as the BitCraft game studio.
+- **Ask-the-twin through the queue:** `ask_twin` reducer → Python worker → `answer_twin_question`. Questions were asked of @clockwork_labs:
+
+  | Draft | Action | Confidence | Answer (excerpt) |
+  | --- | --- | --- | --- |
+  | "We rebuilt our multiplayer backend on SpacetimeDB and cut server code by 70%." | **repost** | 0.85 | "This is exactly the kind of technical win we love to see!" (cites its own posts) |
+  | "Top 10 skincare tips for autumn" | **ignore** | 0.99 | "Not relevant to my focus areas." |
+
+- **Bug found and fixed live:** SpacetimeDB's SQL returns `array<u8>` columns as hex strings (`"040e0f1016"`). This broke `load_twin` for the first question (#1, marked `failed` by the worker as designed). It is fixed in the `twins/stdb.py` decoder, with a regression test.
