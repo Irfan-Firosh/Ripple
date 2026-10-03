@@ -1,7 +1,7 @@
 # MHacks 2026: official prizes, rules, and Ripple's strategy
 
 Researched 2026-10-03 from the official prize list and [mhacks-2026.devpost.com](https://mhacks-2026.devpost.com/) ([rules](https://mhacks-2026.devpost.com/rules)). This **supersedes the guessed prize tables** in [mhacks-2026-sponsors.md](mhacks-2026-sponsors.md). Sponsor identities and the tech research there are still valid.
-asdfadsf
+
 **V** = verified at the source. **U** = unverified.
 
 ## Rules that shape strategy (V)
@@ -41,7 +41,6 @@ asdfadsf
 | Capital One Nessie                                 | Gift cards                                                | Mock banking API                                                                                                                                          | ✗           | Off-theme.                                                                                                                                                                                                       |
 | FinchNode                                          | Apple Watch / $500                                        | Synthetic health records                                                                                                                                  | ✗           | Off-theme.                                                                                                                                                                                                       |
 | FREE-WILi                                          | Kits                                                      | Hardware                                                                                                                                                  | ✗           | Off-theme.                                                                                                                                                                                                       |
-| Freesolo                                           | Not on the list                                           | —                                                                                                                                                         | —           | Train the policy model ourselves. Freesolo is no longer a prize driver.                                                                                                                                          |
 
 ## Fetch.ai submission steps (from the official doc)
 

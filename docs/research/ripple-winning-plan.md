@@ -27,13 +27,13 @@ These override anything below that conflicts with them.
   - About $0.14 per ~15-post call.
 - **What it does _not_ give:** a follower graph or "who liked / reposted". Accepted. The audience graph will be built from what X does expose: **reply, quote and mention edges** around the chosen page, plus thread fetches. Whether this yields a dense enough graph is untested.
 - **Target:** a **specific X page (account)** to scrape. It is chosen later, and this plan gets updated then.
-- **Storage:** scraped X data goes into **SpacetimeDB**. Python writes through the HTTP reducer API (proven, no SDK needed), and live subscriptions push updates (proven). Neon's role for durable data is open until we finalize.
+- **Backend: SpacetimeDB is Ripple's backend**: scraped posts, the graph, twins, drafts, model outputs, the simulation itself (scheduled `tick` reducer) and results. See [spacetime-backend.md](spacetime-backend.md). It's live on Maincloud as `ripple-mhacks`. Neon's role is open.
 
 ## 1. The idea in one breath
 
 > **Ripple lets you test a post on a digital twin of your social network before you test it on real people.**
 
-The loop is **Discover → Draft → Simulate → Post → Recalibrate.**
+The loop is **Discover → Draft → Simulate → Post → Recalibrate.** The current build covers **Draft (user-supplied) → Simulate → Recalibrate** (§0).
 
 1. **Discover** _(paused, see §0)_. A swarm of scout agents researches a topic across X (via Grok), Reddit, YouTube, Hacker News and the web. It maps what's rising onto _your_ audience's communities: ★ bridge topics, hooks, gaps. Every claim is cited.
 2. **Draft.** Ripple turns a finding into drafts A/B/C.
@@ -49,7 +49,7 @@ The loop is **Discover → Draft → Simulate → Post → Recalibrate.**
 | Core        | Grand Prize                                                                      | $5,000 + ElevenLabs Pro      | Coherent, polished, working loop; the 60-second golden path (§6)                                                           | 4.2      |
 | Core        | Actually Intelligent (AI)                                                        | $2,500                       | Multi-agent reasoning, a self-trained policy model, a backtest that beats baselines                                        | 5.0      |
 | Core        | Fetch.ai ASI:One Agent Challenge                                                 | $1,250 / $750 / $500         | Ten agent types on Agentverse; the full loop works in the ASI:One chat alone; Interactive Cards                            | 4.5      |
-| Core        | Spacetime                                                                        | $1,000 / $500 / $200         | **SpacetimeDB is the live world:** cascade ticks, scout grid, multi-user war room                                          | 4.0      |
+| Core        | Spacetime                                                                        | $1,000 / $500 / $200         | **SpacetimeDB is the backend:** all pipeline state + the simulation runs inside it ([details](spacetime-backend.md))       | 4.0      |
 | Surface     | ElevenLabs                                                                       | Scale tier per member        | **Audience voices:** each community has a designed voice that reads its simulated reactions aloud; optional voice briefing | 4.25     |
 | Surface     | Relay: Interactive Agents                                                        | SF trip + Relay house week   | Text or call Ripple in the Relay app                                                                                       | 3.0      |
 | Surface     | Photon: Agents in iMessage                                                       | $700 + interview fast-track  | iMessage via Spectrum; drafts in, verdicts and watchlist alerts out                                                        | 3.0      |
@@ -83,48 +83,45 @@ Per-prize scores are in §2. The full rubric discussion is in the [prize researc
 
 ## 4. Architecture changes to make
 
-| Area             | Decision                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Agent core       | Python uAgents on Agentverse. Shared logic in `handle_user_message(channel, user, text)`; each surface is a thin adapter.                                                                                                                                                                                                                                                                                                              |
-| Live state       | **SpacetimeDB (TypeScript module) is the only home for live state.** Tables: `node`, `edge`, `cascade_run`, `node_state`, `scout`, `scout_event`, `brief_section`, `presence`. The scheduled reducer `tick_cascade` drives the visual cascade, and event tables drive the ripple animations. Python agents write through the HTTP API (exact path unverified) or a small TypeScript bridge, because there is no maintained Python SDK. |
-| Durable data     | **Neon:**<br>• graphs, twins, briefs, watchlists, embeddings (pgvector);<br>• Better Auth + RLS for per-user watchlists;<br>• Data API for the web app;<br>• **a branch per what-if simulation**;<br>• **AI Gateway** for all agent LLM calls.<br>Budget the free plan's 0.5 GB.                                                                                                                                                       |
-| Policy model     | Trained by us on X engagement data from Grok `x_search`: post-level counts plus reply/quote/mention interactions around the chosen page (a small model such as gradient boosting or a tiny MLP). The backtest against baselines is the "actually intelligent" proof.                                                                                                                                                                   |
-| Surfaces         | **ASI:One** (primary, Cards). **Relay:** Python `relaymessenger` WebSocket task; one token per mode. **Photon:** `spectrum-ts` sidecar; pre-register recipient numbers. **Web:** React + SpacetimeDB subscriptions.                                                                                                                                                                                                                    |
-| Voice            | ElevenLabs Voice Design: one voice per community; TTS of top reactions per draft (`eleven_flash_v2_5` for speed). Optional ElevenAgents briefing call with Ripple as the custom LLM.                                                                                                                                                                                                                                                   |
-| Discover sources | _(Paused, see §0.)_ Grok `x_search` / `web_search` (aggregate only); Reddit (100 QPM); YouTube (100 searches/day, so cache); HN Algolia (1,000-hit cap per query, so split windows).                                                                                                                                                                                                                                                   |
+| Area         | Decision                                                                                                                                                                                                                                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent core   | Python uAgents on Agentverse. Shared logic in `handle_user_message(channel, user, text)`; each surface is a thin adapter.                                                                                                                                                                                                 |
+| Live state   | **SpacetimeDB is the backend** (see [spacetime-backend.md](spacetime-backend.md)): `x_post`, `account`, `interaction`, `twin`, `draft`, `edge_prob`, `sim_run`, `node_state`, `sim_result`, `engagement_snapshot`. A scheduled `tick` reducer runs the cascade in-module. Python agents call reducers over HTTP (proven). |
+| Durable data | **Neon:**<br>• graphs, twins, briefs, watchlists, embeddings (pgvector);<br>• Better Auth + RLS for per-user watchlists;<br>• Data API for the web app;<br>• **a branch per what-if simulation**;<br>• **AI Gateway** for all agent LLM calls.<br>Budget the free plan's 0.5 GB.                                          |
+| Policy model | Trained by us on X engagement data from Grok `x_search`: post-level counts plus reply/quote/mention interactions around the chosen page (a small model such as gradient boosting or a tiny MLP). The backtest against baselines is the "actually intelligent" proof.                                                      |
+| Surfaces     | **ASI:One** (primary, Cards). **Relay:** Python `relaymessenger` WebSocket task; one token per mode. **Photon:** `spectrum-ts` sidecar; pre-register recipient numbers. **Web:** React + SpacetimeDB subscriptions.                                                                                                       |
+| Voice        | ElevenLabs Voice Design: one voice per community; TTS of top reactions per draft (`eleven_flash_v2_5` for speed). Optional ElevenAgents briefing call with Ripple as the custom LLM.                                                                                                                                      |
 
 ## 5. Workstreams (up to 4 people)
 
 | Stream                               | Owns                                                                                                                                    | Prizes it carries                                       |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| **A. Agents and Fetch.ai**           | Orchestrator, Cards, Discover agents (Planner, Scouts, Synthesizer, Watchlist), ASI:One flow, submission                                | Fetch.ai, AI track                                      |
-| **B. Simulation and model**          | Graph Builder, Twin Profiler, Content Analyst, policy model training, Simulator, Backtester                                             | AI track, Grand Prize                                   |
-| **C. Real-time and web**             | SpacetimeDB module, web Discover page, "Watch it spread" view, multi-user war room, Figma design system                                 | Spacetime, Figma, Grand Prize                           |
+| **A. Agents and Fetch.ai**           | Orchestrator, Cards, the "validate these drafts" ASI:One flow, submission                                                               | Fetch.ai, AI track                                      |
+| **B. Simulation and model**          | X scraper (Grok `x_search`), Graph Builder (reply/quote/mention), Twin Profiler, Content Analyst, policy model training, Backtester     | AI track, Grand Prize                                   |
+| **C. Real-time and web**             | SpacetimeDB module (tables, reducers, in-module `tick` simulation), "Watch it spread" view, Figma design system                         | Spacetime, Figma, Grand Prize                           |
 | **D. Surfaces, backend and process** | Neon (branches, auth, Data API, AI Gateway), Relay adapter, Photon sidecar, ElevenLabs voices, Notability screenshots, Devpost write-up | Neon, Relay, Photon, ElevenLabs, Notability, LLM-judged |
 
-Beads already cover Discover (epic `mhacks-dxo`) and the hero redesign (`mhacks-q73`, stale paths). New beads are needed for: SpacetimeDB core, Neon extras, Relay adapter, Photon sidecar, audience voices, the policy model (replacing Freesolo), and the submission checklist.
+Beads: Discover (`mhacks-dxo`) is **paused**, and the hero redesign (`mhacks-q73`) has stale paths. New beads are needed for: the SpacetimeDB backend module, the X scraper, graph + twins, the policy model, the in-module simulator, Relay, Photon, audience voices, and the submission checklist.
 
 ## 6. The 60-second golden path (the demo)
 
-1. **0–10s.** In ASI:One: "What should I post about AI agents for small business?" A form card appears; pick **Swarm**.
-2. **10–20s.** The web war room is on a second screen. 16 scout tiles fill live from SpacetimeDB, and a ★ bridge topic ("$80 vs $4k automation") lights up between the _Founders_ and _Engineers_ communities.
-3. **20–30s.** Tap the bridge topic, then "Draft 3 posts". Drafts A/B/C appear on a review card. Tap Simulate.
-4. **30–45s.** The network lights up. Draft A dies inside Engineers. Draft B crosses a bridge account into Founders and then Creators. **Hear it:** the Founders voice says "this is exactly our problem".
-5. **45–55s.** Click a node: "why did this account repost?" Change B's hook and re-run that account: 76% → 31%. Point to the Neon branch made for the what-if.
-6. **55–60s.** The accuracy panel shows the real backtest numbers against the baselines. Then text the same request to Ripple on **iMessage or Relay**, and the verdict comes back.
+1. **0–10s.** In ASI:One: "Which of these 3 posts will spread furthest with @<chosen page>'s audience?" Paste drafts A/B/C. A form card confirms; tap Simulate.
+2. **10–40s.** On a second screen, the network (built from real X replies, quotes and mentions around the page) **lights up live from SpacetimeDB**. Draft A dies inside one community. Draft B crosses a bridge account into another. **Hear it:** that community's voice reads its reaction. Open the same view on a judge's phone; it shows the identical run.
+3. **40–50s.** Click a node: "why did this account engage?" Change B's hook and re-run that account: 76% → 31%.
+4. **50–60s.** The accuracy panel shows real backtest numbers against baselines. Then text the same request to Ripple on **iMessage or Relay**, and the verdict comes back.
 
-**Fallback:** pre-run the demo topic and cache every source (YouTube quota, flaky APIs). Keep recorded fixtures so the demo works even if a source goes down.
+**Fallback:** pre-scrape the demo page and keep recorded fixtures, so the demo works even if Grok or the network is slow.
 
 ## 7. Timeline (hour 0 = hacking starts; deadline Sun 12:00pm)
 
 | Hours | Milestone                                                                                                                                                                                                                                                           | Gate                                                   |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | 0–1   | Confirm booth details:<br>• Relay TestFlight + token;<br>• Photon line + numbers;<br>• whether a link out of ASI:One is OK;<br>• ElevenLabs credits.<br>Also: start the Notability Pro trial; create the Neon + SpacetimeDB projects; brief the team from this doc. | Every account works                                    |
-| 1–4   | **Walking skeleton:** Orchestrator in ASI:One with cards, using stub agents; SpacetimeDB module with tables; web reads `scout` and `node_state`; Neon schema; data contract (`mhacks-dxo.1`)                                                                        | One fake end-to-end run visible in chat and on the web |
-| 4–10  | Scrape the chosen X page via Grok `x_search` into SpacetimeDB; Graph Builder (reply/quote/mention edges) + Twin Profiler on that audience; heuristic Simulator writing ticks to SpacetimeDB                                                                         | Real brief + real cascade, live                        |
+| 1–4   | **Walking skeleton:** Orchestrator in ASI:One with cards, using stub agents; SpacetimeDB module with tables; web reads `node_state` and `sim_result`; data contract                                                                                                 | One fake end-to-end run visible in chat and on the web |
+| 4–10  | Scrape the chosen X page via Grok `x_search` into SpacetimeDB; Graph Builder (reply/quote/mention edges) + Twin Profiler; in-module `tick` simulation with a heuristic policy                                                                                       | Real graph + real cascade, live                        |
 | 10–16 | Train the policy model + run the backtest; Relay adapter; Photon sidecar; audience voices; Neon branch-per-what-if + auth                                                                                                                                           | Every surface answers                                  |
-| 16–20 | Remaining scouts (Reddit, YouTube, HN, Web); watchlists; counterfactual flow; Figma design pass + MCP capture                                                                                                                                                       | The golden path runs end to end                        |
-| 20–22 | **Freeze features.** Polish the golden path, cache the demo topic, error states, coverage lines                                                                                                                                                                     | Three clean rehearsals in a row                        |
+| 16–20 | Counterfactual flow; recalibration snapshots; Figma design pass + MCP capture                                                                                                                                                                                       | The golden path runs end to end                        |
+| 20–22 | **Freeze features.** Polish the golden path, cache the demo page, error states                                                                                                                                                                                      | Three clean rehearsals in a row                        |
 | 22–24 | Demo video (3–5 min); README with agent names, addresses and badges; Devpost; ASI Submission Agent; Notability screenshots                                                                                                                                          | Everything submitted **before 11:30am**                |
 
 ## 8. Submission checklist
@@ -147,12 +144,12 @@ Beads already cover Discover (epic `mhacks-dxo`) and the hero redesign (`mhacks-
 
 ## 9. Top risks
 
-| Risk                                            | Mitigation                                                                        |
-| ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| Too many integrations; the demo confuses judges | The golden path first; the feature freeze at hour 20 is real                      |
-| SpacetimeDB ↔ Python bridging                   | Decide HTTP vs TypeScript bridge in hour 1; the walking skeleton proves it        |
-| Relay SDK is v0.1.0 with contradictory docs     | Confirm at the booth in hour 0; Relay is a surface, so drop it if blocked         |
-| Source quotas (YouTube 100/day) and flaky APIs  | Cache the demo topic; recorded fixtures; coverage lines                           |
-| Pre-post prediction is noisy                    | Show distributions and rankings; lead with pairwise accuracy against baselines    |
-| Neon free plan's 0.5 GB                         | Small demo audience; store embeddings compactly                                   |
-| Ethics questions                                | Public behavior only, aggregates, no per-person X queries, twin your own audience |
+| Risk                                               | Mitigation                                                                        |
+| -------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Too many integrations; the demo confuses judges    | The golden path first; the feature freeze at hour 20 is real                      |
+| SpacetimeDB ↔ Python bridging                      | **Resolved:** HTTP reducer calls proven in the spike                              |
+| Relay SDK is v0.1.0 with contradictory docs        | Confirm at the booth in hour 0; Relay is a surface, so drop it if blocked         |
+| X graph from replies/quotes/mentions may be sparse | Choose a high-engagement page; pre-scrape; fall back to fixtures                  |
+| Pre-post prediction is noisy                       | Show distributions and rankings; lead with pairwise accuracy against baselines    |
+| Maincloud free tier (~3M function calls/month)     | Size tick rate × runs × nodes; cap concurrent runs                                |
+| Ethics questions                                   | Public behavior only, aggregates, no per-person X queries, twin your own audience |
