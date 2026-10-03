@@ -1,5 +1,7 @@
 # Probe (tryprobe.io): reference analysis for Ripple
 
+> **Decision 2026-10-03:** Discover (content generation) is **paused**, and Bluesky is dropped. The current build is validation-only on X data via Grok `x_search`. This doc stays as the reference for when Discover resumes. See [ripple-winning-plan.md §0](ripple-winning-plan.md).
+
 Researched 2026-10-01. Probe is the reference for a feature to add to Ripple.
 
 ## What Probe is

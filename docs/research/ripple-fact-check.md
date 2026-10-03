@@ -2,6 +2,8 @@
 
 Researched 2026-09-30. Each claim below was checked against sources. "Unverified" means I could not confirm it.
 
+> **Decision 2026-10-03:** Bluesky is **dropped for now**. Ripple uses **X via the xAI console key (Grok `x_search`)** only. The Bluesky rows below are kept as research; they are not the plan. Without a follower graph from X, the audience graph comes from reply, quote and mention edges. See [ripple-winning-plan.md §0](ripple-winning-plan.md).
+
 **Bottom line:** the idea is feasible if built on **Bluesky + public datasets**. On X it is not feasible within 24 hours without paying, and X's terms conflict with it. The originality claim is defensible only in a narrower form. The backtest is the make-or-break part and needs real baselines.
 
 ## 1. Data access
