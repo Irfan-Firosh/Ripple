@@ -38,6 +38,6 @@ def test_stats_all_null_metrics():
     assert s.avg_likes == 0.0 and s.avg_impressions == 0.0 and s.engagement_rate == 0.0
 
 
-def test_stats_no_posts():
-    with pytest.raises(ValueError):
-        compute_stats(account([]))
+def test_stats_no_posts_are_all_zero():
+    s = compute_stats(account([]))
+    assert s.post_count == 0 and s.reply_share == 0.0 and s.engagement_rate == 0.0 and s.active_hours_utc == []

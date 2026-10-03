@@ -6,8 +6,17 @@ from .ask import ask_twin
 from .config import STDB_DATABASE, STDB_URL, load_api_key, load_stdb_token
 from .llm import make_client
 from .source import USERNAME_RE
-from .stdb import StdbClient, sql_str
+from .stdb import MAX_WORKERS, StdbClient, sql_str
 from .sync import load_twin, run_build, run_worker
+
+
+def _int_in(low: int, high: int | None = None):
+    def parse(text: str) -> int:
+        value = int(text)
+        if value < low or (high is not None and value > high):
+            raise argparse.ArgumentTypeError(f"must be between {low} and {high}" if high else f"must be at least {low}")
+        return value
+    return parse
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -15,9 +24,9 @@ def _parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="build twins for a brand's audience and publish them to SpacetimeDB")
     b.add_argument("--brand", required=True)
-    b.add_argument("--min-posts", type=int, default=3)
-    b.add_argument("--workers", type=int, default=4)
-    b.add_argument("--limit", type=int)
+    b.add_argument("--min-posts", type=_int_in(0), default=0, help="skip accounts with fewer posts (default: build all)")
+    b.add_argument("--workers", type=_int_in(1, MAX_WORKERS), default=4)
+    b.add_argument("--limit", type=_int_in(1))
     w = sub.add_parser("worker", help="answer pending twin_question rows")
     w.add_argument("--poll", type=float, default=2.0)
     w.add_argument("--max-loops", type=int)

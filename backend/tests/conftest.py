@@ -34,9 +34,11 @@ class FakeStdb:
     def __init__(self, tables=None):
         self.tables = {k: list(v) for k, v in (tables or {}).items()}
         self.calls = []
+        self.queries = []
         self.fail_on = set()
 
     def sql(self, query):
+        self.queries.append(query)
         m = _SELECT.match(query.strip())
         assert m, f"FakeStdb cannot parse: {query}"
         rows = self.tables.get(m["table"], [])

@@ -5,6 +5,7 @@ import time
 import requests
 
 TIMESTAMP_FIELD = "__timestamp_micros_since_unix_epoch__"
+MAX_WORKERS = 32  # build threads share one session; its pool must fit them all
 
 
 class StdbError(RuntimeError):
@@ -41,10 +42,18 @@ def decode(value, ty: dict):
     return value
 
 
+def _pooled_session() -> requests.Session:
+    session = requests.Session()
+    adapter = requests.adapters.HTTPAdapter(pool_connections=4, pool_maxsize=MAX_WORKERS)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
 class StdbClient:
     def __init__(self, base_url: str, database: str, token: str | None = None, session=None):
         self._base = f"{base_url.rstrip('/')}/v1/database/{database}"
-        self._session = session or requests.Session()
+        self._session = session or _pooled_session()
         self._headers = {"Content-Type": "application/json"}
         if token:
             self._headers["Authorization"] = f"Bearer {token}"

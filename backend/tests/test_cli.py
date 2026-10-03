@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from conftest import FakeClient
 from test_builder import PERSONA
 from test_sync import audience_db, twin_db
@@ -7,7 +9,7 @@ from twins.cli import main
 
 
 def test_build_prints_summary(capsys):
-    code = main(["build", "--brand", "spacetimedb", "--workers", "1"], stdb=audience_db(),
+    code = main(["build", "--brand", "spacetimedb", "--workers", "1", "--min-posts", "3"], stdb=audience_db(),
                 client=FakeClient([{**PERSONA, "evidence_post_ids": ["a2"]}, None, None]))
     out = capsys.readouterr().out
     assert code == 0 and "ready 1, failed 1, skipped 1 (partial)" in out
@@ -29,3 +31,10 @@ def test_worker_runs_bounded_loops():
     db = twin_db()
     db.tables["twin_question"] = []
     assert main(["worker", "--poll", "0", "--max-loops", "2"], stdb=db, client=FakeClient([])) == 0
+
+
+@pytest.mark.parametrize("args", [["--workers", "0"], ["--workers", "33"], ["--limit", "0"], ["--min-posts", "-1"]])
+def test_build_rejects_out_of_range_numbers(args):
+    with pytest.raises(SystemExit) as exc:
+        main(["build", "--brand", "spacetimedb", *args], stdb=audience_db(), client=FakeClient([]))
+    assert exc.value.code == 2

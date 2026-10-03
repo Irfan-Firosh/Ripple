@@ -35,6 +35,16 @@ def _twin_args(run_id: str, twin: Twin) -> list:
             p.format_prefs, p.evidence_post_ids, twin.model]
 
 
+def _publish(stdb, run_id: str, twin: Twin) -> None:
+    try:
+        stdb.call("publish_twin", *_twin_args(run_id, twin))
+    except StdbError:
+        # The reducer may have committed even though the HTTP reply failed: trust the table, not the reply.
+        rows = stdb.sql(f"SELECT build_run_id FROM twin WHERE user_id = {sql_str(twin.user_id)}")
+        if not any(r.get("build_run_id") == run_id for r in rows):
+            raise
+
+
 def _build_one(stdb, client, run_id: str, brand_user_id: str, account: Account, min_posts: int) -> str:
     uid, name = account.user.user_id, account.user.username
 
@@ -44,7 +54,7 @@ def _build_one(stdb, client, run_id: str, brand_user_id: str, account: Account, 
     try:
         status("building")
         twin = build_twin(client, account, brand_user_id, min_posts=min_posts)
-        stdb.call("publish_twin", *_twin_args(run_id, twin))
+        _publish(stdb, run_id, twin)
         return "ready"
     except NotEnoughPosts as exc:
         outcome, error = "skipped", str(exc)
@@ -57,7 +67,7 @@ def _build_one(stdb, client, run_id: str, brand_user_id: str, account: Account, 
     return outcome
 
 
-def run_build(stdb, client, brand_username: str, *, min_posts: int = 3, workers: int = 4,
+def run_build(stdb, client, brand_username: str, *, min_posts: int = 0, workers: int = 4,
               limit: int | None = None, run_id: str | None = None) -> BuildSummary:
     brand, accounts = load_audience(stdb, brand_username)
     accounts = accounts[:limit] if limit else accounts
@@ -82,9 +92,9 @@ def load_twin(stdb, user_id: str) -> Twin:
     if not rows:
         raise LookupError(f"no twin for user {user_id}")
     r = rows[0]
-    evidence = []
-    for pid in r["evidence_post_ids"]:
-        evidence += [XPost.model_validate(p) for p in stdb.sql(f"SELECT * FROM x_post WHERE post_id = {sql_str(pid)}")]
+    wanted = r["evidence_post_ids"]
+    by_id = {p["post_id"]: p for p in stdb.sql(f"SELECT * FROM x_post WHERE author_user_id = {sql_str(r['user_id'])}")}
+    evidence = [XPost.model_validate(by_id[pid]) for pid in wanted if pid in by_id]
     stats = AccountStats(post_count=r["post_count"], reply_share=r["reply_share"], quote_share=r["quote_share"],
                          mention_rate=r["mention_rate"], avg_likes=r["avg_likes"], avg_impressions=r["avg_impressions"],
                          engagement_rate=r["engagement_rate"], active_hours_utc=r["active_hours_utc"],

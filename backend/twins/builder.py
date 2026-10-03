@@ -7,6 +7,7 @@ from .stats import compute_stats
 
 MAX_POSTS_IN_PROMPT = 40
 FALLBACK_EVIDENCE = 5
+SPARSE_POSTS = 3
 
 SYSTEM = """You model how one X (Twitter) account behaves, for a social-network simulator.
 You receive the account's profile, computed stats, X's own topic labels, and posts inside <post> tags.
@@ -33,14 +34,24 @@ def render_posts(posts: list[XPost]) -> str:
     )
 
 
+def _data_note(n_posts: int) -> str:
+    if n_posts == 0:
+        return ("Data note: this account has no posts in our data. Base the persona on the profile only, keep every "
+                "topic affinity at or below 0.5, and say in persona_summary that it is a profile-only estimate.")
+    if n_posts < SPARSE_POSTS:
+        return f"Data note: only {n_posts} posts are available. Keep claims tentative and affinities modest."
+    return ""
+
+
 def _prompt(account: Account, stats_json: str, sample: list[XPost]) -> str:
     u = account.user
     return (f"Account: @{u.username} ({escape(u.name)}), followers={u.followers_count}, "
             f"following={u.following_count}, location={escape(u.location or '')}\n"
-            f"<bio>{escape(u.description or '')}</bio>\nStats: {stats_json}\n\n{render_posts(sample)}")
+            f"<bio>{escape(u.description or '')}</bio>\nStats: {stats_json}\n{_data_note(len(account.posts))}\n\n"
+            f"{render_posts(sample)}")
 
 
-def build_twin(client, account: Account, brand_user_id: str, *, min_posts: int = 3) -> Twin:
+def build_twin(client, account: Account, brand_user_id: str, *, min_posts: int = 0) -> Twin:
     if len(account.posts) < min_posts:
         raise NotEnoughPosts(f"@{account.user.username}: {len(account.posts)} posts, need {min_posts}")
     stats = compute_stats(account)

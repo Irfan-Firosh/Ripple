@@ -22,9 +22,10 @@ def _mean(values: list[int | None]) -> float:
 
 def compute_stats(account: Account) -> AccountStats:
     posts = account.posts
-    if not posts:
-        raise ValueError(f"@{account.user.username} has no posts")
     n = len(posts)
+    if n == 0:  # profile-only account: everything behavioural is zero
+        return AccountStats(post_count=0, reply_share=0.0, quote_share=0.0, mention_rate=0.0, avg_likes=0.0,
+                            avg_impressions=0.0, engagement_rate=0.0, active_hours_utc=[], top_mentions=[], x_topics=[])
     seen = [p for p in posts if p.impression_count]
     interactions = sum((p.like_count or 0) + (p.reply_count or 0) + (p.quote_count or 0) + (p.repost_count or 0)
                        for p in seen)

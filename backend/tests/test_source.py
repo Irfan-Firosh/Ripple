@@ -35,3 +35,9 @@ def test_unknown_brand():
 def test_invalid_brand_username():
     with pytest.raises(ValueError, match="invalid"):
         load_audience(db(), "x' OR '1'='1")
+
+
+def test_x_user_is_read_once():
+    stdb = db()
+    load_audience(stdb, "spacetimedb")
+    assert sum("FROM x_user" in q for q in stdb.queries) == 1

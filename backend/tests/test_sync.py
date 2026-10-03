@@ -18,7 +18,7 @@ def audience_db():
 def test_run_build_publishes_skips_and_fails_through_reducers():
     db = audience_db()
     client = FakeClient([{**PERSONA, "evidence_post_ids": ["a2"]}, None, None])  # alice ok, bob invalid twice
-    summary = run_build(db, client, "spacetimedb", workers=1, run_id="run1")
+    summary = run_build(db, client, "spacetimedb", workers=1, run_id="run1", min_posts=3)
     assert (summary.ready, summary.failed, summary.skipped, summary.status) == (1, 1, 1, "partial")
     assert db.reducers("start_twin_build_run") == [("run1", "100", 3)]
     statuses = [(a[2], a[3]) for a in db.reducers("set_twin_job_status")]
@@ -94,16 +94,25 @@ def test_run_build_survives_status_reducer_failure_and_still_completes():
 
     db.call = call
     summary = run_build(db, FakeClient([{**PERSONA, "evidence_post_ids": ["a2"]}]), "spacetimedb",
-                        workers=1, run_id="run1")
+                        workers=1, run_id="run1", min_posts=3)
     assert (summary.ready, summary.failed, summary.skipped, summary.status) == (1, 1, 1, "partial")
     assert db.reducers("complete_twin_build_run") == [("run1", "partial")]
 
 
-def test_run_build_min_posts_zero_with_postless_account_fails_that_job_only():
+def test_run_build_default_builds_everyone_including_postless_accounts():
     db = audience_db()
     db.tables["x_post"] = [p for p in db.tables["x_post"] if p["author_user_id"] != "3"]  # carol has no posts
-    summary = run_build(db, FakeClient([PERSONA, PERSONA]), "spacetimedb", workers=1, run_id="r", min_posts=0)
-    assert (summary.ready, summary.failed, summary.status) == (2, 1, "partial")
+    summary = run_build(db, FakeClient([PERSONA, PERSONA, PERSONA]), "spacetimedb", workers=1, run_id="r")
+    assert (summary.ready, summary.failed, summary.skipped, summary.status) == (3, 0, 0, "completed")
+
+
+def test_publish_committed_but_response_lost_still_counts_ready():
+    db = audience_db()
+    db.fail_on.add("publish_twin")
+    db.tables["twin"] = [{"user_id": "1", "build_run_id": "r"}]  # the reducer did commit
+    summary = run_build(db, FakeClient([PERSONA]), "spacetimedb", workers=1, run_id="r", limit=1)
+    assert (summary.ready, summary.failed) == (1, 0)
+    assert ("1", "alice", "failed") not in [(a[1], a[2], a[3]) for a in db.reducers("set_twin_job_status")]
 
 
 def test_answer_pending_reports_non_race_claim_errors(capsys):
@@ -135,3 +144,9 @@ def test_run_worker_survives_poll_errors(capsys):
     db = Flaky()
     run_worker(db, FakeClient([]), poll_seconds=0, max_loops=2, sleep=lambda s: None)
     assert db.n == 2 and "503" in capsys.readouterr().err
+
+
+def test_load_twin_fetches_evidence_with_one_author_query():
+    stdb = twin_db()
+    load_twin(stdb, "1")
+    assert [q for q in stdb.queries if "FROM x_post" in q] == ["SELECT * FROM x_post WHERE author_user_id = '1'"]

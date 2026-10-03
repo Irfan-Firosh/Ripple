@@ -8,21 +8,23 @@ from .stdb import sql_str
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{1,15}$")
 
 
-def _brand(stdb, brand_username: str) -> XUser:
+def _brand(users: dict[str, XUser], brand_username: str) -> XUser:
     username = brand_username.strip().lstrip("@")
     if not USERNAME_RE.match(username):
         raise ValueError(f"invalid X username: {brand_username!r}")
-    rows = [r for r in stdb.sql("SELECT * FROM x_user") if r["username"].lower() == username.lower()]
-    if not rows:
+    match = next((u for u in users.values() if u.username.lower() == username.lower()), None)
+    if match is None:
         raise ValueError(f"@{username} is not in x_user; run the x-followers-db ingest first")
-    return XUser.model_validate(rows[0])
+    return match
 
 
 def load_audience(stdb, brand_username: str) -> tuple[XUser, list[Account]]:
-    brand = _brand(stdb, brand_username)
+    if not USERNAME_RE.match(brand_username.strip().lstrip("@")):
+        raise ValueError(f"invalid X username: {brand_username!r}")
+    users = {r["user_id"]: XUser.model_validate(r) for r in stdb.sql("SELECT * FROM x_user")}
+    brand = _brand(users, brand_username)
     follower_ids = {r["follower_user_id"] for r in stdb.sql(
         f"SELECT follower_user_id FROM audience_membership WHERE brand_user_id = {sql_str(brand.user_id)}")}
-    users = {r["user_id"]: XUser.model_validate(r) for r in stdb.sql("SELECT * FROM x_user")}
     posts: dict[str, list[XPost]] = defaultdict(list)
     for r in stdb.sql("SELECT * FROM x_post"):
         posts[r["author_user_id"]].append(XPost.model_validate(r))

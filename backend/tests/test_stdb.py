@@ -76,3 +76,9 @@ def test_decode_u8_array_from_hex_string():
     # SpacetimeDB SQL returns array<u8> as a hex string (seen live: active_hours_utc -> "040e0f1016")
     assert decode("040e0f1016", {"Array": {"U8": []}}) == [4, 14, 15, 16, 22]
     assert decode("", {"Array": {"U8": []}}) == []
+
+
+def test_default_session_pool_fits_max_workers():
+    from twins.stdb import MAX_WORKERS
+    client = StdbClient("https://h", "db")
+    assert client._session.get_adapter("https://h")._pool_maxsize >= MAX_WORKERS
