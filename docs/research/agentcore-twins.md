@@ -275,3 +275,25 @@ That is comfortably within free credits.
 - **Ask-the-twin via the queue:**
   - @clockwork_labs → **repost 0.85** on the SpacetimeDB draft.
   - Profile-only @thisistehks (a solo indie dev) → **reply 0.85** on "free multiplayer template for indie games on SpacetimeDB".
+
+### Run 3: fixed niche catalog (2026-10-03)
+
+- **Problem:** in run 2, Claude's free-text topics produced 438 distinct labels for 95 people, and 418 of them were used by only one person. Niches couldn't be compared.
+- **Fix:**
+  - The catalog is fixed at **20 niches plus `other`**, in `backend/twins/niches.py`. It was derived from those 438 labels and X's context annotations.
+  - The tool schema restricts `topics` to catalog slugs (enum). A label or wrong case maps to its slug, and duplicates merge.
+  - The catalog is synced to the `niche` table. Each person gets one `twin_niche` row per niche, with an affinity from 0 to 1.
+- **Build `twins-spacetimedb-20261003T222304`:** **95/95 ready**. 361 `twin_niche` rows; all 21 niches used.
+- **Biggest primary niches:**
+
+  | Niche | People with it as their top niche |
+  | --- | --- |
+  | AI models & LLMs | 17 |
+  | AI agents & tooling | 16 |
+  | Backend/databases | 7 |
+  | Game dev | 6 |
+  | Playing games | 6 |
+
+  Developer tools is the most common secondary niche: 47 people have it.
+- **Query example:** `SELECT COUNT(*) FROM twin_niche WHERE niche = 'game_dev'` returns 10.
+- **Bug found and fixed:** Haiku sometimes sends list fields as a JSON or comma-separated string. They are now parsed, with a regression test.
