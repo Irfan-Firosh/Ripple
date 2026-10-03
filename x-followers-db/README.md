@@ -16,6 +16,10 @@ Live database: `ripple-mhacks` on maincloud.
 | `x_context_annotation` | `post_id:domain_id:entity_id` | X's own topic annotations |
 | `x_post_media` | `post_id:media_key` | metadata + URLs only |
 | `x_ingestion_run` | `ingestion_run_id` | counters + checkpoint so an import can resume |
+| `twin` | `user_id` | **AI-inferred** persona + stats per audience member (Claude Haiku 4.5, written by `backend/twins`) |
+| `twin_build_run` | `run_id` | live counters for a twin build (ready / failed / skipped) |
+| `twin_build_job` | `run_id:user_id` | per-account build status: queued → building → ready / failed / skipped |
+| `twin_question` | `question_id` | Ask-the-twin queue: anyone calls `ask_twin`; the backend worker claims and answers |
 
 All upsert reducers are idempotent. Tables are publicly readable; only the publishing identity can write (add more with `add_admin`).
 
@@ -39,5 +43,6 @@ npm install
 spacetime build
 spacetime publish ripple-mhacks -s maincloud --module-path .   # update the live DB
 ./smoke-test.sh                                                        # write, verify, delete a fake row chain
+./smoke-twins.sh                                                       # twin reducers against a scratch DB (never the live one)
 spacetime sql -s maincloud ripple-mhacks "SELECT * FROM x_user"
 ```

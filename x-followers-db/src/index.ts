@@ -179,6 +179,90 @@ const xIngestionRun = table(
   }
 );
 
+// ---------- Twins: AI-inferred personas, written by backend/twins (Claude). Raw X tables above stay untouched. ----------
+const TwinTopic = t.object('TwinTopic', { topic: t.string(), affinity: t.f64() });
+
+const twinFields = {
+  userId: t.string(),
+  username: t.string(),
+  brandUserId: t.string(),
+  postCount: t.u32(),
+  replyShare: t.f64(),
+  quoteShare: t.f64(),
+  mentionRate: t.f64(),
+  avgLikes: t.f64(),
+  avgImpressions: t.f64(),
+  engagementRate: t.f64(),
+  activeHoursUtc: t.array(t.u8()),
+  topics: t.array(TwinTopic),
+  tone: t.string(),
+  personaSummary: t.string(),
+  hotButtons: t.array(t.string()),
+  ignores: t.array(t.string()),
+  formatPrefs: t.array(t.string()),
+  evidencePostIds: t.array(t.string()),
+  model: t.string(),
+};
+
+const twin = table(
+  { name: 'twin', public: true },
+  {
+    ...twinFields,
+    userId: t.string().primaryKey(),
+    username: t.string().index('btree'),
+    brandUserId: t.string().index('btree'),
+    buildRunId: t.string(),
+    updatedAt: t.timestamp(),
+  }
+);
+
+const twinBuildRun = table(
+  { name: 'twin_build_run', public: true },
+  {
+    runId: t.string().primaryKey(),
+    brandUserId: t.string(),
+    status: t.string(), // running | completed | partial | failed
+    requested: t.u32(),
+    ready: t.u32(),
+    failed: t.u32(),
+    skipped: t.u32(),
+    startedAt: t.timestamp(),
+    completedAt: t.option(t.timestamp()),
+  }
+);
+
+const twinBuildJob = table(
+  { name: 'twin_build_job', public: true },
+  {
+    jobId: t.string().primaryKey(), // `${runId}:${userId}`
+    runId: t.string().index('btree'),
+    userId: t.string(),
+    username: t.string(),
+    status: t.string(), // queued | building | ready | failed | skipped
+    error: str(),
+    updatedAt: t.timestamp(),
+  }
+);
+
+const twinQuestion = table(
+  { name: 'twin_question', public: true },
+  {
+    questionId: t.u64().primaryKey().autoInc(),
+    userId: t.string().index('btree'),
+    draft: t.string(),
+    question: t.string(),
+    askedBy: t.identity(),
+    status: t.string().index('btree'), // pending | answering | answered | failed
+    action: str(),
+    confidence: t.option(t.f64()),
+    answer: str(),
+    citedPostIds: t.array(t.string()),
+    error: str(),
+    createdAt: t.timestamp(),
+    answeredAt: t.option(t.timestamp()),
+  }
+);
+
 const spacetimedb = schema({
   admin,
   xUser,
@@ -189,6 +273,10 @@ const spacetimedb = schema({
   xContextAnnotation,
   xPostMedia,
   xIngestionRun,
+  twin,
+  twinBuildRun,
+  twinBuildJob,
+  twinQuestion,
 });
 export default spacetimedb;
 
@@ -338,3 +426,124 @@ export const upsertPostMedia = spacetimedb.reducer(postMediaFields, (ctx, media)
   if (ctx.db.xPostMedia.id.find(row.id)) ctx.db.xPostMedia.id.update(row);
   else ctx.db.xPostMedia.insert(row);
 });
+
+// ---------- Twins reducers ----------
+const TWIN_JOB_STATUSES = ['queued', 'building', 'ready', 'failed', 'skipped'];
+const TWIN_TERMINAL = ['ready', 'failed', 'skipped'];
+const TWIN_RUN_END = ['completed', 'partial', 'failed'];
+const TWIN_ACTIONS = ['reply', 'quote', 'repost', 'like', 'ignore'];
+const MAX_DRAFT = 1000;
+const MAX_QUESTION = 300;
+const MAX_PENDING_PER_SENDER = 3;
+
+function setTwinJob(ctx: Ctx, runId: string, userId: string, username: string, status: string, error: string | undefined) {
+  if (!TWIN_JOB_STATUSES.includes(status)) throw new SenderError(`invalid twin job status ${status}`);
+  const run = ctx.db.twinBuildRun.runId.find(runId);
+  if (!run) throw new SenderError(`unknown twin build run ${runId}`);
+  const jobId = `${runId}:${userId}`;
+  const prev = ctx.db.twinBuildJob.jobId.find(jobId);
+  const row = { jobId, runId, userId, username, status, error, updatedAt: ctx.timestamp } as Row<'twinBuildJob'>;
+  if (prev) ctx.db.twinBuildJob.jobId.update(row);
+  else ctx.db.twinBuildJob.insert(row);
+  // Count each job once, on its first move into a terminal status.
+  if (TWIN_TERMINAL.includes(status) && !(prev && TWIN_TERMINAL.includes(prev.status))) {
+    ctx.db.twinBuildRun.runId.update({
+      ...run,
+      ready: run.ready + (status === 'ready' ? 1 : 0),
+      failed: run.failed + (status === 'failed' ? 1 : 0),
+      skipped: run.skipped + (status === 'skipped' ? 1 : 0),
+    });
+  }
+}
+
+export const startTwinBuildRun = spacetimedb.reducer(
+  { runId: t.string(), brandUserId: t.string(), requested: t.u32() },
+  (ctx, { runId, brandUserId, requested }) => {
+    requireAdmin(ctx);
+    if (ctx.db.twinBuildRun.runId.find(runId)) throw new SenderError(`twin build run ${runId} already exists`);
+    ctx.db.twinBuildRun.insert({
+      runId, brandUserId, status: 'running', requested, ready: 0, failed: 0, skipped: 0,
+      startedAt: ctx.timestamp, completedAt: undefined,
+    });
+  }
+);
+
+export const setTwinJobStatus = spacetimedb.reducer(
+  { runId: t.string(), userId: t.string(), username: t.string(), status: t.string(), error: str() },
+  (ctx, { runId, userId, username, status, error }) => {
+    requireAdmin(ctx);
+    setTwinJob(ctx, runId, userId, username, status, error);
+  }
+);
+
+export const publishTwin = spacetimedb.reducer({ runId: t.string(), ...twinFields }, (ctx, { runId, ...fields }) => {
+  requireAdmin(ctx);
+  if (fields.topics.some(tp => tp.affinity < 0 || tp.affinity > 1)) throw new SenderError('topic affinity must be 0..1');
+  if (fields.activeHoursUtc.some(h => h > 23)) throw new SenderError('active hour must be 0..23');
+  const row = { ...fields, buildRunId: runId, updatedAt: ctx.timestamp } as Row<'twin'>;
+  if (ctx.db.twin.userId.find(fields.userId)) ctx.db.twin.userId.update(row);
+  else ctx.db.twin.insert(row);
+  setTwinJob(ctx, runId, fields.userId, fields.username, 'ready', undefined);
+});
+
+export const completeTwinBuildRun = spacetimedb.reducer(
+  { runId: t.string(), status: t.string() },
+  (ctx, { runId, status }) => {
+    requireAdmin(ctx);
+    if (!TWIN_RUN_END.includes(status)) throw new SenderError(`invalid run status ${status}`);
+    const run = ctx.db.twinBuildRun.runId.find(runId);
+    if (!run) throw new SenderError(`unknown twin build run ${runId}`);
+    ctx.db.twinBuildRun.runId.update({ ...run, status, completedAt: ctx.timestamp });
+  }
+);
+
+export const askTwin = spacetimedb.reducer(
+  { userId: t.string(), draft: t.string(), question: t.string() },
+  (ctx, { userId, draft, question }) => {
+    if (!ctx.db.twin.userId.find(userId)) throw new SenderError('no twin for that user');
+    if (draft.trim().length === 0 || draft.length > MAX_DRAFT) throw new SenderError(`draft must be 1..${MAX_DRAFT} chars`);
+    if (question.length > MAX_QUESTION) throw new SenderError(`question must be at most ${MAX_QUESTION} chars`);
+    const pending = [...ctx.db.twinQuestion.status.filter('pending')].filter(q => q.askedBy.equals(ctx.sender));
+    if (pending.length >= MAX_PENDING_PER_SENDER) throw new SenderError('too many pending questions');
+    ctx.db.twinQuestion.insert({
+      questionId: 0n, userId, draft, question, askedBy: ctx.sender, status: 'pending',
+      action: undefined, confidence: undefined, answer: undefined, citedPostIds: [], error: undefined,
+      createdAt: ctx.timestamp, answeredAt: undefined,
+    } as Row<'twinQuestion'>);
+  }
+);
+
+function questionIn(ctx: Ctx, questionId: bigint, status: string) {
+  const q = ctx.db.twinQuestion.questionId.find(questionId);
+  if (!q) throw new SenderError(`unknown question ${questionId}`);
+  if (q.status !== status) throw new SenderError(status === 'pending' ? 'already claimed' : `question is ${q.status}`);
+  return q;
+}
+
+export const claimTwinQuestion = spacetimedb.reducer({ questionId: t.u64() }, (ctx, { questionId }) => {
+  requireAdmin(ctx);
+  const q = questionIn(ctx, questionId, 'pending');
+  ctx.db.twinQuestion.questionId.update({ ...q, status: 'answering' });
+});
+
+export const answerTwinQuestion = spacetimedb.reducer(
+  { questionId: t.u64(), action: t.string(), confidence: t.f64(), answer: t.string(), citedPostIds: t.array(t.string()) },
+  (ctx, { questionId, action, confidence, answer, citedPostIds }) => {
+    requireAdmin(ctx);
+    if (!TWIN_ACTIONS.includes(action)) throw new SenderError(`invalid action ${action}`);
+    if (confidence < 0 || confidence > 1) throw new SenderError('confidence must be 0..1');
+    const q = questionIn(ctx, questionId, 'answering');
+    ctx.db.twinQuestion.questionId.update({
+      ...q, status: 'answered', action, confidence, answer, citedPostIds, answeredAt: ctx.timestamp,
+    });
+  }
+);
+
+export const failTwinQuestion = spacetimedb.reducer(
+  { questionId: t.u64(), error: t.string() },
+  (ctx, { questionId, error }) => {
+    requireAdmin(ctx);
+    const q = questionIn(ctx, questionId, 'answering');
+    ctx.db.twinQuestion.questionId.update({ ...q, status: 'failed', error, answeredAt: ctx.timestamp });
+  }
+);
