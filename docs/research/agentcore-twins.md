@@ -1,5 +1,12 @@
 # Ripple × Fetch.ai × AWS Bedrock AgentCore: who does what
 
+> **Decision (2026-10-03):** AWS denied AgentCore access. Twins are now built with the **Claude API (Haiku 4.5, `claude-haiku-4-5-20251001`)** in `backend/twins/` and **synced through SpacetimeDB**:
+> - `twin`: the twins themselves
+> - `twin_build_run` / `twin_build_job`: live build progress
+> - `twin_question`: the Ask-the-twin queue
+>
+> The input is the teammate's raw X audience data in `ripple-mhacks`. Plan: `docs/superpowers/plans/2026-10-03-claude-twins.md`. The AgentCore material below is kept for reference only.
+
 Researched 2026-10-03.
 
 - **Decision:** Fetch.ai uAgents run the "general" agents: orchestration, chat, and the pipeline workers.

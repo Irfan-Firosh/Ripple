@@ -28,14 +28,14 @@ Their brief rewards Spacetime as **"the core real-time backend"**, with **live s
 
 1. **The cascade runs next to the data.** A scheduled `tick` reducer reads `twin`, `interaction` and `edge_prob`, rolls `ctx.random`, and writes `node_state`, all in one transaction. With Supabase, a worker would pull the graph out on every tick, compute, and write it back. That means more round trips, and partial-write races between overlapping runs.
 2. **Every viewer sees the same run live.** The web graph, the ASI:One agent and teammates' screens all subscribe to `node_state` and `sim_result`. Each tick commits, and every viewer sees the same nodes light up. No separate WebSocket server is needed.
-3. **Many agents share one world state.** The Fetch agents, AgentCore twin writes and the web app all write through reducers. Because each reducer is atomic, nobody ever reads a half-built twin or a half-finished tick.
+3. **Many agents share one world state.** The Fetch agents, the Claude twin builder and the web app all write through reducers. Because each reducer is atomic, nobody ever reads a half-built twin or a half-finished tick.
 4. **Results are reproducible.** Seeded randomness inside the module means re-running a draft gives the same cascade, so A/B/C comparisons are fair.
 5. **Prize fit.** The Spacetime brief asks for "shared simulations", "AI systems coordinating in a persistent world state", and Spacetime as the _core_ backend. Supabase is not an MHacks sponsor; Neon is the Postgres sponsor.
 
 **Caveats:**
 
 - If Ripple only computed a reach number in Python and stored it, Supabase would do the job. SpacetimeDB earns its place because the simulation runs inside it.
-- Modules cannot run Python. The model, Grok and AgentCore calls stay outside, and only their results come in through reducers.
+- Modules cannot run Python. The model, Grok and Claude calls stay outside, and only their results come in through reducers.
 - SpacetimeDB has no built-in auth, file storage or vector search. Clerk handles auth.
 - The free tier allows about 3M function calls a month. Batch the work per tick rather than making one call per node.
 - There is no Python SDK. Plain HTTP works, as proven in the spike.
@@ -63,7 +63,7 @@ Their brief rewards Spacetime as **"the core real-time backend"**, with **live s
 **In Ripple:**
 
 - Reducers do the fast, deterministic work: `upsert_post`, `start_simulation`, `tick`, writing `sim_result`.
-- Anything that needs the network runs outside, in Fetch agents or Python: Grok `x_search`, AgentCore twin building, and the policy model. That outside work is the Lambda-like part, and it writes its results back by calling reducers.
+- Anything that needs the network runs outside, in Fetch agents or Python: Grok `x_search`, Claude twin building, and the policy model. That outside work is the Lambda-like part, and it writes its results back by calling reducers.
 
 ## The loop, mapped to SpacetimeDB
 
@@ -71,7 +71,7 @@ Their brief rewards Spacetime as **"the core real-time backend"**, with **live s
 | ---------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | **Scrape** the chosen X page (Grok `x_search`) | `x_post` (live already), `account`                                      | Python scraper, via reducers                                                                                 | Transactional upserts, so re-scrapes never duplicate                                                                 |
 | **Graph**                                      | `interaction` edges (reply, quote, mention)                             | A reducer derives the edges as posts arrive                                                                  | The graph is built inside the database the moment data lands                                                         |
-| **Twins**                                      | `twin` (per-account rates, topic profile)                               | AWS AgentCore TwinBuilder; the Fetch agent writes it via reducers ([agentcore-twins.md](agentcore-twins.md)) | One shared source of truth for every agent                                                                           |
+| **Twins** | `twin`, `twin_build_run`, `twin_build_job`, `twin_question` | `backend/twins` (Claude Haiku 4.5) via reducers; `ask_twin` callable by any client ([agentcore-twins.md](agentcore-twins.md)) | Build progress and Ask-the-twin answers stream live to every subscriber |
 | **Drafts**                                     | `draft` (A/B/C)                                                         | ASI:One agent or the web app                                                                                 | The team edits together with instant sync                                                                            |
 | **Score**                                      | `edge_prob` (policy-model probability per draft and link)               | Python model, written in a batch                                                                             | The model stays in Python; only its output enters the database                                                       |
 | **Simulate**                                   | `sim_run`, `node_state`; a **scheduled `tick` reducer**                 | **The SpacetimeDB module itself**                                                                            | The cascade runs next to the data with deterministic randomness (`ctx.random`). Every viewer sees the same run live. |
@@ -93,7 +93,7 @@ Their brief rewards Spacetime as **"the core real-time backend"**, with **live s
 | Database identity | `c200b8794f10e73f0d0c59fc29570993af24bdf1dc4c5531f1c628bfb855aaf6`                  |
 | Host              | `https://maincloud.spacetimedb.com`                                                 |
 | Dashboard         | https://spacetimedb.com/ripple-mhacks                                               |
-| Current module    | The spike module (`x_post` table + `upsert_post` reducer); 15 verified posts loaded |
+| Current module    | `x-followers-db` (raw X audience tables + twin tables) |
 | Public reads      | Work without auth: `POST <host>/v1/database/ripple-mhacks/sql` with a SQL body      |
 
 **Not yet secured:** `upsert_post` currently accepts calls from any identity. Before the event, restrict writes to the agents' service identity, using `ctx.sender` checks against an allow-list table.
