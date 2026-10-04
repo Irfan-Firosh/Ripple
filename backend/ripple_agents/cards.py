@@ -3,7 +3,7 @@ import json
 
 from uagents_core.contrib.protocols.chat import MetadataContent
 
-from .asi1 import CampaignPlan
+from .asi1 import CampaignPlan, topic_niches
 
 
 def card(kind, payload):
@@ -60,6 +60,8 @@ def submission(text):
     values = {k: v for k, v in data.items() if k in CampaignPlan.model_fields}
     if data["action"] == "react":
         values["variants"] = [data[k] for k in ("draft_a", "draft_b") if isinstance(data.get(k), str) and data[k].strip()]
+    elif data["action"] == "audience" and data.get("question") and not values.get("niches"):
+        values["niches"] = topic_niches(data["question"])
     return CampaignPlan.model_validate(values)
 
 

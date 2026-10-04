@@ -159,7 +159,7 @@ def build_audience_agent() -> Agent:
         try:
             db = _stdb()
             total = await asyncio.to_thread(lambda: len(brand_twins(db, req.brand)))
-            sample = min(total, req.sample_size) if req.sample_size > 0 else min(100, max(1, (total + 1) // 2))
+            sample = min(total, 20, req.sample_size if req.sample_size > 0 else 20)
             ctx.logger.info(f"interviewing {sample}/{total} @{req.brand} personas; cascade simulation uses all built personas")
             out = await asyncio.to_thread(react, db, make_client(load_api_key()), req.brand, req.drafts,
                                           req.niches, sample, req.question)
@@ -254,6 +254,8 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
         _save_state(ctx, state_key, state)
     else:
         plan = cards.submission(text)
+    if plan is None:
+        plan = asi1.direct_request(command, state.get("brand", ""), awaiting=state.get("awaiting", ""))
     key = asi1_api_key()
     try:
         if plan is None:
@@ -263,11 +265,13 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
                 plan = asi1.CampaignPlan(action="react", brand=state["brand"], variants=[text])
             elif (state.get("last_action") == "audience" and state.get("brand") and len(text.split()) <= 6
                   and not named and not re.match(r"(?:simulate|test|compare|create|generate|make|build|onboard|status|retry|menu|help|check|analy[sz]e|explore)\b", short)):
-                request = f"Explore @{state['brand']}'s audience interested in {text}."
+                plan = asi1.CampaignPlan(action="audience", brand=state["brand"], niches=asi1.topic_niches(text))
             if plan is None:
                 plan = await asyncio.to_thread(asi1.plan_campaign, key, request)
     except asi1.Asi1Error as exc:
-        await ctx.send(sender, _text(f"Sorry, I couldn't parse that ({exc}).\n\n{HELP}", end_session=True))
+        ctx.logger.warning(f"request planner unavailable: {exc}")
+        await ctx.send(sender, _text("The request parser is temporarily unavailable. Choose an action below to continue.",
+                                     card=cards.menu(state.get("brand"))))
         return
     plan.brand = _audience_handle(plan.brand)
     if named:
@@ -309,6 +313,8 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
         return
     if plan.action == "create":
         if not plan.goal.strip():
+            state["awaiting"] = "create"
+            _save_state(ctx, state_key, state)
             await ctx.send(sender, _text(f"What would you like to promote for @{plan.brand}?", card=cards.form("create", plan.brand)))
             return
         _, error = await _ask(ctx, AUDIENCE.address, AudienceRequest(brand=plan.brand), AudienceResult, AUDIENCE_TIMEOUT_S)
@@ -367,12 +373,11 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
         return
 
     progress = Loading(ctx, sender, plan.brand)
-    await progress.update(0, "Interviewing half the modeled audience (up to 100 personas)…" if not plan.sample_size
-                          else f"Interviewing up to {plan.sample_size} personas…")
+    await progress.update(0, f"Interviewing up to {min(20, plan.sample_size or 20)} most relevant personas…")
     try:
         result, error = await _ask(ctx, AUDIENCE.address,
                                    ReactRequest(brand=plan.brand, drafts=plan.variants, niches=plan.niches,
-                                                sample_size=plan.sample_size or 0, question=plan.question),
+                                                sample_size=min(20, plan.sample_size or 20), question=plan.question),
                                    ReactResult, REACT_TIMEOUT_S)
         if error:
             if await onboard_if_needed(error):

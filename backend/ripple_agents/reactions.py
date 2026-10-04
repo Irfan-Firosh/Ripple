@@ -45,7 +45,7 @@ def _aggregate(label: str, draft: str, twins: list[Twin], answers: list[TwinAnsw
 def react(stdb, client, brand: str, variants: list[str], niches: list[str], sample_size: int, question: str = "",
           *, workers: int = 8) -> ReactResult:
     # Every variant sees the same personas, so differences come from the post, not the sample.
-    sample = relevant_twin_ids(stdb, brand, niches, sample_size)
+    sample = relevant_twin_ids(stdb, brand, niches, sample_size, query=" ".join([*variants, question]))
     if not sample:
         return ReactResult(brand=brand, error=f"@{brand} has no personas yet")
     with ThreadPoolExecutor(max_workers=workers) as pool:

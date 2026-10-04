@@ -29,7 +29,7 @@ class CampaignPlan(BaseModel):
     brand: str = DEFAULT_BRAND
     variants: list[str] = Field(default_factory=list, max_length=MAX_VARIANTS)
     niches: list[str] = Field(default_factory=list)
-    sample_size: int | None = Field(None, ge=1, le=MAX_SAMPLE)
+    sample_size: int | None = Field(20, ge=1, le=MAX_SAMPLE)
     question: str = ""
     goal: str = Field("", max_length=600)
     offer: str = Field("", max_length=300)
@@ -74,7 +74,7 @@ and nothing else:
   "brand": the brand's X or existing Bluesky handle without @, or null if not named,
   "variants": [exact text of each draft post to test, verbatim, at most {MAX_VARIANTS}],
   "niches": [1-3 slugs from the catalog that the drafts or the question are about],
-  "sample_size": an explicitly requested number of interview personas (max {MAX_SAMPLE}), otherwise null for 50% of the built audience,
+  "sample_size": an explicitly requested number of interview personas (max {MAX_SAMPLE}), otherwise 20 most relevant personas,
   "question": an extra question the user wants each persona to answer, or "",
   "goal": the campaign goal when action is create, otherwise "",
   "offer": a user-provided offer, otherwise "",
@@ -96,6 +96,72 @@ Selecting "Create campaign images" is create, not help. With no goal, return cre
 "help": anything else. Never invent drafts: copy them from the user's message.
 Niche catalog:
 {_CATALOG}"""
+
+
+def campaign_request(text: str, brand: str = "", *, awaiting: bool = False) -> CampaignPlan | None:
+    """Route explicit campaign requests and goal replies without a model call."""
+    intent = re.match(r"(?:please\s+)?(?:create|generate|make|design)\b[^.!?\n]{0,80}?\b"
+                      r"(?:(?:campaign\s+)?(?:images?|ads?|creatives?)\b|campaigns?\b(?!\s+(?:images?|ads?|creatives?)))", text.strip(), re.I)
+    if not intent and not awaiting:
+        return None
+    if not intent and re.match(r"(?:simulate|test|compare|status|retry|check|menu|help)\b", text.strip(), re.I):
+        return None
+    count = re.search(r"\b([2-4]|two|three|four)\s+(?:campaign\s+)?(?:images?|ads?|creatives?|concepts?)\b", text, re.I)
+    counts = {"two": 2, "three": 3, "four": 4, "2": 2, "3": 3, "4": 4}
+    ratio = re.search(r"\b(?:1:1|3:4|4:3|9:16|16:9)\b", text)
+    offer = re.search(r"\b(?:offer|call to action|cta)\s*:\s*(.+)", text, re.I | re.S)
+    goal_text = text[:offer.start()] if offer else text
+    goal = re.search(r"\b(?:goal\s*:|promoting\b|promote\b)\s*(.+)", goal_text, re.I | re.S)
+    if goal:
+        goal_text = goal.group(1)
+    elif intent:
+        goal_text = text.strip()[intent.end():]
+        goal_text = re.sub(r"\b(?:for|on)\s+@[A-Za-z0-9_.-]+\b", "", goal_text, flags=re.I)
+        goal_text = re.sub(r"\b(?:1:1|3:4|4:3|9:16|16:9)\b", "", goal_text)
+        if offer:
+            goal_text = re.split(r"\b(?:offer|call to action|cta)\s*:", goal_text, maxsplit=1, flags=re.I)[0]
+    return CampaignPlan(action="create", brand=brand, goal=goal_text.strip(" .:;\n")[:600],
+                        offer=offer.group(1).strip()[:300] if offer else "",
+                        n=counts[count.group(1).lower()] if count else 3,
+                        aspect_ratio=ratio.group(0) if ratio else "1:1")
+
+
+def topic_niches(text: str) -> list[str]:
+    terms = {word for word in re.findall(r"[a-z0-9]+", text.lower()) if len(word) >= 3 or word in {"ai", "ui"}}
+    terms -= {"the", "and", "for", "with", "from", "are", "who", "what", "audience", "followers", "post", "posts", "about", "main", "interests"}
+    scores = []
+    for niche in NICHES:
+        if niche.slug in {"other", "politics_society"}:
+            continue
+        words = set(re.findall(r"[a-z0-9]+", f"{niche.label} {niche.description}".lower()))
+        score = len(terms & words)
+        if score:
+            scores.append((score, niche.slug))
+    return [slug for _, slug in sorted(scores, key=lambda item: (-item[0], item[1]))[:3]]
+
+
+def direct_request(text: str, brand: str = "", *, awaiting: str = "") -> CampaignPlan | None:
+    """The standard demo actions do not depend on the request-planning API."""
+    command = text.strip()
+    if re.match(r"(?:check\b.*(?:progress|status)|status\b|onboarding progress\b)", command, re.I):
+        return CampaignPlan(action="status", brand=brand)
+    if re.match(r"retry\b", command, re.I):
+        return CampaignPlan(action="retry", brand=brand)
+    if re.match(r"(?:build|scrape|onboard)\b", command, re.I) and re.search(r"\b(?:audience|followers|onboard)\b", command, re.I):
+        return CampaignPlan(action="onboard", brand=brand)
+    campaign = campaign_request(command, brand, awaiting=awaiting == "create")
+    if campaign:
+        return campaign
+    if re.match(r"(?:simulate|test|predict|compare|how would|which)\b", command, re.I):
+        pair = re.search(r"\bA\s*:\s*(.*?)\s+\bB\s*:\s*(.+)", command, re.I | re.S)
+        drafts = [s.strip().strip('\"“”') for s in pair.groups()] if pair else re.findall(r'[\"“](.*?)[\"”]', command, re.S)
+        if not drafts:
+            draft = re.search(r":\s*(.+)", command, re.S)
+            drafts = [draft.group(1).strip()] if draft else []
+        return CampaignPlan(action="react", brand=brand, variants=drafts[:MAX_VARIANTS], niches=topic_niches(" ".join(drafts)))
+    if re.match(r"(?:who|what are|what is|explore|analy[sz]e|tell me)\b", command, re.I):
+        return CampaignPlan(action="audience", brand=brand, niches=topic_niches(command))
+    return None
 
 
 def _json_object(text: str) -> dict:

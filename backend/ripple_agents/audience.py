@@ -46,14 +46,20 @@ def _affinities(stdb, twin_ids) -> dict[str, dict[str, float]]:
     return out
 
 
-def relevant_twin_ids(stdb, brand: str, niches: list[str], n: int, *, rng: random.Random | None = None) -> list[str]:
+def relevant_twin_ids(stdb, brand: str, niches: list[str], n: int, *, query: str = "", rng: random.Random | None = None) -> list[str]:
     """The n twins whose niches best match; random (but reproducible) when no niche is given or nobody matches."""
     twins = brand_twins(stdb, brand)
     ids = sorted(twins)
     (rng or random.Random(0)).shuffle(ids)  # breaks ties without favouring low ids
-    if niches:
+    if niches or query:
         aff = _affinities(stdb, twins)
-        ids.sort(key=lambda uid: -sum(aff[uid].get(s, 0.0) for s in niches))
+        terms = {word for word in re.findall(r"[a-z0-9]+", query.lower()) if len(word) >= 3 or word in {"ai", "ui"}}
+        profiles = {r["user_id"]: " ".join([r["persona_summary"], *r["hot_buttons"]]).lower()
+                    for r in stdb.sql("SELECT user_id, persona_summary, hot_buttons FROM twin") if r["user_id"] in twins}
+        def relevance(uid):
+            overlap = len(terms & set(re.findall(r"[a-z0-9]+", profiles.get(uid, "")))) / max(1, len(terms))
+            return sum(aff[uid].get(s, 0.0) for s in niches) + overlap
+        ids.sort(key=lambda uid: -relevance(uid))
     return ids[:n]
 
 
