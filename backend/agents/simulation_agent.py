@@ -4,7 +4,10 @@ from pathlib import Path
 from uagents import Agent, Context, Protocol
 
 from .contracts import CompareRequest, CompareResult, SimulateRequest, SimulateResult
-from .handlers import default_deps, handle_compare, handle_simulate
+from ripple_agents.messages import SimulateRequest as OrchSimulateRequest
+from ripple_agents.messages import SimulateResult as OrchSimulateResult
+
+from .handlers import default_deps, handle_compare, handle_orchestrator_simulate, handle_simulate
 from .settings import network_kwargs, seed
 
 agent = Agent(name="ripple-simulation", seed=seed("simulation"), **network_kwargs("simulation"),
@@ -24,7 +27,17 @@ async def on_compare(ctx: Context, sender: str, msg: CompareRequest):
     await handle_compare(ctx, sender, msg, DEPS)
 
 
+# The teammate's Orchestrator (backend/ripple_agents) sends its own message types; same protocol, separate handler.
+orchestrator_proto = Protocol(name="ripple-simulation-orchestrator", version="1.0.0")
+
+
+@orchestrator_proto.on_message(model=OrchSimulateRequest, replies=OrchSimulateResult)
+async def on_orchestrator_simulate(ctx: Context, sender: str, msg: OrchSimulateRequest):
+    await handle_orchestrator_simulate(ctx, sender, msg, DEPS)
+
+
 agent.include(proto, publish_manifest=True)
+agent.include(orchestrator_proto, publish_manifest=True)
 
 
 @agent.on_event("startup")

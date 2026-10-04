@@ -56,20 +56,33 @@ def sig(uid, like, reason="r"):
     return SignalScore(user_id=uid, p_like=like, p_repost=0, p_reply=0, p_quote=0, reason=reason)
 
 
-CAL = {"feed_reach": 0.5, "share_reach": 0.6, "like_scale": 1.0, "repost_scale": 1.0, "reply_scale": 1.0, "quote_scale": 1.0}
+def sig_full(uid, like=0.0, repost=0.0, reason="r"):
+    from twins.policy import SignalScore
+    return SignalScore(user_id=uid, p_like=like, p_repost=repost, p_reply=0, p_quote=0, reason=reason)
 
 
 def test_identical_drafts_always_tie():
     from twins.simulate import decide_scores
     a = [sig(str(i), 0.03) for i in range(999)]
-    assert decide_scores(a, list(a), CAL) == ("tie", 0.0)
+    assert decide_scores(a, list(a), {}) == ("tie", 0.0)
 
 
-def test_decide_scores_uses_exact_expected_engagements():
-    from twins.simulate import decide_scores
-    a = [sig(str(i), 0.10) for i in range(20)]          # expected 20 x 0.10 x 0.5 = 1.0
-    b = [sig(str(i), 0.11) for i in range(20)]          # 1.1
-    assert decide_scores(a, b, CAL) == ("B", 0.1)
+def test_everyone_sees_the_post_so_expected_likes_are_the_sum_of_probabilities():
+    from twins.simulate import decide_scores, expected_engagements_exact
+    a = [sig(str(i), 0.10) for i in range(20)]
+    b = [sig(str(i), 0.11) for i in range(20)]
+    assert round(expected_engagements_exact(a, {}), 6) == 2.0
+    assert decide_scores(a, b, {}) == ("B", 0.1)
+
+
+def test_a_repost_from_a_big_account_adds_outside_reach():
+    from twins.simulate import expected_engagements_exact
+    base = [sig_full(str(i), like=0.1) for i in range(10)]
+    boosted = base[:-1] + [sig_full("9", like=0.1, repost=0.5)]
+    # outside first wave: 0.5 reposts x 10,000 followers x 10% see it x (0.5 x mean audience rate per signal)
+    gain = expected_engagements_exact(boosted, {"9": 10_000}) - expected_engagements_exact(base, {"9": 10_000})
+    mean_rate = (10 * 0.1 + 0.5) / 10
+    assert abs(gain - (0.5 + 0.5 * 10_000 * 0.1 * 0.5 * mean_rate)) < 1e-6
 
 
 def test_twins_missing_either_draft_are_dropped_from_both():

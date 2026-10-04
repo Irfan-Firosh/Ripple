@@ -12,6 +12,9 @@ from twins.simulate import compare_drafts, profile_url, run_simulation
 from twins.stdb import StdbClient
 from twins.sync import load_twin
 
+from ripple_agents.messages import SimulateRequest as OrchSimulateRequest
+from ripple_agents.messages import SimulateResult as OrchSimulateResult
+
 from .settings import allowed_senders
 from .contracts import (BRANDS, AudienceRequest, AudienceResult, CompareRequest, CompareResult, NicheReach,
                         SimulateRequest, SimulateResult, WhyRequest, WhyResult)
@@ -86,6 +89,33 @@ async def handle_audience(ctx, sender: str, msg: AudienceRequest, deps: Deps) ->
         await ctx.send(sender, AudienceResult(request_id=msg.request_id, ok=True, **fields))
     except Exception as exc:
         await ctx.send(sender, AudienceResult(request_id=msg.request_id, ok=False, error=str(exc)[:300]))
+
+
+def _reach_summary(summary) -> str:
+    """One line for the teammate's orchestrator: whole-number p50 counts and where engagement came from."""
+    counts = {x.signal: x.p50 for x in summary.signals}
+    parts = [f"{counts.get(k, 0):,} {label}" for k, label in
+             (("like", "likes"), ("repost", "reposts"), ("reply", "replies"), ("quote", "quotes"))]
+    line = f"Likely ~{', '.join(parts)}."
+    if summary.outside_share > 0:
+        line += f" {round(summary.outside_share * 100)}% of engagement comes from reposts beyond @{summary.brand}'s followers."
+    return line
+
+
+async def handle_orchestrator_simulate(ctx, sender: str, msg: OrchSimulateRequest, deps: Deps) -> None:
+    """The teammate's Orchestrator (backend/ripple_agents) speaks its own SimulateRequest/SimulateResult."""
+    brand = msg.brand.strip().lstrip("@").lower()
+    if err := _request_error(deps, sender, brand):
+        await ctx.send(sender, OrchSimulateResult(brand=msg.brand, error=err))
+        return
+    try:
+        async with deps.slots:
+            summary = await asyncio.to_thread(deps.simulate, brand, msg.draft, 200)
+        views = summary.views
+        await ctx.send(sender, OrchSimulateResult(brand=brand, reach_low=views.p10 if views else 0,
+                                                  reach_high=views.p90 if views else 0, summary=_reach_summary(summary)))
+    except Exception as exc:
+        await ctx.send(sender, OrchSimulateResult(brand=brand, error=str(exc)[:300]))
 
 
 def default_deps() -> Deps:

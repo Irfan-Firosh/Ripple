@@ -1,6 +1,5 @@
 """Command line for the twin service."""
 import argparse
-import json
 import sys
 
 from .ask import ask_twin
@@ -8,7 +7,6 @@ from .config import STDB_DATABASE, STDB_URL, load_api_key, load_stdb_token
 from .llm import make_client
 from .source import USERNAME_RE
 from .stdb import MAX_WORKERS, StdbClient, sql_str
-from .anchor import anchor
 from .lab import run_lab_worker
 from .sync import load_twin, run_build, run_worker
 
@@ -36,9 +34,6 @@ def _parser() -> argparse.ArgumentParser:
     lw = sub.add_parser("lab-worker", help="run queued Lab A/B experiments (lab_experiment rows)")
     lw.add_argument("--poll", type=float, default=2.0)
     lw.add_argument("--max-loops", type=int)
-    an = sub.add_parser("anchor", help="provisional calibration from the brand's last N real Bluesky posts")
-    an.add_argument("--brand", required=True)
-    an.add_argument("--posts", type=_int_in(1, 20), default=5)
     a = sub.add_parser("ask", help="ask a twin directly (prints JSON, writes nothing)")
     a.add_argument("--username", required=True)
     a.add_argument("--draft", required=True)
@@ -67,9 +62,6 @@ def main(argv: list[str] | None = None, *, stdb=None, client=None) -> int:
         return 0 if s.ready else 1
     if args.cmd == "worker":
         run_worker(stdb, client, poll_seconds=args.poll, max_loops=args.max_loops)
-        return 0
-    if args.cmd == "anchor":
-        print(json.dumps(anchor(stdb, client, args.brand, posts=args.posts), indent=2))
         return 0
     if args.cmd == "lab-worker":
         run_lab_worker(stdb, client, poll_seconds=args.poll, max_loops=args.max_loops)

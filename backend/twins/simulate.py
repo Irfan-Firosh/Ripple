@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from .brand_twins import load_brand_twins
 from .graph import publish_edges
+from .comments import write_comments
 from .policy import NO_PREDICTION, SignalScore, score_signals
 from .stdb import StdbError, sql_str
 
@@ -22,6 +23,8 @@ MAX_UNSCORED = 0.25  # fail rather than report a reach that silently ignores a q
 
 SIGNAL_ORDER = ("like", "repost", "reply", "quote")
 TIE_BAND = 0.05
+REPOST_VIEW_RATE = 0.1  # mirrors the start_cascade reducer
+OUT_OF_NETWORK = 0.5
 LAB_TRIALS = 1000  # more trials → steadier ranges on the card (the winner itself is computed exactly)
 LAB_DEADLINE = 300  # Lab runs in the background worker; the agent path keeps the 90 s scoring deadline
 
@@ -67,6 +70,8 @@ class SimSummary(BaseModel):
     top_responders: list[SimResponder]
     dashboard_url: str
     signals: list[SimSignal] = []
+    views: SimSignal | None = None  # everyone who saw it: the audience + people reached through reposts
+    outside_share: float = 0.0  # share of expected engagements that came from beyond the brand's followers
 
 
 def profile_url(user_id: str, handle: str) -> str:
@@ -141,12 +146,19 @@ def _summarise(stdb, run_id: str, run: dict, brand_user, twins, draft: str, scor
         action=score_by[t.user_id].top, p_engage=round(score_by[t.user_id].p_any, 4),
         engaged_share=round(nodes.get(t.user_id, {}).get("engaged_share", 0.0), 3), reason=score_by[t.user_id].reason)
         for t in ranked]
-    signals = [SimSignal(signal=s, p10=by_signal[s]["p_10"], p50=by_signal[s]["p_50"], p90=by_signal[s]["p_90"],
-                         mean=by_signal[s]["mean"]) for s in SIGNAL_ORDER if s in by_signal]
+    def as_signal(name: str) -> SimSignal:
+        r = by_signal[name]
+        return SimSignal(signal=name, p10=r["p_10"], p50=r["p_50"], p90=r["p_90"], mean=r["mean"])
+    signals = [as_signal(s) for s in SIGNAL_ORDER if s in by_signal]
+    sources = stdb.sql(f"SELECT * FROM sim_signal_source WHERE run_id = {sql_str(run_id)}")
+    engaged = [r for r in sources if r["signal"] in SIGNAL_ORDER]
+    total = sum(r["mean"] for r in engaged)
+    outside_share = round(sum(r["mean"] for r in engaged if r["source"] == "outside") / total, 4) if total else 0.0
     return SimSummary(run_id=run_id, brand=brand_user.username, draft=draft, people=len(twins), scored=scored,
                       reach_p10=run["reach_p_10"], reach_p50=run["reach_p_50"], reach_p90=run["reach_p_90"],
                       seen_p50=run["seen_p_50"], top_niches=top_niches, top_responders=top_responders,
-                      dashboard_url=f"{dashboard_base}?brand={brand_user.username}&run={run_id}", signals=signals)
+                      dashboard_url=f"{dashboard_base}?brand={brand_user.username}&run={run_id}", signals=signals,
+                      views=as_signal("view") if "view" in by_signal else None, outside_share=outside_share)
 
 
 def run_simulation(stdb, client, brand: str, draft: str, *, trials: int = 200, run_id: str | None = None,
@@ -164,6 +176,7 @@ def run_simulation(stdb, client, brand: str, draft: str, *, trials: int = 200, r
     except Exception as exc:
         _fail(stdb, [run_id], exc)
         raise
+    write_comments(stdb, client, run_id, draft, twins)
     return _summarise(stdb, run_id, run, brand_user, twins, draft, scores, scored, dashboard_base)
 
 
@@ -179,18 +192,6 @@ def decide(a: SimSummary, b: SimSummary) -> tuple[str, float]:
     return ("B" if lift > 0 else "A"), lift
 
 
-SIGNAL_DEFAULTS = {"feed_reach": 0.35, "share_reach": 0.6, "like_scale": 1.0, "repost_scale": 1.0,
-                   "reply_scale": 1.0, "quote_scale": 1.0}
-
-
-def load_calibration(stdb, scope: str) -> dict:
-    """The calibration start_cascade uses: the brand's row, else 'default', else the constants."""
-    rows = stdb.sql(f"SELECT * FROM sim_calibration WHERE scope = {sql_str(scope)}") or \
-        stdb.sql("SELECT * FROM sim_calibration WHERE scope = 'default'")
-    row = rows[0] if rows else {}
-    return {k: row.get(k, v) for k, v in SIGNAL_DEFAULTS.items()}
-
-
 def align_drafts(a: list[SignalScore], b: list[SignalScore]) -> tuple[list[SignalScore], list[SignalScore]]:
     """Compare like with like: a twin missing either draft's prediction is dropped from both."""
     def blank(s: SignalScore) -> SignalScore:
@@ -199,17 +200,22 @@ def align_drafts(a: list[SignalScore], b: list[SignalScore]) -> tuple[list[Signa
     return [x for x, _ in pairs], [y for _, y in pairs]
 
 
-def expected_first_hop(scores: list[SignalScore], cal: dict) -> float:
-    """Exact expected engagements from feed exposure (no Monte Carlo noise): feed_reach x sum of scaled probabilities."""
-    total = 0.0
-    for s in scores:
-        for name in SIGNAL_ORDER:
-            total += min(1.0, getattr(s, f"p_{name}") * cal[f"{name}_scale"])
-    return cal["feed_reach"] * total
+def expected_engagements_exact(scores: list[SignalScore], followers: dict[str, int]) -> float:
+    """Exact expected engagements under the cascade's model, without Monte Carlo noise: everyone in the audience sees
+    the post (sum of all probabilities), plus the first outside wave each repost/quote brings from the reposter's own
+    followers (REPOST_VIEW_RATE see it; they act at OUT_OF_NETWORK x the audience's mean rate)."""
+    if not scores:
+        return 0.0
+    inside = sum(getattr(s, f"p_{n}") for s in scores for n in SIGNAL_ORDER)
+    mean_rate = inside / len(scores)
+    known = sorted(followers.values())
+    median = known[len(known) // 2] if known else 0
+    spread = sum((s.p_repost + s.p_quote) * followers.get(s.user_id, median) for s in scores)
+    return inside + spread * REPOST_VIEW_RATE * OUT_OF_NETWORK * mean_rate
 
 
-def decide_scores(a: list[SignalScore], b: list[SignalScore], cal: dict) -> tuple[str, float]:
-    ea, eb = expected_first_hop(a, cal), expected_first_hop(b, cal)
+def decide_scores(a: list[SignalScore], b: list[SignalScore], followers: dict[str, int]) -> tuple[str, float]:
+    ea, eb = expected_engagements_exact(a, followers), expected_engagements_exact(b, followers)
     lift = round((eb - ea) / max(ea, 0.5), 4)
     if abs(lift) < TIE_BAND:
         return "tie", lift
@@ -243,7 +249,9 @@ def run_lab(stdb, client, brand: str, draft_a: str, draft_b: str, *, on_runs: Ca
         raise
     a, b = (_summarise(stdb, r, run, brand_user, twins, d, s, n, dashboard_base)
             for r, run, d, s, n in zip(run_ids, runs, [draft_a, draft_b], per_draft, scored))
-    winner, lift = decide_scores(per_draft[0], per_draft[1], load_calibration(stdb, brand_user.user_id))
+    for run_id, draft in zip(run_ids, [draft_a, draft_b]):
+        write_comments(stdb, client, run_id, draft, twins)
+    winner, lift = decide_scores(per_draft[0], per_draft[1], {t.user_id: t.followers for t in twins})
     return LabOutcome(run_a=a, run_b=b, winner=winner, lift=lift)
 
 

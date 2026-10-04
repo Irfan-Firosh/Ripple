@@ -59,6 +59,8 @@ class SimulateResult(Model):
     top_responders: list[Responder] = []
     dashboard_url: str = ""
     signals: list[SignalRange] = []
+    views: SignalRange | None = None  # everyone who saw it (audience + reached through reposts)
+    outside_share: float = 0.0
 
 
 class CompareRequest(Model):

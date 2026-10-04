@@ -29,7 +29,11 @@ def sim_db():
                                      {"run_id": args[0], "user_id": "2", "engaged_share": 0.1, "seen_share": 0.4}]
             db.tables.setdefault("sim_signal", []).extend(
                 {"run_id": args[0], "signal": s, "p_10": 0, "p_50": k, "p_90": k + 1, "mean": float(k)}
-                for s, k in (("like", 3), ("repost", 1), ("reply", 0), ("quote", 0)))
+                for s, k in (("like", 3), ("repost", 1), ("reply", 0), ("quote", 0), ("view", 40)))
+            db.tables.setdefault("sim_signal_source", []).extend(
+                {"run_id": args[0], "signal": s, "source": src, "mean": m}
+                for s, src, m in (("like", "followers", 2.0), ("like", "outside", 1.0), ("repost", "followers", 1.0),
+                                  ("repost", "outside", 0.0), ("view", "followers", 2.0), ("view", "outside", 38.0)))
     db.call = call
     return db
 
@@ -47,6 +51,7 @@ def test_run_simulation_writes_probs_starts_cascade_and_summarises():
     probs = db.reducers("set_sim_probs")[0][1]
     assert {p["user_id"]: round(p["p_engage"], 4) for p in probs} == {"1": 0.86, "2": 0.01}
     assert [x.signal for x in s.signals] == ["like", "repost", "reply", "quote"] and s.signals[0].p50 == 3
+    assert s.views.p50 == 40 and s.outside_share == 0.25          # 1 of 4 expected engagements came from outside
     assert (s.run_id, s.people, s.reach_p50, s.reach_p90) == ("r1", 2, 1, 2)
     assert s.top_responders[0].handle == "alice" and s.top_responders[0].reason == "builds games"
     assert s.top_responders[0].avatar == "https://pbs/a.jpg" and s.top_responders[0].profile_url == "https://x.com/alice"

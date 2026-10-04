@@ -113,3 +113,36 @@ def test_only_allowed_senders_are_served_when_an_allowlist_is_set():
     assert [r.ok for _, r in ctx.sent] == [False, False] and "not allowed" in ctx.sent[0][1].error and called == []
     run(handle_simulate(ctx, "orch", SimulateRequest(request_id="q3", brand="spacetimedb", draft="d"), d))
     assert ctx.sent[-1][1].ok
+
+
+def full_summary():
+    from twins.simulate import SimSignal
+    sig = lambda n, p50: SimSignal(signal=n, p10=p50 - 1, p50=p50, p90=p50 + 2, mean=p50 + 0.4)
+    return summary().model_copy(update={"brand": "raycast.com", "outside_share": 0.6,
+                                        "signals": [sig("like", 42), sig("repost", 9), sig("reply", 3), sig("quote", 1)],
+                                        "views": SimSignal(signal="view", p10=1800, p50=2400, p90=3100, mean=2450.2)})
+
+
+def test_orchestrator_simulate_request_gets_reach_and_a_whole_number_summary():
+    from ripple_agents.messages import SimulateRequest as OrchSimulate, SimulateResult as OrchResult
+    from agents.handlers import handle_orchestrator_simulate
+    seen = {}
+    ctx = FakeCtx()
+
+    def sim(brand, draft, trials):
+        seen.update(brand=brand, draft=draft)
+        return full_summary()
+
+    run(handle_orchestrator_simulate(ctx, "orch", OrchSimulate(brand="@raycast.com", draft="Hi"), deps(simulate=sim)))
+    [(dest, res)] = ctx.sent
+    assert isinstance(res, OrchResult) and dest == "orch" and seen == {"brand": "raycast.com", "draft": "Hi"}
+    assert (res.reach_low, res.reach_high, res.error) == (1800, 3100, "")
+    assert "42 likes" in res.summary and "9 reposts" in res.summary and "60%" in res.summary and ".4" not in res.summary
+
+
+def test_orchestrator_simulate_errors_travel_in_error():
+    from ripple_agents.messages import SimulateRequest as OrchSimulate
+    from agents.handlers import handle_orchestrator_simulate
+    ctx = FakeCtx()
+    run(handle_orchestrator_simulate(ctx, "orch", OrchSimulate(brand="nike", draft="Hi"), deps()))
+    assert "nike" in ctx.sent[0][1].error and ctx.sent[0][1].reach_high == 0
