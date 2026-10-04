@@ -27,21 +27,26 @@ def sim_db():
             run.update(status="replaying", reach_p_10=0, reach_p_50=1, reach_p_90=2, seen_p_50=1)
             db.tables["sim_node"] = [{"run_id": args[0], "user_id": "1", "engaged_share": 0.7, "seen_share": 0.9},
                                      {"run_id": args[0], "user_id": "2", "engaged_share": 0.1, "seen_share": 0.4}]
+            db.tables.setdefault("sim_signal", []).extend(
+                {"run_id": args[0], "signal": s, "p_10": 0, "p_50": k, "p_90": k + 1, "mean": float(k)}
+                for s, k in (("like", 3), ("repost", 1), ("reply", 0), ("quote", 0)))
     db.call = call
     return db
 
 
-SCORES = {"scores": [{"user_id": "1", "action": "repost", "confidence": 0.8, "reason": "builds games"},
-                     {"user_id": "2", "action": "ignore", "confidence": 0.9, "reason": "not AI"}]}
+SCORES = {"scores": [
+    {"user_id": "1", "drafts": [{"p_like": 0.8, "p_repost": 0.3, "p_reply": 0, "p_quote": 0, "reason": "builds games"}]},
+    {"user_id": "2", "drafts": [{"p_like": 0.01, "p_repost": 0, "p_reply": 0, "p_quote": 0, "reason": "not AI"}]}]}
 
 
 def test_run_simulation_writes_probs_starts_cascade_and_summarises():
     db = sim_db()
     s = run_simulation(db, FakeClient([SCORES]), "spacetimedb", "We shipped multiplayer", run_id="r1",
                        dashboard_base="https://ripple.app/dashboard", sleep=lambda _: None)
-    assert [r for r, _ in db.calls][:4] == ["replace_audience_edges", "create_sim_run", "set_sim_probs", "start_cascade"]
+    assert [r for r, _ in db.calls][:5] == ["replace_audience_edges", "create_sim_run", "set_sim_probs", "set_sim_signal_probs", "start_cascade"]
     probs = db.reducers("set_sim_probs")[0][1]
-    assert {p["user_id"]: p["p_engage"] for p in probs} == {"1": 0.8, "2": pytest.approx(0.025)}
+    assert {p["user_id"]: round(p["p_engage"], 4) for p in probs} == {"1": 0.86, "2": 0.01}
+    assert [x.signal for x in s.signals] == ["like", "repost", "reply", "quote"] and s.signals[0].p50 == 3
     assert (s.run_id, s.people, s.reach_p50, s.reach_p90) == ("r1", 2, 1, 2)
     assert s.top_responders[0].handle == "alice" and s.top_responders[0].reason == "builds games"
     assert s.top_responders[0].avatar == "https://pbs/a.jpg" and s.top_responders[0].profile_url == "https://x.com/alice"

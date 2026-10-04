@@ -34,6 +34,14 @@ class SimulateRequest(Model):
     trials: int = 200
 
 
+class SignalRange(Model):
+    signal: str
+    p10: int
+    p50: int
+    p90: int
+    mean: float
+
+
 class SimulateResult(Model):
     request_id: str
     ok: bool
@@ -50,6 +58,7 @@ class SimulateResult(Model):
     top_niches: list[NicheReach] = []
     top_responders: list[Responder] = []
     dashboard_url: str = ""
+    signals: list[SignalRange] = []
 
 
 class CompareRequest(Model):
