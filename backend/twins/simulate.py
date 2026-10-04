@@ -22,6 +22,7 @@ MAX_UNSCORED = 0.25  # fail rather than report a reach that silently ignores a q
 
 SIGNAL_ORDER = ("like", "repost", "reply", "quote")
 TIE_BAND = 0.05
+LAB_DEADLINE = 300  # Lab runs in the background worker; the agent path keeps the 90 s scoring deadline
 
 
 class SimSignal(BaseModel):
@@ -194,7 +195,7 @@ def run_lab(stdb, client, brand: str, draft_a: str, draft_b: str, *, on_runs: Ca
     if on_runs:
         on_runs(run_ids[0], run_ids[1])
     try:
-        per_draft = score_signals(client, twins, [draft_a, draft_b])
+        per_draft = score_signals(client, twins, [draft_a, draft_b], deadline=LAB_DEADLINE)
         scored = [_check_scored(s) for s in per_draft]
         for run_id, scores in zip(run_ids, per_draft):
             _write_probs_and_start(stdb, run_id, scores, trials)

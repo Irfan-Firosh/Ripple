@@ -53,3 +53,20 @@ def test_drafts_are_escaped_and_bounded():
         score_signals(client, [bt("a", "x", 1)], ["a", "b", "c"])
     with pytest.raises(ValueError):
         score_signals(client, [bt("a", "x", 1)], [" "])
+
+
+def test_scoring_calls_get_a_60s_timeout_and_one_retry():
+    seen = {}
+
+    class Optioned(FakeClient):
+        def with_options(self, **kw):
+            seen.update(kw)
+            return self
+
+    score_signals(Optioned([{"scores": [entry("a", (0.1, 0, 0, 0))]}]), [bt("a", "x", 1)], ["d"], workers=1)
+    assert seen == {"max_retries": 1, "timeout": 60.0}
+
+
+def test_prompt_asks_for_short_reasons():
+    from twins.policy import SIGNAL_SYSTEM
+    assert "12 words" in SIGNAL_SYSTEM

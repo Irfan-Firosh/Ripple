@@ -5,6 +5,7 @@ import time
 import requests
 
 TIMESTAMP_FIELD = "__timestamp_micros_since_unix_epoch__"
+SQL_ATTEMPTS = 4
 MAX_WORKERS = 32  # build threads share one session; its pool must fit them all
 
 
@@ -51,8 +52,9 @@ def _pooled_session() -> requests.Session:
 
 
 class StdbClient:
-    def __init__(self, base_url: str, database: str, token: str | None = None, session=None):
+    def __init__(self, base_url: str, database: str, token: str | None = None, session=None, sleep=time.sleep):
         self._base = f"{base_url.rstrip('/')}/v1/database/{database}"
+        self._sleep = sleep
         self._session = session or _pooled_session()
         self._headers = {"Content-Type": "application/json"}
         if token:
@@ -65,16 +67,28 @@ class StdbClient:
             raise StdbError(f"{path} -> network error: {exc}") from exc
 
     def sql(self, query: str) -> list[dict]:
-        r = self._post("sql", query.encode())
-        if r.status_code != 200:
-            raise StdbError(f"sql -> HTTP {r.status_code}: {r.text[:200]}")
-        rows = []
-        for statement in r.json():
-            elements = statement["schema"]["elements"]
-            names = [e["name"]["some"] for e in elements]
-            for row in statement["rows"]:
-                rows.append({n: decode(v, e["algebraic_type"]) for n, v, e in zip(names, row, elements)})
-        return rows
+        # Reads are idempotent, so transient network errors and 5xx are retried (big reads get cut off on Maincloud).
+        for attempt in range(SQL_ATTEMPTS):
+            try:
+                r = self._post("sql", query.encode())
+            except StdbError:
+                if attempt == SQL_ATTEMPTS - 1:
+                    raise
+                self._sleep(2 ** attempt)
+                continue
+            if r.status_code >= 500 and attempt < SQL_ATTEMPTS - 1:
+                self._sleep(2 ** attempt)
+                continue
+            if r.status_code != 200:
+                raise StdbError(f"sql -> HTTP {r.status_code}: {r.text[:200]}")
+            rows = []
+            for statement in r.json():
+                elements = statement["schema"]["elements"]
+                names = [e["name"]["some"] for e in elements]
+                for row in statement["rows"]:
+                    rows.append({n: decode(v, e["algebraic_type"]) for n, v, e in zip(names, row, elements)})
+            return rows
+        raise StdbError("sql: gave up after retries")
 
     def call(self, reducer: str, *args) -> None:
         for attempt in range(4):
@@ -83,5 +97,5 @@ class StdbClient:
                 return
             if r.status_code < 500 or r.status_code == 530:  # 530 = the reducer threw
                 raise StdbError(f"{reducer} -> HTTP {r.status_code}: {r.text[:200]}")
-            time.sleep(2 ** attempt)
+            self._sleep(2 ** attempt)
         raise StdbError(f"{reducer}: gave up after retries")

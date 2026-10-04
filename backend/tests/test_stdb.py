@@ -65,7 +65,7 @@ def test_network_errors_are_wrapped():
         def post(self, *a, **k):
             raise requests.ConnectionError("dns down")
 
-    client = StdbClient("https://h", "db", session=Boom())
+    client = StdbClient("https://h", "db", session=Boom(), sleep=lambda s: None)
     with pytest.raises(StdbError, match="dns down"):
         client.sql("SELECT * FROM x_user")
     with pytest.raises(StdbError, match="dns down"):
@@ -82,3 +82,32 @@ def test_default_session_pool_fits_max_workers():
     from twins.stdb import MAX_WORKERS
     client = StdbClient("https://h", "db")
     assert client._session.get_adapter("https://h")._pool_maxsize >= MAX_WORKERS
+
+
+def test_sql_retries_transient_network_and_server_errors():
+    import requests
+    body = [{"schema": {"elements": [{"name": {"some": "n"}, "algebraic_type": {"U32": []}}]}, "rows": [[1]]}]
+
+    class Flaky:
+        def __init__(self):
+            self.n = 0
+
+        def post(self, url, data=None, headers=None, timeout=None):
+            self.n += 1
+            if self.n == 1:
+                raise requests.ConnectionError("Response ended prematurely")
+            if self.n == 2:
+                return SimpleNamespace(status_code=503, text="busy", json=lambda: {})
+            return SimpleNamespace(status_code=200, text="", json=lambda: body)
+
+    session, waits = Flaky(), []
+    client = StdbClient("https://h", "db", session=session, sleep=waits.append)
+    assert client.sql("SELECT n FROM t") == [{"n": 1}] and session.n == 3 and len(waits) == 2
+
+
+def test_sql_does_not_retry_bad_queries():
+    session = FakeSession((400, {"error": "no such table"}))
+    client = StdbClient("https://h", "db", session=session, sleep=lambda s: None)
+    with pytest.raises(StdbError, match="400"):
+        client.sql("SELECT * FROM nope")
+    assert len(session.posts) == 1

@@ -34,3 +34,18 @@ def test_run_lab_scores_both_drafts_in_one_pass_and_attaches_runs_early():
     b_probs = db.reducers("set_sim_signal_probs")[1][1]
     assert {p["user_id"]: p["p_like"] for p in b_probs} == {"1": 0.6, "2": 0.02}
     assert out.winner in ("A", "B", "tie") and out.run_a.draft == "draft A" and out.run_b.draft == "draft B"
+
+
+def test_run_lab_gives_scoring_the_longer_lab_deadline(monkeypatch):
+    import twins.simulate as sim
+    seen = {}
+    real = sim.score_signals
+
+    def spy(client, twins, drafts, **kw):
+        seen.update(kw)
+        return real(client, twins, drafts, **kw)
+
+    monkeypatch.setattr(sim, "score_signals", spy)
+    run_lab(sim_db(), FakeClient([{"scores": [two("1", 0.2, 0.6), two("2", 0.01, 0.02)]}]), "spacetimedb", "a", "b",
+            sleep=lambda _: None)
+    assert seen["deadline"] == sim.LAB_DEADLINE == 300
