@@ -17,3 +17,11 @@ def seed(name: str) -> str:
 
 def new_seed() -> str:
     return secrets.token_hex(32)
+
+
+def network_kwargs(name: str) -> dict:
+    """Agentverse mailbox by default; RIPPLE_AGENTS_LOCAL=1 talks over localhost (dev, no Inspector step)."""
+    port = PORTS[name]
+    if os.environ.get("RIPPLE_AGENTS_LOCAL") == "1":
+        return {"port": port, "endpoint": [f"http://127.0.0.1:{port}/submit"]}
+    return {"port": port, "mailbox": True}
