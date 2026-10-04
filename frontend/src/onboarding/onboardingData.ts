@@ -19,7 +19,7 @@ const quote = (value: string) => `'${value.replace(/'/g, "''")}'`;
 export const normalizeHandle = (value: string) => value.trim().replace(/^@/, '').toLowerCase();
 
 let identity: Promise<string> | null = null;
-async function token(): Promise<string> {
+export async function onboardingToken(): Promise<string> {
   try { const saved = localStorage.getItem(TOKEN_KEY); if (saved) return saved; } catch { /* Optional storage. */ }
   if (!identity) identity = (async () => {
     const response = await fetch(`${BASE}/v1/identity`, { method: 'POST' });
@@ -33,7 +33,7 @@ async function token(): Promise<string> {
 
 async function call(reducer: string, args: (string | number)[]): Promise<void> {
   const response = await fetch(`${BASE}/v1/database/ripple-mhacks/call/${reducer}`, {
-    method: 'POST', headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(args),
+    method: 'POST', headers: { Authorization: `Bearer ${await onboardingToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(args),
   });
   if (!response.ok) {
     const text = await response.text();
@@ -105,7 +105,7 @@ export function stages(snapshot: BuildSnapshot | null, row: OnboardingRow | null
 export function liveStatus(row: OnboardingRow | null): string {
   switch (row?.status) {
     case 'scraping': return 'Reading followers';
-    case 'twins': return 'Building twins';
+    case 'twins': return 'Analyzing your audience';
     case 'graph': return 'Mapping the graph';
     case 'ready': return 'Ready';
     case 'failed': return 'Build failed';

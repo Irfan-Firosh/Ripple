@@ -16,10 +16,13 @@ export type SignalRange = { p10: number; p50: number; p90: number; mean: number 
 export type LabComment = { userId: string; handle: string; name: string; avatar: string; kind: 'reply' | 'quote'; text: string; tick: number };
 export type OutsideTick = { tick: number; views: number; like: number; repost: number; reply: number; quote: number };
 export type LabEvent = { userId: string; handle: string; name: string; avatar: string; signal: Signal; tick: number; draft: 'A' | 'B' };
+// How a run's counts were projected onto the real audience ('linear' = x audience / simulated).
+export type LabProjection = { mode: 'linear' | 'anchored' | 'none'; audience: number; simulated: number; factor: number };
 export type LabRun = {
   runId: string; status: 'scoring' | 'replaying' | 'done' | 'failed'; replayTick: number; replayMaxTick: number; people: number;
   signals: Record<Signal, SignalRange> | null; events: LabEvent[]; shares: Map<string, Record<Signal, number>>;
   views: SignalRange | null; outside: OutsideTick[]; comments: LabComment[]; outsideShare: number;
+  projection: LabProjection | null;
 };
 export type LabExperimentSummary = {
   id: string; brand: string; title: string; status: 'queued' | 'running' | 'done' | 'failed';
@@ -59,7 +62,7 @@ const bigger = (url?: string | null) => (url ?? '').replace('_normal.', '_200x20
 
 async function loadRun(runId: string, draft: 'A' | 'B', signal?: AbortSignal): Promise<LabRun | null> {
   if (!runId) return null;
-  const [runs, sigs, events, shares, outside, comments, sources] = await Promise.all([
+  const [runs, sigs, events, shares, outside, comments, sources, projections] = await Promise.all([
     sql(`SELECT * FROM sim_run WHERE run_id = ${q(runId)}`, signal),
     sql(`SELECT * FROM sim_signal WHERE run_id = ${q(runId)}`, signal),
     sql(`SELECT * FROM sim_event WHERE run_id = ${q(runId)}`, signal),
@@ -67,6 +70,7 @@ async function loadRun(runId: string, draft: 'A' | 'B', signal?: AbortSignal): P
     sql(`SELECT * FROM sim_outside_tick WHERE run_id = ${q(runId)}`, signal),
     sql(`SELECT * FROM sim_comment WHERE run_id = ${q(runId)}`, signal),
     sql(`SELECT * FROM sim_signal_source WHERE run_id = ${q(runId)}`, signal),
+    sql(`SELECT * FROM sim_projection WHERE run_id = ${q(runId)}`, signal).catch(() => []),
   ]);
   const run = runs[0];
   if (!run) return null;
@@ -77,15 +81,19 @@ async function loadRun(runId: string, draft: 'A' | 'B', signal?: AbortSignal): P
   const total = engaged.reduce((a, r) => a + r.mean, 0);
   const counted = sigs.filter(r => (SIGNALS as readonly string[]).includes(r.signal));
   const view = sigs.find(r => r.signal === 'view');
+  const p = projections[0];
+  const projection: LabProjection | null = p ? { mode: p.mode, audience: Number(p.audience), simulated: p.simulated, factor: p.factor } : null;
+  const signals = counted.length ? Object.fromEntries(counted.map(r => [r.signal, range(r)])) as Record<Signal, SignalRange> : null;
   return {
     runId, status: run.status, replayTick: run.replay_tick, replayMaxTick: run.replay_max_tick, people: run.people,
-    signals: counted.length ? Object.fromEntries(counted.map(r => [r.signal, range(r)])) as Record<Signal, SignalRange> : null,
+    signals,
     views: view ? range(view) : null,
     events: events.map(e => ({ userId: e.user_id, ...person(e.user_id), signal: e.signal, tick: e.tick, draft })).sort((x, y) => x.tick - y.tick),
     shares: new Map(shares.map(s => [s.user_id as string, { like: s.like_share, repost: s.repost_share, reply: s.reply_share, quote: s.quote_share }])),
     outside: outside.map(o => ({ tick: o.tick, views: o.views, like: o.likes, repost: o.reposts, reply: o.replies, quote: o.quotes })).sort((x, y) => x.tick - y.tick),
     comments: comments.map(c => ({ userId: c.user_id, ...person(c.user_id), kind: c.kind, text: c.text, tick: c.tick })).sort((x, y) => x.tick - y.tick),
     outsideShare: total ? engaged.filter(r => r.source === 'outside').reduce((a, r) => a + r.mean, 0) / total : 0,
+    projection,
   };
 }
 
@@ -190,4 +198,12 @@ export function useLabExperiment(id: string | null): { experiment: LabExperiment
     return () => { controller.abort(); clearTimeout(timer); };
   }, [id]);
   return { experiment, error };
+}
+
+// The finished numbers the Lab shows for a run: the expected (mean) outcome over all simulated trials. The tweet
+// card, the side-by-side graph and its table all read this, so they always agree.
+export function finalCounts(run: LabRun): Record<Signal | 'views', number> {
+  const m = run.signals, mean = (r?: SignalRange) => Math.round(r?.mean ?? 0);
+  return { like: mean(m?.like), repost: mean(m?.repost), reply: mean(m?.reply), quote: mean(m?.quote),
+           views: mean(run.views ?? undefined) };
 }

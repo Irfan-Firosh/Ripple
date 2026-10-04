@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from .brand_twins import load_brand_twins
 from .graph import publish_edges
 from .comments import write_comments
+from .settings import cap_twins, load_settings
 from .policy import NO_PREDICTION, SignalScore, score_signals
 from .stdb import StdbError, sql_str
 
@@ -165,7 +166,9 @@ def run_simulation(stdb, client, brand: str, draft: str, *, trials: int = 200, r
                    dashboard_base: str = DASHBOARD_BASE, poll_seconds: float = 0.5, timeout: float = 60,
                    sleep=time.sleep) -> SimSummary:
     publish_edges(stdb, brand)
+    settings = load_settings(stdb)
     brand_user, twins = load_brand_twins(stdb, brand)
+    twins = cap_twins(twins, settings.sim_twins)
     run_id = run_id or f"sim-{uuid.uuid4().hex[:12]}"
     stdb.call("create_sim_run", run_id, brand_user.user_id, draft, len(twins))
     try:
@@ -234,7 +237,9 @@ def run_lab(stdb, client, brand: str, draft_a: str, draft_b: str, *, on_runs: Ca
             trials: int = LAB_TRIALS, timeout: float = 120, dashboard_base: str = DASHBOARD_BASE, poll_seconds: float = 0.5,
             sleep=time.sleep) -> LabOutcome:
     publish_edges(stdb, brand)
+    settings = load_settings(stdb)
     brand_user, twins = load_brand_twins(stdb, brand)
+    twins = cap_twins(twins, settings.sim_twins)
     run_ids = _create_runs(stdb, brand_user.user_id, [draft_a, draft_b], len(twins))
     try:
         if on_runs:
@@ -251,7 +256,7 @@ def run_lab(stdb, client, brand: str, draft_a: str, draft_b: str, *, on_runs: Ca
             for r, run, d, s, n in zip(run_ids, runs, [draft_a, draft_b], per_draft, scored))
     for run_id, draft in zip(run_ids, [draft_a, draft_b]):
         write_comments(stdb, client, run_id, draft, twins)
-    winner, lift = decide_scores(per_draft[0], per_draft[1], {t.user_id: t.followers for t in twins})
+        winner, lift = decide_scores(per_draft[0], per_draft[1], {t.user_id: t.followers for t in twins})
     return LabOutcome(run_a=a, run_b=b, winner=winner, lift=lift)
 
 

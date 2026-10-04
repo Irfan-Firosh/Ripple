@@ -1,7 +1,10 @@
 """Grok synthesizes themes; Python independently verifies their evidence and support."""
 import json
+import logging
 import math
 from collections import defaultdict
+
+from twins.stdb import sql_str
 
 from .guardrails import clean_list, clean_text
 from .models import BrandKit, CreativeBrief, Theme
@@ -16,7 +19,10 @@ SYSTEM = ("You are a creative strategist working with anonymized aggregate inter
           "not just a few illustrative examples; include each alias once. Never invent citations. A theme with "
           "fewer than minimum_theme_citations valid supporting aliases will be discarded. "
           "support is computed by Python; return zero for it. Use only supplied brand value props, avoid banned_claims. "
-          "Write short specific copy, visual cues and an interest-based audience label.")
+          "Write short specific copy, visual cues and an interest-based audience label. "
+          "When recent_news or brand_best_posts are supplied, build the message_angle and every headline on ONE "
+          "specific recent item (a real launch, feature or post): name the actual feature, never generic slogans, "
+          "never claims that are not in that item. Match the voice of the brand's best posts.")
 
 
 def brand_signals(kit: BrandKit):
@@ -71,8 +77,13 @@ def fallback_brief(segment, kit):
                          visual_avoid=["cluttered composition"], format="product_ui")
 
 
-def synthesize_brief(client, segment, kit: BrandKit, *, goal="", offer=None):
+def synthesize_brief(client, segment, kit: BrandKit, *, goal="", offer=None, context=None):
+    context = context or {}
+    news = [{k: clean_text(str(i.get(k, "")), limit=300) for k in ("title", "date", "summary")} for i in context.get("news", [])][:6]
+    best = [{"text": clean_text(p.get("text", ""), limit=280), "likes": int(p.get("likes") or 0)}
+            for p in context.get("best_posts", [])][:5]
     payload = json.dumps({"signals": segment.signals, "brand": brand_signals(kit),
+                          **({"recent_news": news} if news else {}), **({"brand_best_posts": best} if best else {}),
                           "minimum_theme_citations": math.ceil(MIN_SUPPORT * segment.twin_count),
                           "goal": clean_text(goal), "offer": clean_text(offer or "")})
     # Invalid structured output gets one repair attempt; no extra provider retries on 400/moderation.
@@ -88,10 +99,22 @@ def synthesize_brief(client, segment, kit: BrandKit, *, goal="", offer=None):
     return sanitize_brief(fallback_brief(segment, kit), segment, kit)
 
 
+def brand_context(stdb, brand_user_id, kit):
+    """What is actually new at the company (recent news, best posts); a failed lookup never blocks a brief."""
+    try:
+        from .company import company_context
+        users = stdb.sql(f"SELECT username FROM x_user WHERE user_id = {sql_str(brand_user_id)}")
+        return company_context(stdb, users[0]["username"], kit.display_name) if users else None
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("company research skipped: %s", exc)
+        return None
+
+
 def build_brief(stdb, client, campaign, segment):
     """Read a campaign's brand and aggregate a requested niche, then synthesize one brief."""
     from .brand_kits import load_brand_kit
     from .segments import aggregate_segments
     signals = aggregate_segments(stdb, campaign["brand_user_id"], [segment])[0]
     kit = load_brand_kit(stdb, campaign["brand_user_id"])
-    return synthesize_brief(client, signals, kit, goal=campaign.get("goal", ""), offer=campaign.get("offer"))
+    context = brand_context(stdb, campaign["brand_user_id"], kit)
+    return synthesize_brief(client, signals, kit, goal=campaign.get("goal", ""), offer=campaign.get("offer"), context=context)

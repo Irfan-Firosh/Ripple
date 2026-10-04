@@ -54,12 +54,59 @@ function decode(value: unknown, ty: AlgebraicType): unknown {
   return value;
 }
 
-export async function sql<T = Record<string, any>>(query: string, signal?: AbortSignal): Promise<T[]> {
+async function rawSql<T = Record<string, any>>(query: string, signal?: AbortSignal): Promise<T[]> {
   const res = await fetch(STDB_SQL, { method: 'POST', body: query, signal });
   if (!res.ok) throw new Error(`SpacetimeDB returned ${res.status} for: ${query}`);
   const statements = (await res.json()) as Statement[];
   return statements.flatMap(s => s.rows.map(row => Object.fromEntries(
     s.schema.elements.map((e, i) => [e.name.some, decode(row[i], e.algebraic_type)])) as T));
+}
+
+// Hide from /ops = a clean slate for demos: while ops_hidden exists, rows created before its `since` are dropped from
+// every read, and brand audiences only show for brands onboarded after it. Nothing is deleted; unhide restores all.
+type Cutoff = { since: number; brands: Set<string> } | null;
+const CUTOFF_TTL_MS = 10_000;
+const CREATED: Record<string, string> = {
+  campaign_flow: 'created_at', lab_experiment: 'created_at', campaign: 'created_at', campaign_video: 'created_at',
+  onboarding: 'created_at', audience_snapshot: 'created_at',
+};
+const BRAND_KEYED = new Set(['twin_audience', 'audience_membership', 'audience_edge']);
+const micros = (v: unknown) => { const n = Number(v); return n >= 1e14 ? n : n * 1000; }; // u64 ms columns vs timestamps
+let cutoff: { at: number; value: Promise<Cutoff> } | null = null;
+
+function loadCutoff(): Promise<Cutoff> {
+  if (cutoff && Date.now() - cutoff.at < CUTOFF_TTL_MS) return cutoff.value;
+  const value = (async (): Promise<Cutoff> => {
+    const rows = await rawSql<{ since: number }>("SELECT * FROM ops_hidden WHERE key = 'global'");
+    if (!rows[0]) return null;
+    const since = micros(rows[0].since);
+    const onboarded = await rawSql<{ brand_user_id: string; created_at: number }>('SELECT brand_user_id, created_at FROM onboarding');
+    return { since, brands: new Set(onboarded.filter(r => r.brand_user_id && micros(r.created_at) >= since).map(r => r.brand_user_id)) };
+  })().catch(() => null); // an unreachable flag never hides anything
+  cutoff = { at: Date.now(), value };
+  return value;
+}
+
+// Reads that ignore /ops Hide (the ops page itself must see everything).
+export const sqlUnfiltered = rawSql;
+
+// True while /ops Hide is on (clean slate): pages use it to show a friendly empty state instead of an error.
+export async function cleanSlate(): Promise<boolean> {
+  return (await loadCutoff()) !== null;
+}
+
+export async function sql<T = Record<string, any>>(query: string, signal?: AbortSignal): Promise<T[]> {
+  const [rows, hide] = await Promise.all([rawSql<T>(query, signal), loadCutoff()]);
+  const table = query.match(/FROM\s+(\w+)/i)?.[1]?.toLowerCase() ?? '';
+  // Lists are filtered; a lookup of one row by its id (e.g. a video reused for a demo) is not.
+  const lookup = /WHERE\s+(video_id|campaign_id|experiment_id|snapshot_id|onboarding_id)\s*=/i.test(query);
+  if (!hide || (!CREATED[table] && !BRAND_KEYED.has(table))) return rows;
+  return rows.filter(row => {
+    const r = row as Record<string, unknown>;
+    if (CREATED[table] && r[CREATED[table]] != null) return lookup || micros(r[CREATED[table]]) >= hide.since;
+    if (BRAND_KEYED.has(table) && r.brand_user_id != null) return hide.brands.has(String(r.brand_user_id));
+    return true;
+  });
 }
 
 const biggerAvatar = (url: string | null) => (url ?? '').replace('_normal.', '_200x200.');

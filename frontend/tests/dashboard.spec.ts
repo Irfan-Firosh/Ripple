@@ -16,14 +16,16 @@ test('dashboard shows the loader, then the live audience with real counts and ni
   await expect(canvas).toBeVisible({ timeout: 45000 });
   const people = Number(await canvas.getAttribute('data-node-count'));
   expect(people).toBeGreaterThan(50); // every person is retained within the interactive size budget
-  await expect(page.getByText(`${people} people`)).toBeVisible();
+  await expect(page.getByText(`${people} people`)).toHaveCount(0); // no page-name / people line on the audience page
   await expect.poll(async () => Number(await canvas.getAttribute('data-active-count'))).toBeGreaterThan(0);
 
   // At most 10 niche groups, and every person still belongs to one of them.
   const groups = page.getByLabel('Niche index').locator('.nt-community-index button');
   expect(await groups.count()).toBeLessThanOrEqual(10);
   const sizes = await page.getByLabel('Niche index').locator('.nt-index-count').allTextContents();
-  expect(sizes.reduce((sum, n) => sum + Number(n), 0)).toBe(people);
+  // Niches show their share of the audience; the shares cover everyone (add up to exactly 100%).
+  expect(sizes.every(t => /^\d+%$/.test(t))).toBe(true);
+  expect(sizes.reduce((sum, n) => sum + parseInt(n, 10), 0)).toBe(100);
   await expect(page.getByLabel('Niche index')).not.toContainText(/other/i); // every group is a real niche
 
   await expect(canvas).toHaveAttribute('data-active-count', String(people));
@@ -36,7 +38,7 @@ test('dashboard shows the loader, then the live audience with real counts and ni
   await expect(canvas).toHaveAttribute('data-focus-community', '0'); // niche 01 sits at the top of the ring
   await page.getByRole('button', { name: 'All niches', exact: true }).click();
   await expect.poll(async () => Number(await canvas.getAttribute('data-camera-y'))).toBeCloseTo(0, 0);
-  await expect(page.getByRole('navigation', { name: 'Workspace navigation' }).getByRole('link', { name: 'Home', exact: true })).toHaveAttribute('href', '/');
+  await expect(page.getByRole('navigation', { name: 'Workspace navigation' }).getByRole('link', { name: 'Home', exact: true })).toHaveAttribute('href', '/home');
 });
 
 test('mobile dashboard shows every person immediately and has no sideways scroll', async ({ page }) => {
@@ -68,7 +70,7 @@ test('an arbitrary onboarded X handle renders every person in the niche index', 
   await expect(canvas).toHaveAttribute('data-node-count', '80');
   const index = page.getByLabel('Niche index');
   const sizes = await index.locator('.nt-index-count').allTextContents();
-  expect(sizes.reduce((sum, n) => sum + Number(n), 0)).toBe(80);
+  expect(sizes.reduce((sum, n) => sum + parseInt(n, 10), 0)).toBe(100);
 });
 
 test('landing-style desktop navigation opens the Lab for the current brand', async ({ page }) => {
@@ -78,7 +80,7 @@ test('landing-style desktop navigation opens the Lab for the current brand', asy
   await expect(audience).toHaveAttribute('aria-current', 'page');
   const lab = nav.getByRole('link', { name: 'Lab', exact: true });
   await expect(lab).toHaveAttribute('href', '/lab?brand=raycast.com');
-  await expect(nav).toContainText('HomeAudienceCampaignsLabLab v2');
+  await expect(nav).toContainText('HomeAudienceCampaignLab');
   expect(await nav.evaluate(el => getComputedStyle(el).borderRadius)).toBe('999px');
   await expect(nav.locator('svg')).toHaveCount(0);
   await lab.click();

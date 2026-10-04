@@ -15,6 +15,7 @@ export function HistoryDrawer({ kind, activeId, onClose, onSelect }: { kind: His
   const close = useRef(onClose); close.current = onClose;
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const triggerLabel = previous?.getAttribute('aria-label');
     const overflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
     dialog.current?.querySelector<HTMLInputElement>('input')?.focus();
     const keyboard = (event: KeyboardEvent) => {
@@ -26,7 +27,10 @@ export function HistoryDrawer({ kind, activeId, onClose, onSelect }: { kind: His
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     };
     document.addEventListener('keydown', keyboard, true);
-    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', keyboard, true); previous?.focus(); };
+    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', keyboard, true);
+      // A live map can replace its loading header while this drawer is open.
+      const trigger = previous?.isConnected ? previous : [...document.querySelectorAll<HTMLButtonElement>('button[aria-label]')].find(button => triggerLabel && button.getAttribute('aria-label') === triggerLabel);
+      trigger?.focus(); };
   }, []);
   useEffect(() => {
     const controller = new AbortController(); let timer = 0; setEntries(null); setError('');

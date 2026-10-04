@@ -35,49 +35,78 @@ import {
 
 // Import all reducer arg schemas
 import AddAdminReducer from "./add_admin_reducer";
+import AddOpsAdminReducer from "./add_ops_admin_reducer";
 import AddSimCommentsReducer from "./add_sim_comments_reducer";
 import AnswerTwinQuestionReducer from "./answer_twin_question_reducer";
 import ApproveVariantReducer from "./approve_variant_reducer";
+import ArchiveAudienceReducer from "./archive_audience_reducer";
+import ArchiveProfilesReducer from "./archive_profiles_reducer";
 import AskTwinReducer from "./ask_twin_reducer";
+import AttachLabDraftMediaReducer from "./attach_lab_draft_media_reducer";
 import AttachLabRunsReducer from "./attach_lab_runs_reducer";
 import ClaimCreativeJobReducer from "./claim_creative_job_reducer";
 import ClaimLabExperimentReducer from "./claim_lab_experiment_reducer";
 import ClaimOnboardingReducer from "./claim_onboarding_reducer";
 import ClaimTwinQuestionReducer from "./claim_twin_question_reducer";
+import ClearBrandBaselineReducer from "./clear_brand_baseline_reducer";
 import CompleteIngestionRunReducer from "./complete_ingestion_run_reducer";
 import CompleteTwinBuildRunReducer from "./complete_twin_build_run_reducer";
 import CreateCampaignReducer from "./create_campaign_reducer";
 import CreateSimRunReducer from "./create_sim_run_reducer";
 import DeleteCampaignReducer from "./delete_campaign_reducer";
 import EditBriefReducer from "./edit_brief_reducer";
+import FailCampaignVideoReducer from "./fail_campaign_video_reducer";
 import FailCreativeJobReducer from "./fail_creative_job_reducer";
 import FailLabExperimentReducer from "./fail_lab_experiment_reducer";
 import FailOnboardingReducer from "./fail_onboarding_reducer";
 import FailSimRunReducer from "./fail_sim_run_reducer";
 import FailTwinQuestionReducer from "./fail_twin_question_reducer";
+import FinishCampaignVideoReducer from "./finish_campaign_video_reducer";
 import FinishCreativeJobReducer from "./finish_creative_job_reducer";
 import FinishLabExperimentReducer from "./finish_lab_experiment_reducer";
 import HandoffCampaignReducer from "./handoff_campaign_reducer";
 import HeartbeatCreativeJobReducer from "./heartbeat_creative_job_reducer";
 import PublishBriefReducer from "./publish_brief_reducer";
 import PublishTwinReducer from "./publish_twin_reducer";
+import PurgeBrandReducer from "./purge_brand_reducer";
+import RemoveOpsAdminReducer from "./remove_ops_admin_reducer";
 import ReplaceAudienceEdgesReducer from "./replace_audience_edges_reducer";
+import RequestCampaignVideoReducer from "./request_campaign_video_reducer";
 import RequestCreativeReducer from "./request_creative_reducer";
+import RequestDraftCopyReducer from "./request_draft_copy_reducer";
+import RequestDraftVideoReducer from "./request_draft_video_reducer";
 import RequestLabExperimentReducer from "./request_lab_experiment_reducer";
 import RequestOnboardingReducer from "./request_onboarding_reducer";
+import RequestTwinTopupReducer from "./request_twin_topup_reducer";
+import RequestVideoEditReducer from "./request_video_edit_reducer";
+import ResetImportedAudiencesReducer from "./reset_imported_audiences_reducer";
 import ResetStaleCreativeJobsReducer from "./reset_stale_creative_jobs_reducer";
+import RetireArchivedAudienceReducer from "./retire_archived_audience_reducer";
+import RetryCreativeJobReducer from "./retry_creative_job_reducer";
+import RetryOnboardingReducer from "./retry_onboarding_reducer";
 import SetBacktestResultReducer from "./set_backtest_result_reducer";
+import SetBrandBaselineReducer from "./set_brand_baseline_reducer";
+import SetCampaignVideoProgressReducer from "./set_campaign_video_progress_reducer";
+import SetDraftCopyReducer from "./set_draft_copy_reducer";
 import SetOnboardingProgressReducer from "./set_onboarding_progress_reducer";
+import SetOpsStateReducer from "./set_ops_state_reducer";
 import SetSimCalibrationReducer from "./set_sim_calibration_reducer";
 import SetSimProbsReducer from "./set_sim_probs_reducer";
+import SetSimSettingsReducer from "./set_sim_settings_reducer";
 import SetSimSignalProbsReducer from "./set_sim_signal_probs_reducer";
 import SetTwinJobStatusReducer from "./set_twin_job_status_reducer";
+import SetTwinTopupReducer from "./set_twin_topup_reducer";
 import SetVariantCopyReducer from "./set_variant_copy_reducer";
+import SetVideoModeReducer from "./set_video_mode_reducer";
+import SetVideoSettingsReducer from "./set_video_settings_reducer";
 import SetXUserProfileImageReducer from "./set_x_user_profile_image_reducer";
 import StarVariantReducer from "./star_variant_reducer";
+import StartCampaignFlowReducer from "./start_campaign_flow_reducer";
+import StartCampaignVideoReducer from "./start_campaign_video_reducer";
 import StartCascadeReducer from "./start_cascade_reducer";
 import StartIngestionRunReducer from "./start_ingestion_run_reducer";
 import StartTwinBuildRunReducer from "./start_twin_build_run_reducer";
+import UpdateCampaignFlowReducer from "./update_campaign_flow_reducer";
 import UpdateIngestionRunReducer from "./update_ingestion_run_reducer";
 import UpdateOnboardingBriefReducer from "./update_onboarding_brief_reducer";
 import UpsertAudienceMembershipReducer from "./upsert_audience_membership_reducer";
@@ -95,16 +124,27 @@ import UpsertXUserReducer from "./upsert_x_user_reducer";
 
 // Import all table schema definitions
 import AdVariantRow from "./ad_variant_table";
+import ArchivedProfileRow from "./archived_profile_table";
 import AudienceEdgeRow from "./audience_edge_table";
 import AudienceMembershipRow from "./audience_membership_table";
+import AudienceSnapshotRow from "./audience_snapshot_table";
 import BacktestResultRow from "./backtest_result_table";
+import BrandBaselineRow from "./brand_baseline_table";
 import BrandKitRow from "./brand_kit_table";
 import CampaignRow from "./campaign_table";
+import CampaignDraftVideoRow from "./campaign_draft_video_table";
+import CampaignFlowRow from "./campaign_flow_table";
+import CampaignVideoRow from "./campaign_video_table";
 import CreativeBriefRow from "./creative_brief_table";
 import CreativeJobRow from "./creative_job_table";
+import DraftCopyRow from "./draft_copy_table";
+import LabDraftMediaRow from "./lab_draft_media_table";
 import LabExperimentRow from "./lab_experiment_table";
 import NicheRow from "./niche_table";
 import OnboardingRow from "./onboarding_table";
+import OpsAdminRow from "./ops_admin_table";
+import OpsHiddenRow from "./ops_hidden_table";
+import OpsStateRow from "./ops_state_table";
 import SimCalibrationRow from "./sim_calibration_table";
 import SimCommentRow from "./sim_comment_table";
 import SimEventRow from "./sim_event_table";
@@ -112,7 +152,9 @@ import SimNodeRow from "./sim_node_table";
 import SimNodeSignalRow from "./sim_node_signal_table";
 import SimOutsideTickRow from "./sim_outside_tick_table";
 import SimProbRow from "./sim_prob_table";
+import SimProjectionRow from "./sim_projection_table";
 import SimRunRow from "./sim_run_table";
+import SimSettingsRow from "./sim_settings_table";
 import SimSignalRow from "./sim_signal_table";
 import SimSignalProbRow from "./sim_signal_prob_table";
 import SimSignalSourceRow from "./sim_signal_source_table";
@@ -122,6 +164,11 @@ import TwinBuildJobRow from "./twin_build_job_table";
 import TwinBuildRunRow from "./twin_build_run_table";
 import TwinNicheRow from "./twin_niche_table";
 import TwinQuestionRow from "./twin_question_table";
+import TwinTopupRow from "./twin_topup_table";
+import VideoEditRow from "./video_edit_table";
+import VideoExpectationRow from "./video_expectation_table";
+import VideoModeRow from "./video_mode_table";
+import VideoSettingsRow from "./video_settings_table";
 import XContextAnnotationRow from "./x_context_annotation_table";
 import XIngestionRunRow from "./x_ingestion_run_table";
 import XPostRow from "./x_post_table";
@@ -157,6 +204,17 @@ const tablesSchema = __schema({
       { name: 'ad_variant_variant_id_key', constraint: 'unique', columns: ['variantId'] },
     ],
   }, AdVariantRow),
+  archivedProfile: __table({
+    name: 'archived_profile',
+    indexes: [
+      { accessor: 'userId', name: 'archived_profile_user_id_idx_btree', algorithm: 'btree', columns: [
+        'userId',
+      ] },
+    ],
+    constraints: [
+      { name: 'archived_profile_user_id_key', constraint: 'unique', columns: ['userId'] },
+    ],
+  }, ArchivedProfileRow),
   audienceEdge: __table({
     name: 'audience_edge',
     indexes: [
@@ -189,6 +247,20 @@ const tablesSchema = __schema({
       { name: 'audience_membership_membership_id_key', constraint: 'unique', columns: ['membershipId'] },
     ],
   }, AudienceMembershipRow),
+  audienceSnapshot: __table({
+    name: 'audience_snapshot',
+    indexes: [
+      { accessor: 'brand', name: 'audience_snapshot_brand_idx_btree', algorithm: 'btree', columns: [
+        'brand',
+      ] },
+      { accessor: 'snapshotId', name: 'audience_snapshot_snapshot_id_idx_btree', algorithm: 'btree', columns: [
+        'snapshotId',
+      ] },
+    ],
+    constraints: [
+      { name: 'audience_snapshot_snapshot_id_key', constraint: 'unique', columns: ['snapshotId'] },
+    ],
+  }, AudienceSnapshotRow),
   backtestResult: __table({
     name: 'backtest_result',
     indexes: [
@@ -200,6 +272,17 @@ const tablesSchema = __schema({
       { name: 'backtest_result_backtest_result_id_key', constraint: 'unique', columns: ['backtestResultId'] },
     ],
   }, BacktestResultRow),
+  brandBaseline: __table({
+    name: 'brand_baseline',
+    indexes: [
+      { accessor: 'brandUserId', name: 'brand_baseline_brand_user_id_idx_btree', algorithm: 'btree', columns: [
+        'brandUserId',
+      ] },
+    ],
+    constraints: [
+      { name: 'brand_baseline_brand_user_id_key', constraint: 'unique', columns: ['brandUserId'] },
+    ],
+  }, BrandBaselineRow),
   brandKit: __table({
     name: 'brand_kit',
     indexes: [
@@ -225,6 +308,54 @@ const tablesSchema = __schema({
       { name: 'campaign_campaign_id_key', constraint: 'unique', columns: ['campaignId'] },
     ],
   }, CampaignRow),
+  campaignDraftVideo: __table({
+    name: 'campaign_draft_video',
+    indexes: [
+      { accessor: 'campaignId', name: 'campaign_draft_video_campaign_id_idx_btree', algorithm: 'btree', columns: [
+        'campaignId',
+      ] },
+      { accessor: 'linkId', name: 'campaign_draft_video_link_id_idx_btree', algorithm: 'btree', columns: [
+        'linkId',
+      ] },
+    ],
+    constraints: [
+      { name: 'campaign_draft_video_link_id_key', constraint: 'unique', columns: ['linkId'] },
+    ],
+  }, CampaignDraftVideoRow),
+  campaignFlow: __table({
+    name: 'campaign_flow',
+    indexes: [
+      { accessor: 'brand', name: 'campaign_flow_brand_idx_btree', algorithm: 'btree', columns: [
+        'brand',
+      ] },
+      { accessor: 'campaignId', name: 'campaign_flow_campaign_id_idx_btree', algorithm: 'btree', columns: [
+        'campaignId',
+      ] },
+      { accessor: 'requestedBy', name: 'campaign_flow_requested_by_idx_btree', algorithm: 'btree', columns: [
+        'requestedBy',
+      ] },
+    ],
+    constraints: [
+      { name: 'campaign_flow_campaign_id_key', constraint: 'unique', columns: ['campaignId'] },
+    ],
+  }, CampaignFlowRow),
+  campaignVideo: __table({
+    name: 'campaign_video',
+    indexes: [
+      { accessor: 'brand', name: 'campaign_video_brand_idx_btree', algorithm: 'btree', columns: [
+        'brand',
+      ] },
+      { accessor: 'status', name: 'campaign_video_status_idx_btree', algorithm: 'btree', columns: [
+        'status',
+      ] },
+      { accessor: 'videoId', name: 'campaign_video_video_id_idx_btree', algorithm: 'btree', columns: [
+        'videoId',
+      ] },
+    ],
+    constraints: [
+      { name: 'campaign_video_video_id_key', constraint: 'unique', columns: ['videoId'] },
+    ],
+  }, CampaignVideoRow),
   creativeBrief: __table({
     name: 'creative_brief',
     indexes: [
@@ -256,6 +387,37 @@ const tablesSchema = __schema({
       { name: 'creative_job_job_id_key', constraint: 'unique', columns: ['jobId'] },
     ],
   }, CreativeJobRow),
+  draftCopy: __table({
+    name: 'draft_copy',
+    indexes: [
+      { accessor: 'campaignId', name: 'draft_copy_campaign_id_idx_btree', algorithm: 'btree', columns: [
+        'campaignId',
+      ] },
+      { accessor: 'copyId', name: 'draft_copy_copy_id_idx_btree', algorithm: 'btree', columns: [
+        'copyId',
+      ] },
+      { accessor: 'status', name: 'draft_copy_status_idx_btree', algorithm: 'btree', columns: [
+        'status',
+      ] },
+    ],
+    constraints: [
+      { name: 'draft_copy_copy_id_key', constraint: 'unique', columns: ['copyId'] },
+    ],
+  }, DraftCopyRow),
+  labDraftMedia: __table({
+    name: 'lab_draft_media',
+    indexes: [
+      { accessor: 'experimentId', name: 'lab_draft_media_experiment_id_idx_btree', algorithm: 'btree', columns: [
+        'experimentId',
+      ] },
+      { accessor: 'mediaId', name: 'lab_draft_media_media_id_idx_btree', algorithm: 'btree', columns: [
+        'mediaId',
+      ] },
+    ],
+    constraints: [
+      { name: 'lab_draft_media_media_id_key', constraint: 'unique', columns: ['mediaId'] },
+    ],
+  }, LabDraftMediaRow),
   labExperiment: __table({
     name: 'lab_experiment',
     indexes: [
@@ -301,6 +463,39 @@ const tablesSchema = __schema({
       { name: 'onboarding_onboarding_id_key', constraint: 'unique', columns: ['onboardingId'] },
     ],
   }, OnboardingRow),
+  opsAdmin: __table({
+    name: 'ops_admin',
+    indexes: [
+      { accessor: 'identity', name: 'ops_admin_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
+      ] },
+    ],
+    constraints: [
+      { name: 'ops_admin_identity_key', constraint: 'unique', columns: ['identity'] },
+    ],
+  }, OpsAdminRow),
+  opsHidden: __table({
+    name: 'ops_hidden',
+    indexes: [
+      { accessor: 'key', name: 'ops_hidden_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'ops_hidden_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, OpsHiddenRow),
+  opsState: __table({
+    name: 'ops_state',
+    indexes: [
+      { accessor: 'key', name: 'ops_state_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'ops_state_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, OpsStateRow),
   simCalibration: __table({
     name: 'sim_calibration',
     indexes: [
@@ -396,6 +591,17 @@ const tablesSchema = __schema({
       { name: 'sim_prob_sim_prob_id_key', constraint: 'unique', columns: ['simProbId'] },
     ],
   }, SimProbRow),
+  simProjection: __table({
+    name: 'sim_projection',
+    indexes: [
+      { accessor: 'runId', name: 'sim_projection_run_id_idx_btree', algorithm: 'btree', columns: [
+        'runId',
+      ] },
+    ],
+    constraints: [
+      { name: 'sim_projection_run_id_key', constraint: 'unique', columns: ['runId'] },
+    ],
+  }, SimProjectionRow),
   simRun: __table({
     name: 'sim_run',
     indexes: [
@@ -410,6 +616,17 @@ const tablesSchema = __schema({
       { name: 'sim_run_run_id_key', constraint: 'unique', columns: ['runId'] },
     ],
   }, SimRunRow),
+  simSettings: __table({
+    name: 'sim_settings',
+    indexes: [
+      { accessor: 'key', name: 'sim_settings_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'sim_settings_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, SimSettingsRow),
   simSignal: __table({
     name: 'sim_signal',
     indexes: [
@@ -545,6 +762,64 @@ const tablesSchema = __schema({
       { name: 'twin_question_question_id_key', constraint: 'unique', columns: ['questionId'] },
     ],
   }, TwinQuestionRow),
+  twinTopup: __table({
+    name: 'twin_topup',
+    indexes: [
+      { accessor: 'status', name: 'twin_topup_status_idx_btree', algorithm: 'btree', columns: [
+        'status',
+      ] },
+      { accessor: 'topupId', name: 'twin_topup_topup_id_idx_btree', algorithm: 'btree', columns: [
+        'topupId',
+      ] },
+    ],
+    constraints: [
+      { name: 'twin_topup_topup_id_key', constraint: 'unique', columns: ['topupId'] },
+    ],
+  }, TwinTopupRow),
+  videoEdit: __table({
+    name: 'video_edit',
+    indexes: [
+      { accessor: 'videoId', name: 'video_edit_video_id_idx_btree', algorithm: 'btree', columns: [
+        'videoId',
+      ] },
+    ],
+    constraints: [
+      { name: 'video_edit_video_id_key', constraint: 'unique', columns: ['videoId'] },
+    ],
+  }, VideoEditRow),
+  videoExpectation: __table({
+    name: 'video_expectation',
+    indexes: [
+      { accessor: 'videoId', name: 'video_expectation_video_id_idx_btree', algorithm: 'btree', columns: [
+        'videoId',
+      ] },
+    ],
+    constraints: [
+      { name: 'video_expectation_video_id_key', constraint: 'unique', columns: ['videoId'] },
+    ],
+  }, VideoExpectationRow),
+  videoMode: __table({
+    name: 'video_mode',
+    indexes: [
+      { accessor: 'key', name: 'video_mode_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'video_mode_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, VideoModeRow),
+  videoSettings: __table({
+    name: 'video_settings',
+    indexes: [
+      { accessor: 'key', name: 'video_settings_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'video_settings_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, VideoSettingsRow),
   xContextAnnotation: __table({
     name: 'x_context_annotation',
     indexes: [
@@ -648,49 +923,78 @@ const tablesSchema = __schema({
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("add_admin", AddAdminReducer),
+  __reducerSchema("add_ops_admin", AddOpsAdminReducer),
   __reducerSchema("add_sim_comments", AddSimCommentsReducer),
   __reducerSchema("answer_twin_question", AnswerTwinQuestionReducer),
   __reducerSchema("approve_variant", ApproveVariantReducer),
+  __reducerSchema("archive_audience", ArchiveAudienceReducer),
+  __reducerSchema("archive_profiles", ArchiveProfilesReducer),
   __reducerSchema("ask_twin", AskTwinReducer),
+  __reducerSchema("attach_lab_draft_media", AttachLabDraftMediaReducer),
   __reducerSchema("attach_lab_runs", AttachLabRunsReducer),
   __reducerSchema("claim_creative_job", ClaimCreativeJobReducer),
   __reducerSchema("claim_lab_experiment", ClaimLabExperimentReducer),
   __reducerSchema("claim_onboarding", ClaimOnboardingReducer),
   __reducerSchema("claim_twin_question", ClaimTwinQuestionReducer),
+  __reducerSchema("clear_brand_baseline", ClearBrandBaselineReducer),
   __reducerSchema("complete_ingestion_run", CompleteIngestionRunReducer),
   __reducerSchema("complete_twin_build_run", CompleteTwinBuildRunReducer),
   __reducerSchema("create_campaign", CreateCampaignReducer),
   __reducerSchema("create_sim_run", CreateSimRunReducer),
   __reducerSchema("delete_campaign", DeleteCampaignReducer),
   __reducerSchema("edit_brief", EditBriefReducer),
+  __reducerSchema("fail_campaign_video", FailCampaignVideoReducer),
   __reducerSchema("fail_creative_job", FailCreativeJobReducer),
   __reducerSchema("fail_lab_experiment", FailLabExperimentReducer),
   __reducerSchema("fail_onboarding", FailOnboardingReducer),
   __reducerSchema("fail_sim_run", FailSimRunReducer),
   __reducerSchema("fail_twin_question", FailTwinQuestionReducer),
+  __reducerSchema("finish_campaign_video", FinishCampaignVideoReducer),
   __reducerSchema("finish_creative_job", FinishCreativeJobReducer),
   __reducerSchema("finish_lab_experiment", FinishLabExperimentReducer),
   __reducerSchema("handoff_campaign", HandoffCampaignReducer),
   __reducerSchema("heartbeat_creative_job", HeartbeatCreativeJobReducer),
   __reducerSchema("publish_brief", PublishBriefReducer),
   __reducerSchema("publish_twin", PublishTwinReducer),
+  __reducerSchema("purge_brand", PurgeBrandReducer),
+  __reducerSchema("remove_ops_admin", RemoveOpsAdminReducer),
   __reducerSchema("replace_audience_edges", ReplaceAudienceEdgesReducer),
+  __reducerSchema("request_campaign_video", RequestCampaignVideoReducer),
   __reducerSchema("request_creative", RequestCreativeReducer),
+  __reducerSchema("request_draft_copy", RequestDraftCopyReducer),
+  __reducerSchema("request_draft_video", RequestDraftVideoReducer),
   __reducerSchema("request_lab_experiment", RequestLabExperimentReducer),
   __reducerSchema("request_onboarding", RequestOnboardingReducer),
+  __reducerSchema("request_twin_topup", RequestTwinTopupReducer),
+  __reducerSchema("request_video_edit", RequestVideoEditReducer),
+  __reducerSchema("reset_imported_audiences", ResetImportedAudiencesReducer),
   __reducerSchema("reset_stale_creative_jobs", ResetStaleCreativeJobsReducer),
+  __reducerSchema("retire_archived_audience", RetireArchivedAudienceReducer),
+  __reducerSchema("retry_creative_job", RetryCreativeJobReducer),
+  __reducerSchema("retry_onboarding", RetryOnboardingReducer),
   __reducerSchema("set_backtest_result", SetBacktestResultReducer),
+  __reducerSchema("set_brand_baseline", SetBrandBaselineReducer),
+  __reducerSchema("set_campaign_video_progress", SetCampaignVideoProgressReducer),
+  __reducerSchema("set_draft_copy", SetDraftCopyReducer),
   __reducerSchema("set_onboarding_progress", SetOnboardingProgressReducer),
+  __reducerSchema("set_ops_state", SetOpsStateReducer),
   __reducerSchema("set_sim_calibration", SetSimCalibrationReducer),
   __reducerSchema("set_sim_probs", SetSimProbsReducer),
+  __reducerSchema("set_sim_settings", SetSimSettingsReducer),
   __reducerSchema("set_sim_signal_probs", SetSimSignalProbsReducer),
   __reducerSchema("set_twin_job_status", SetTwinJobStatusReducer),
+  __reducerSchema("set_twin_topup", SetTwinTopupReducer),
   __reducerSchema("set_variant_copy", SetVariantCopyReducer),
+  __reducerSchema("set_video_mode", SetVideoModeReducer),
+  __reducerSchema("set_video_settings", SetVideoSettingsReducer),
   __reducerSchema("set_x_user_profile_image", SetXUserProfileImageReducer),
   __reducerSchema("star_variant", StarVariantReducer),
+  __reducerSchema("start_campaign_flow", StartCampaignFlowReducer),
+  __reducerSchema("start_campaign_video", StartCampaignVideoReducer),
   __reducerSchema("start_cascade", StartCascadeReducer),
   __reducerSchema("start_ingestion_run", StartIngestionRunReducer),
   __reducerSchema("start_twin_build_run", StartTwinBuildRunReducer),
+  __reducerSchema("update_campaign_flow", UpdateCampaignFlowReducer),
   __reducerSchema("update_ingestion_run", UpdateIngestionRunReducer),
   __reducerSchema("update_onboarding_brief", UpdateOnboardingBriefReducer),
   __reducerSchema("upsert_audience_membership", UpsertAudienceMembershipReducer),

@@ -34,14 +34,14 @@ def run(db, rec):
 def test_onboarding_scrapes_builds_graphs_then_marks_ready():
     db, rec = onboarding_db((7, "raycast", "queued"), (8, "linear", "ready")), Recorder()
     assert run(db, rec) == 1
-    assert db.reducers("claim_onboarding") == [(7,)]
+    assert db.reducers("claim_onboarding") == [(7, 2)]  # (id, worker version)
     stages = [a[1] for a in db.reducers("set_onboarding_progress")]
     assert stages == ["scraping", "twins", "graph", "ready"]
     run_id = db.reducers("set_onboarding_progress")[0][3]
     assert run_id == "onboard-7-raycast"
     assert db.reducers("set_onboarding_progress")[1][2] == "42"
     (_, handle, kw), (_, _, bkw), edges, after = rec.calls
-    assert handle == "raycast" and kw["run_id"] == run_id and kw["max_new_timelines"] == LIVE_TIMELINES
+    assert handle == "raycast" and kw["run_id"] == run_id and kw["max_new_timelines"] == max(LIVE_TIMELINES, LIVE_TWINS)
     assert bkw["limit"] == LIVE_TWINS and bkw["richest_first"] and bkw["skip_existing"]
     assert edges == ("edges", "raycast") and after == ("after_ready", "raycast", 120)
 

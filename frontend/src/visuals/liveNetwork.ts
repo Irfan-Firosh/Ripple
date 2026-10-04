@@ -92,6 +92,7 @@ function earliestArrivals(count: number, sourceId: number, edges: CascadeEdge[])
   return [...best.values()].sort((x, y) => x.at - y.at);
 }
 
+const INTEREST_BRIDGE = 0.4; // twins rate a real second interest 0.4-0.5 (about 1 in 4 people)
 const affinityIn = (m: AudienceMember, slug: string) => m.niches.find(n => n.slug === slug)?.affinity ?? 0;
 
 // Groups people into at most maxGroups real niches (never a catch-all bucket). The groups are the most common
@@ -188,6 +189,16 @@ export function buildLiveNetwork(audience: Audience, { maxNicheGroups = MAX_NICH
   for (const [u, v] of audience.links) {
     const a = idByUser.get(u), b = idByUser.get(v);
     if (a !== undefined && b !== undefined) edges.push({ a, b, bridge: true, delay: 0.8 });
+  }
+  // Shared interests across niches: someone whose strongest other interest is another cluster bridges to
+  // that cluster's hub (its most-followed member), so clusters show how the audience overlaps.
+  const hubOf = new Map<string, number>();
+  for (const n of nodes) { const slug = communities[n.community].slug; if (!hubOf.has(slug)) hubOf.set(slug, n.id); }
+  for (const n of nodes) {
+    const own = communities[n.community].slug;
+    const next = [...n.member.niches].sort((x, y) => y.affinity - x.affinity)
+      .find(x => x.slug !== own && x.affinity >= INTEREST_BRIDGE && hubOf.has(x.slug));
+    if (next) edges.push({ a: n.id, b: hubOf.get(next.slug)!, bridge: true, delay: 1.0 });
   }
 
   const arrivals = earliestArrivals(nodes.length, sourceId, edges);

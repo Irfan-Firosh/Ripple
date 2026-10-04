@@ -12,4 +12,5 @@ import {
 
 export default {
   experimentId: __t.u64(),
+  workerVersion: __t.u32(),
 };

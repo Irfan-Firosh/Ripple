@@ -579,6 +579,166 @@ const archivedProfile = table({ name: 'archived_profile', public: true }, {
   profileImageUrl: t.string(), verified: t.bool(),
 });
 
+// ---------- Campaign videos: Opus 5.5 writes a seek(t) film, rendered by backend/video ----------
+const campaignVideo = table({ name: 'campaign_video', public: true }, {
+  videoId: t.string().primaryKey(),
+  brand: t.string().index('btree'),
+  campaignId: t.string(), // '' when made outside a campaign
+  news: t.string(), goal: t.string(),
+  status: t.string().index('btree'), // queued | research | brief | voice | film | stills | revise | render | thumbnail | done | failed
+  progress: t.f64(), // 0..1
+  title: t.string(), videoUrl: t.string(), thumbnailUrl: t.string(),
+  durationS: t.f64(), scriptJson: t.string(), reviewJson: t.string(),
+  error: str(), requestedBy: t.identity(), createdAt: t.timestamp(), updatedAt: t.timestamp(),
+});
+
+// A video attached to one draft of a Lab experiment: the Lab tweet shows it as the post's media.
+const labDraftMedia = table({ name: 'lab_draft_media', public: true }, {
+  mediaId: t.string().primaryKey(), // `${experimentId}:${draft}`
+  experimentId: t.u64().index('btree'),
+  draft: t.string(), // A | B
+  videoId: t.string(),
+  createdAt: t.timestamp(),
+});
+
+// One row per campaign that follows the app flow: concepts -> testing (Lab) -> approved -> shipped (posted to X).
+const campaignFlow = table({ name: 'campaign_flow', public: true }, {
+  campaignId: t.string().primaryKey(), // creative campaign id, or `import-...` for imported drafts
+  brand: t.string().index('btree'),
+  source: t.string(), // generate | import
+  stage: t.string(), // concepts | testing | approved | shipped
+  draftA: t.string(), draftB: t.string(), // imported drafts (generated concepts live in ad_variant)
+  experimentId: t.u64(), // 0 until tested in the Lab
+  videoId: t.string(), winnerText: t.string(),
+  requestedBy: t.identity().index('btree'),
+  createdAt: t.timestamp(), updatedAt: t.timestamp(), shippedAt: t.option(t.timestamp()),
+});
+
+// Each draft (A/B) of a campaign gets its own video; edits make new versions and move the draft's link.
+const campaignDraftVideo = table({ name: 'campaign_draft_video', public: true }, {
+  linkId: t.string().primaryKey(), // `${campaignId}:${draft}`
+  campaignId: t.string().index('btree'),
+  draft: t.string(), // A | B
+  videoId: t.string(),
+  updatedAt: t.timestamp(),
+});
+
+const videoEdit = table({ name: 'video_edit', public: true }, {
+  videoId: t.string().primaryKey(), // the new version (a campaign_video row)
+  parentId: t.string(),
+  instruction: t.string(),
+  beatsJson: t.string(), // [{on_screen, voiceover}] edited by the user ('' = unchanged)
+  createdAt: t.timestamp(),
+});
+
+// Real engagement anchor per brand: medians of its own recent posts and the scale from twin counts to real counts
+// (scale = real median / what the twins give the brand's typical post). Applied at the end of every cascade.
+const brandBaseline = table({ name: 'brand_baseline', public: true }, {
+  brandUserId: t.string().primaryKey(),
+  posts: t.u32(), // how many recent posts the medians come from
+  likes: t.f64(), reposts: t.f64(), replies: t.f64(), quotes: t.f64(), views: t.f64(), // real medians
+  likeScale: t.f64(), repostScale: t.f64(), replyScale: t.f64(), quoteScale: t.f64(), viewScale: t.f64(),
+  baselineRunId: t.string(), note: t.string(), updatedAt: t.timestamp(),
+});
+
+// A segment needs this many twins to brief (small but real; partly built audiences can still generate).
+const MIN_SEGMENT_TWINS = 1; // any niche with someone in it can be briefed (small niches must never block generation)
+
+// The actual tweet for each draft, written in the brand's voice from a concept headline + the company's recent facts.
+const draftCopy = table({ name: 'draft_copy', public: true }, {
+  copyId: t.string().primaryKey(), // `${campaignId}:${draft}`
+  campaignId: t.string().index('btree'),
+  draft: t.string(), // A | B
+  headline: t.string(), // the concept it expands
+  text: t.string(), // '' until written
+  status: t.string().index('btree'), // queued | writing | done | failed
+  error: str(),
+  requestedBy: t.identity(),
+  updatedAt: t.timestamp(),
+});
+
+// ---------- Ops (hidden /ops page) ----------
+// Identities allowed to change simulation settings from the browser (added by the publisher).
+const opsAdmin = table({ name: 'ops_admin', public: true }, {
+  identity: t.identity().primaryKey(),
+  note: t.string(),
+  addedAt: t.timestamp(),
+});
+
+// One row ('global'). scaleMode: 'linear' = counts x (brand followers / people simulated);
+// 'anchored' = brand_baseline scales (the brand's real median engagement). No row = anchored.
+const simSettings = table({ name: 'sim_settings', public: true }, {
+  key: t.string().primaryKey(),
+  twinsPerBrand: t.u32(), // twins the onboarding builds
+  followersScraped: t.u32(), // followers the onboarding scrapes
+  simTwins: t.u32(), // at most this many twins per simulation (0 = all)
+  scaleMode: t.string(),
+  fillReplies: t.u32(), // unused (kept so the live database keeps its schema); always 0
+  updatedAt: t.timestamp(),
+});
+
+// Unused (kept so the live database keeps its schema): nothing reads or writes it.
+const videoExpectation = table({ name: 'video_expectation', public: true }, {
+  videoId: t.string().primaryKey(),
+  likeMin: t.u32(), likeMax: t.u32(),
+  repostMin: t.u32(), repostMax: t.u32(),
+  updatedAt: t.timestamp(),
+});
+
+// How a run's counts were projected onto the real audience (written by start_cascade).
+const simProjection = table({ name: 'sim_projection', public: true }, {
+  runId: t.string().primaryKey(),
+  mode: t.string(), // linear | anchored | none
+  audience: t.u64(), // the brand's real follower count
+  simulated: t.u32(),
+  factor: t.f64(), // linear multiplier (1 when anchored)
+  videoId: t.string(), // '' unless a video expectation applied
+});
+
+// Ops switches: paused = workers stop and in-flight jobs fail; hidden = the app hides campaigns, Lab and audience maps.
+const opsState = table({ name: 'ops_state', public: true }, {
+  key: t.string().primaryKey(),
+  paused: t.bool(),
+  hidden: t.bool(),
+  updatedAt: t.timestamp(),
+});
+
+// Hide = a clean slate from this moment: the app drops campaigns, experiments and brand audiences created before `since`
+// (anything created after it shows normally). The row exists only while hidden.
+const opsHidden = table({ name: 'ops_hidden', public: true }, {
+  key: t.string().primaryKey(),
+  since: t.timestamp(),
+});
+
+// Campaign video settings from /ops: max film length (the script, voiceover and cut follow it) and the ElevenLabs voice.
+const videoSettings = table({ name: 'video_settings', public: true }, {
+  key: t.string().primaryKey(),
+  maxSeconds: t.u32(),
+  voiceId: t.string(),
+  updatedAt: t.timestamp(),
+});
+
+// Campaign video mode from /ops: generate (default), off (no videos), or reuse existing videos for every new draft
+// (reuseA for draft A, reuseB for draft B; an empty reuseB reuses A's video for both) - for demoing one product.
+const videoMode = table({ name: 'video_mode', public: true }, {
+  key: t.string().primaryKey(),
+  mode: t.string(),
+  reuseA: t.string(),
+  reuseB: t.string(),
+  updatedAt: t.timestamp(),
+});
+
+// "Build N more twins for @brand" requests from /ops; the onboarding worker serves them.
+const twinTopup = table({ name: 'twin_topup', public: true }, {
+  topupId: t.u64().primaryKey().autoInc(),
+  brand: t.string(),
+  count: t.u32(),
+  status: t.string().index('btree'), // queued | running | done | failed
+  error: str(),
+  createdAt: t.timestamp(),
+  updatedAt: t.timestamp(),
+});
+
 const spacetimedb = schema({
   audienceSnapshot,
   archivedProfile,
@@ -619,6 +779,22 @@ const spacetimedb = schema({
   creativeBrief,
   adVariant,
   creativeJob,
+  campaignVideo,
+  labDraftMedia,
+  campaignFlow,
+  campaignDraftVideo,
+  videoEdit,
+  brandBaseline,
+  draftCopy,
+  opsAdmin,
+  simSettings,
+  videoExpectation,
+  simProjection,
+  twinTopup,
+  opsState,
+  opsHidden,
+  videoSettings,
+  videoMode,
 });
 export default spacetimedb;
 
@@ -688,6 +864,31 @@ export const resetImportedAudiences = spacetimedb.reducer({}, ctx => {
 });
 
 const RUN_STATUSES = ['pending', 'running', 'completed', 'partial', 'failed'];
+
+// Remove stale, archived twin links without disturbing Scweet's new live imports.
+export const retireArchivedAudience = spacetimedb.reducer({ brand: t.string() }, (ctx, { brand }) => {
+  requireAdmin(ctx);
+  const user = [...ctx.db.xUser.iter()].find(r => r.username === brand);
+  if (!user) throw new SenderError('unknown brand');
+  if (![...ctx.db.audienceSnapshot.iter()].some(r => r.brandUserId === user.userId)) throw new SenderError('archive the audience first');
+  if ([...ctx.db.audienceMembership.iter()].some(r => r.brandUserId === user.userId)
+    || [...ctx.db.labExperiment.iter()].some(r => r.brand === brand && ['queued', 'running'].includes(r.status))) {
+    throw new SenderError('cannot retire a live audience or active experiment');
+  }
+  const links = [...ctx.db.twinAudience.iter()].filter(r => r.brandUserId === user.userId);
+  const ids = new Set([user.userId, ...links.map(r => r.userId)]);
+  if ([...ids].some(id => !ctx.db.archivedProfile.userId.find(id))) throw new SenderError('archive every profile first');
+  if ([...ctx.db.xPost.iter()].some(r => ids.has(r.authorUserId))) throw new SenderError('use the full archive and reset for audiences with source posts');
+  for (const r of links) ctx.db.twinAudience.twinAudienceId.delete(r.twinAudienceId);
+  for (const r of [...ctx.db.audienceEdge.iter()].filter(r => r.brandUserId === user.userId)) ctx.db.audienceEdge.edgeId.delete(r.edgeId);
+  for (const id of ids) {
+    if ([...ctx.db.twinAudience.iter()].some(r => r.userId === id)
+      || [...ctx.db.audienceMembership.iter()].some(r => r.followerUserId === id || r.brandUserId === id)) continue;
+    for (const r of [...ctx.db.twinNiche.iter()].filter(r => r.userId === id)) ctx.db.twinNiche.twinNicheId.delete(r.twinNicheId);
+    ctx.db.twin.userId.delete(id);
+    ctx.db.xUser.userId.delete(id);
+  }
+});
 
 export const init = spacetimedb.init(ctx => {
   ctx.db.admin.insert({ identity: ctx.sender });
@@ -1010,6 +1211,21 @@ type SignalP = Record<Signal, number>;
 // A follower's repost/quote (a) gives their audience neighbours who haven't acted another chance (social proof) and
 // (b) reaches their own followers outside the audience: REPOST_VIEW_RATE of them see it and act at OUT_OF_NETWORK x the
 // audience's average rate; outside reposts compound generation by generation until nobody new reposts.
+// Add `extra` outside engagement for one signal to the replay ticks, in proportion to each tick's views, so the live
+// counters climb to the anchored total instead of jumping at the end.
+function spreadExtra(ticks: OutsideTick[], s: Signal | 'view', extra: number, lastTick: number) {
+  if (extra <= 0) return;
+  if (!ticks.length) ticks.push({ tick: Math.max(1, lastTick), views: 0, counts: { like: 0, repost: 0, reply: 0, quote: 0 } });
+  const weights = ticks.map(t => t.views + 1);
+  const sum = weights.reduce((a, b) => a + b, 0);
+  let left = extra;
+  ticks.forEach((t, i) => {
+    const add = i === ticks.length - 1 ? left : Math.min(left, Math.round(extra * weights[i] / sum));
+    left -= add;
+    if (s === 'view') t.views += add; else t.counts[s] += add;
+  });
+}
+
 const REPOST_VIEW_RATE = 0.1;
 const OUT_OF_NETWORK = 0.5;
 const MAX_GENERATIONS = 20;
@@ -1109,6 +1325,7 @@ export const createSimRun = spacetimedb.reducer(
   { runId: t.string(), brandUserId: t.string(), draft: t.string(), people: t.u32() },
   (ctx, { runId, brandUserId, draft, people }) => {
     requireAdmin(ctx);
+    notPaused(ctx);
     if (ctx.db.simRun.runId.find(runId)) throw new SenderError(`sim run ${runId} already exists`);
     if (!draft.trim() || draft.length > MAX_DRAFT_SIM) throw new SenderError(`draft must be 1..${MAX_DRAFT_SIM} chars`);
     ctx.db.simRun.insert({
@@ -1135,10 +1352,36 @@ export const setSimProbs = spacetimedb.reducer(
   }
 );
 
+type Projection = { scale: Record<Signal | 'view', number>; seeRate: number };
+// Linear views: a follower sees the post at the brand's real reach rate (median views / followers, else DEFAULT_SEE_RATE);
+// reposts and quotes add the outside reach the cascade simulates.
+const DEFAULT_SEE_RATE = 0.3;
+
+// Linear: counts x (brand followers / people simulated). Anchored: the brand's real median engagement (brand_baseline).
+function projectionFor(ctx: Ctx, run: Row<'simRun'>, runId: string, simulated: number): Projection {
+  const settings = ctx.db.simSettings.key.find('global');
+  const audienceSize = Number(ctx.db.xUser.userId.find(run.brandUserId)?.followersCount ?? 0);
+  const base = ctx.db.brandBaseline.brandUserId.find(run.brandUserId);
+  const ones = { like: 1, repost: 1, reply: 1, quote: 1, view: 1 };
+  let mode = 'none', factor = 1, scale: Record<Signal | 'view', number> = ones;
+  if (settings?.scaleMode === 'linear' && audienceSize > 0 && simulated > 0) {
+    mode = 'linear'; factor = Math.max(1, audienceSize / simulated);
+    scale = { like: factor, repost: factor, reply: factor, quote: factor, view: factor };
+  } else if (base) {
+    mode = 'anchored';
+    scale = { like: base.likeScale, repost: base.repostScale, reply: base.replyScale, quote: base.quoteScale, view: base.viewScale };
+  }
+  const row = { runId, mode, audience: BigInt(audienceSize), simulated, factor, videoId: '' };
+  if (ctx.db.simProjection.runId.find(runId)) ctx.db.simProjection.runId.update(row); else ctx.db.simProjection.insert(row);
+  const seeRate = mode !== 'linear' ? 1 : Math.min(0.9, Math.max(0.05, base && audienceSize ? base.views / audienceSize : DEFAULT_SEE_RATE));
+  return { scale, seeRate };
+}
+
 export const startCascade = spacetimedb.reducer(
   { runId: t.string(), trials: t.u32() },
   (ctx, { runId, trials }) => {
     requireAdmin(ctx);
+    notPaused(ctx);
     const run = ctx.db.simRun.runId.find(runId);
     if (!run) throw new SenderError(`unknown sim run ${runId}`);
     if (run.status !== 'scoring') throw new SenderError(`sim run ${runId} already ${run.status}`);
@@ -1180,16 +1423,29 @@ export const startCascade = spacetimedb.reducer(
     const sums = { followers: { like: 0, repost: 0, reply: 0, quote: 0, view: 0 }, outside: { like: 0, repost: 0, reply: 0, quote: 0, view: 0 } };
     const replay = { seen: new Map<string, number>(), events: [] as TrialEvent[], outside: [] as OutsideTick[] };
     let replayMaxTick = 0;
+    // The twins are a sample of the audience: project each trial onto the real audience (see projectionFor).
+    const proj = projectionFor(ctx, run, runId, ids.length);
+    const scale = proj.scale;
     for (let trial = 0; trial < n; trial++) {
       const r = signalTrial(rand, audience, trial === 0 ? replay : undefined);
+      // Anchored: the brand's view scale already encodes reach. Linear: this trial's reach varies around the brand's rate
+      // (continuous, so a small sample of twins does not snap every draft onto the same few view counts).
+      const seen = proj.seeRate < 1 ? Math.round(ids.length * Math.min(1, proj.seeRate * (0.6 + 0.8 * rand())) * 100) / 100 : ids.length;
+      const viewTarget = Math.round((seen + r.outsideViews) * scale.view);
       let outsideEngaged = 0;
       for (const s of SIGNALS) {
-        total[s].push(r.followerCounts[s] + r.outsideCounts[s]);
-        sums.followers[s] += r.followerCounts[s]; sums.outside[s] += r.outsideCounts[s];
-        outsideEngaged += r.outsideCounts[s];
+        const target = Math.round((r.followerCounts[s] + r.outsideCounts[s]) * scale[s]);
+        const outside = Math.max(0, target - r.followerCounts[s]); // the unsampled audience shows up as outside reach
+        total[s].push(r.followerCounts[s] + outside);
+        sums.followers[s] += r.followerCounts[s]; sums.outside[s] += outside;
+        outsideEngaged += outside;
+        if (trial === 0) spreadExtra(replay.outside, s, outside - r.outsideCounts[s], r.lastTick);
       }
-      total.view.push(ids.length + r.outsideViews);
-      sums.followers.view += ids.length; sums.outside.view += r.outsideViews;
+      const seenWhole = Math.round(seen);
+      const outsideViews = Math.max(0, viewTarget - seenWhole);
+      if (trial === 0) spreadExtra(replay.outside, 'view', outsideViews - r.outsideViews, r.lastTick);
+      total.view.push(seenWhole + outsideViews);
+      sums.followers.view += seenWhole; sums.outside.view += outsideViews;
       reach.push(r.acted.size + outsideEngaged); seenTotals.push(ids.length + r.outsideViews);
       for (const [id, acts] of r.acted) {
         engagedCount.set(id, (engagedCount.get(id) ?? 0) + 1);
@@ -1338,8 +1594,10 @@ function labRow(ctx: Ctx, experimentId: bigint) {
   return row;
 }
 
-export const claimLabExperiment = spacetimedb.reducer({ experimentId: t.u64() }, (ctx, { experimentId }) => {
+export const claimLabExperiment = spacetimedb.reducer({ experimentId: t.u64(), workerVersion: t.u32() }, (ctx, { experimentId, workerVersion }) => {
   requireAdmin(ctx);
+  requireWorker(workerVersion);
+  notPaused(ctx);
   const row = labRow(ctx, experimentId);
   if (row.status !== 'queued') throw new SenderError(`experiment ${experimentId} already claimed`);
   ctx.db.labExperiment.experimentId.update({ ...row, status: 'running' });
@@ -1357,6 +1615,7 @@ export const finishLabExperiment = spacetimedb.reducer(
   { experimentId: t.u64(), winner: t.string(), lift: t.f64() },
   (ctx, { experimentId, winner, lift }) => {
     requireAdmin(ctx);
+    notPaused(ctx);
     if (!['A', 'B', 'tie'].includes(winner)) throw new SenderError('winner must be A, B or tie');
     ctx.db.labExperiment.experimentId.update({ ...labRow(ctx, experimentId), status: 'done', winner, lift });
   }
@@ -1441,8 +1700,10 @@ export const updateOnboardingBrief = spacetimedb.reducer(
   }
 );
 
-export const claimOnboarding = spacetimedb.reducer({ onboardingId: t.u64() }, (ctx, { onboardingId }) => {
+export const claimOnboarding = spacetimedb.reducer({ onboardingId: t.u64(), workerVersion: t.u32() }, (ctx, { onboardingId, workerVersion }) => {
   requireAdmin(ctx);
+  requireWorker(workerVersion);
+  notPaused(ctx);
   const row = onboardingRow(ctx, onboardingId);
   if (row.status !== 'queued') throw new SenderError(`onboarding ${onboardingId} already claimed`);
   ctx.db.onboarding.onboardingId.update({ ...row, status: 'scraping', updatedAt: ctx.timestamp });
@@ -1452,6 +1713,7 @@ export const setOnboardingProgress = spacetimedb.reducer(
   { onboardingId: t.u64(), status: t.string(), brandUserId: t.string(), ingestionRunId: t.string(), twinRunId: t.string() },
   (ctx, a) => {
     requireAdmin(ctx);
+    notPaused(ctx);
     if (!ONBOARDING_STAGES.includes(a.status)) throw new SenderError(`status must be one of ${ONBOARDING_STAGES.join(', ')}`);
     const row = onboardingRow(ctx, a.onboardingId);
     ctx.db.onboarding.onboardingId.update({
@@ -1581,7 +1843,7 @@ export const createCampaign = spacetimedb.reducer(
     const members = mainSegmentMembers(ctx, args.brandUserId);
     for (const segment of args.segments) {
       if (!ctx.db.niche.slug.find(segment) || ['politics_society', 'other'].includes(segment)) throw new SenderError('unsupported audience segment');
-      if ((members.get(segment)?.length ?? 0) < 15) throw new SenderError('each segment needs at least 15 twins');
+      if ((members.get(segment)?.length ?? 0) < MIN_SEGMENT_TWINS) throw new SenderError(`each segment needs at least ${MIN_SEGMENT_TWINS} twins`);
     }
     // The first request can contain four brief-only jobs; another campaign cannot
     // use that exception to bypass the sender concurrency cap.
@@ -1688,7 +1950,7 @@ export const publishBrief = spacetimedb.reducer({ jobId: t.u64(), ...creativeBri
   if (job.kind !== 'brief' || job.campaignId !== fields.campaignId || job.targetId !== fields.briefId) throw new SenderError('brief does not match claimed job');
   if (!parent.segments.includes(fields.segment) || fields.briefId !== `${fields.campaignId}:${fields.segment}:1` || fields.version !== 1) throw new SenderError('invalid initial brief identity');
   validateBriefCopy(fields);
-  if (!Number.isFinite(fields.share) || fields.share < 0 || fields.share > 1 || fields.twinCount < 15) throw new SenderError('invalid audience count or share');
+  if (!Number.isFinite(fields.share) || fields.share < 0 || fields.share > 1 || fields.twinCount < MIN_SEGMENT_TWINS) throw new SenderError('invalid audience count or share');
   const members = new Set(mainSegmentMembers(ctx, parent.brandUserId).get(fields.segment) ?? []);
   if (fields.twinCount !== members.size) throw new SenderError('brief twin count does not match segment');
   for (const themes of [fields.keyInterests, fields.avoid]) {
@@ -1747,8 +2009,16 @@ export const upsertVariant = spacetimedb.reducer(adVariantFields, (ctx, fields) 
     ctx.db.adVariant.insert({ ...fields, parentVariantId: fields.parentVariantId, instruction: fields.instruction, imageUrl: fields.imageUrl, xaiFileId: fields.xaiFileId, error: fields.error, starred: false, approved: false, createdAt: ctx.timestamp, updatedAt: ctx.timestamp } as Row<'adVariant'>);
   }
 });
-export const claimCreativeJob = spacetimedb.reducer({ jobId: t.u64() }, (ctx, { jobId }) => {
+// Workers must say which code they run: older workers (no version) can no longer claim, so a stale machine sharing
+// the backend login cannot grab campaigns and fail them with errors the current code has already fixed.
+const WORKER_VERSION = 2;
+function requireWorker(version: number) {
+  if (version < WORKER_VERSION) throw new SenderError(`worker is out of date (v${version}); pull the latest code and restart it`);
+}
+export const claimCreativeJob = spacetimedb.reducer({ jobId: t.u64(), workerVersion: t.u32() }, (ctx, { jobId, workerVersion }) => {
   requireAdmin(ctx); const row = ctx.db.creativeJob.jobId.find(jobId);
+  notPaused(ctx);
+  requireWorker(workerVersion);
   if (!row || row.status !== 'pending') throw new SenderError('creative job unavailable or already claimed');
   ctx.db.creativeJob.jobId.update({ ...row, status: 'running', claimedBy: ctx.sender, claimedAt: ctx.timestamp });
 });
@@ -1780,4 +2050,470 @@ export const resetStaleCreativeJobs = spacetimedb.reducer(ctx => {
   for (const row of [...ctx.db.creativeJob.status.filter('running')]) {
     if (!row.claimedAt || ctx.timestamp.microsSinceUnixEpoch - row.claimedAt.microsSinceUnixEpoch >= CREATIVE_LEASE_MICROS) ctx.db.creativeJob.jobId.update({ ...row, status: 'pending', claimedBy: undefined, claimedAt: undefined, error: undefined });
   }
+});
+
+// ---------- Campaign video reducers ----------
+const VIDEO_STAGES = ['research', 'brief', 'voice', 'film', 'stills', 'revise', 'render', 'thumbnail'];
+const MAX_VIDEO_TEXT = 600;
+
+function videoRow(ctx: Ctx, videoId: string) {
+  const row = ctx.db.campaignVideo.videoId.find(videoId);
+  if (!row) throw new SenderError(`unknown video ${videoId}`);
+  return row;
+}
+
+// Anyone can queue a video (the worker makes it); one open request per sender.
+export const requestCampaignVideo = spacetimedb.reducer(
+  { brand: t.string(), news: t.string(), goal: t.string(), campaignId: t.string() },
+  (ctx, a) => {
+    const brand = a.brand.trim().replace(/^@/, '');
+    if (!brand || brand.length > 60) throw new SenderError('enter a brand');
+    if (!a.news.trim() || a.news.length > MAX_VIDEO_TEXT) throw new SenderError(`describe the news in 1..${MAX_VIDEO_TEXT} characters`);
+    if (a.goal.length > 80) throw new SenderError('goal must be at most 80 characters');
+    const open = [...ctx.db.campaignVideo.iter()].filter(v => v.requestedBy.equals(ctx.sender) && v.status !== 'done' && v.status !== 'failed');
+    if (open.length) throw new SenderError('a video is already being made');
+    const videoId = `${brand.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${ctx.timestamp.microsSinceUnixEpoch}`;
+    ctx.db.campaignVideo.insert({
+      videoId, brand, campaignId: a.campaignId, news: a.news.trim(), goal: a.goal.trim(), status: 'queued', progress: 0,
+      title: '', videoUrl: '', thumbnailUrl: '', durationS: 0, scriptJson: '', reviewJson: '', error: undefined,
+      requestedBy: ctx.sender, createdAt: ctx.timestamp, updatedAt: ctx.timestamp,
+    } as Row<'campaignVideo'>);
+  }
+);
+
+// The worker (or the CLI) registers a video it is about to make, so CLI runs show up live too.
+export const startCampaignVideo = spacetimedb.reducer(
+  { videoId: t.string(), brand: t.string(), news: t.string(), goal: t.string(), campaignId: t.string(), workerVersion: t.u32() },
+  (ctx, a) => {
+    requireAdmin(ctx);
+    requireWorker(a.workerVersion);
+    notPaused(ctx);
+    const row = ctx.db.campaignVideo.videoId.find(a.videoId);
+    if (row) {
+      if (row.status !== 'queued') throw new SenderError(`video ${a.videoId} already claimed`);
+      ctx.db.campaignVideo.videoId.update({ ...row, status: 'research', progress: 0, updatedAt: ctx.timestamp });
+      return;
+    }
+    ctx.db.campaignVideo.insert({
+      videoId: a.videoId, brand: a.brand, campaignId: a.campaignId, news: a.news, goal: a.goal, status: 'research',
+      progress: 0, title: '', videoUrl: '', thumbnailUrl: '', durationS: 0, scriptJson: '', reviewJson: '',
+      error: undefined, requestedBy: ctx.sender, createdAt: ctx.timestamp, updatedAt: ctx.timestamp,
+    } as Row<'campaignVideo'>);
+  }
+);
+
+export const setCampaignVideoProgress = spacetimedb.reducer(
+  { videoId: t.string(), status: t.string(), progress: t.f64() },
+  (ctx, { videoId, status, progress }) => {
+    requireAdmin(ctx);
+    notPaused(ctx);
+    if (!VIDEO_STAGES.includes(status)) throw new SenderError(`status must be one of ${VIDEO_STAGES.join(', ')}`);
+    ctx.db.campaignVideo.videoId.update({ ...videoRow(ctx, videoId), status, progress: Math.min(1, Math.max(0, progress)), updatedAt: ctx.timestamp });
+  }
+);
+
+export const finishCampaignVideo = spacetimedb.reducer(
+  { videoId: t.string(), title: t.string(), videoUrl: t.string(), thumbnailUrl: t.string(), durationS: t.f64(),
+    scriptJson: t.string(), reviewJson: t.string() },
+  (ctx, a) => {
+    requireAdmin(ctx);
+    notPaused(ctx);
+    ctx.db.campaignVideo.videoId.update({ ...videoRow(ctx, a.videoId), status: 'done', progress: 1, title: a.title,
+      videoUrl: a.videoUrl, thumbnailUrl: a.thumbnailUrl, durationS: a.durationS, scriptJson: a.scriptJson,
+      reviewJson: a.reviewJson, error: undefined, updatedAt: ctx.timestamp });
+  }
+);
+
+export const failCampaignVideo = spacetimedb.reducer(
+  { videoId: t.string(), error: t.string() },
+  (ctx, { videoId, error }) => {
+    requireAdmin(ctx);
+    ctx.db.campaignVideo.videoId.update({ ...videoRow(ctx, videoId), status: 'failed', error: error.slice(0, 300), updatedAt: ctx.timestamp });
+  }
+);
+
+// Put a finished video on draft A or B of a Lab experiment (the experiment's requester or an admin).
+export const attachLabDraftMedia = spacetimedb.reducer(
+  { experimentId: t.u64(), draft: t.string(), videoId: t.string() },
+  (ctx, { experimentId, draft, videoId }) => {
+    const exp = ctx.db.labExperiment.experimentId.find(experimentId);
+    if (!exp) throw new SenderError(`unknown experiment ${experimentId}`);
+    if (!exp.requestedBy.equals(ctx.sender) && !ctx.db.admin.identity.find(ctx.sender)) throw new SenderError('not your experiment');
+    if (draft !== 'A' && draft !== 'B') throw new SenderError('draft must be A or B');
+    if (videoId === '') {
+      ctx.db.labDraftMedia.mediaId.delete(`${experimentId}:${draft}`);
+      return;
+    }
+    if (videoRow(ctx, videoId).status !== 'done') throw new SenderError('the video is not finished yet');
+    const row = { mediaId: `${experimentId}:${draft}`, experimentId, draft, videoId, createdAt: ctx.timestamp };
+    if (ctx.db.labDraftMedia.mediaId.find(row.mediaId)) ctx.db.labDraftMedia.mediaId.update(row);
+    else ctx.db.labDraftMedia.insert(row);
+  }
+);
+
+// ---------- Campaign flow reducers ----------
+const FLOW_STAGES = ['concepts', 'testing', 'approved', 'shipped'];
+const MAX_POST = 280;
+
+export const startCampaignFlow = spacetimedb.reducer(
+  { campaignId: t.string(), brand: t.string(), source: t.string(), draftA: t.string(), draftB: t.string() },
+  (ctx, a) => {
+    if (!a.campaignId.trim() || a.campaignId.length > 100) throw new SenderError('campaign id required');
+    if (!a.brand.trim() || a.brand.length > 60) throw new SenderError('brand required');
+    if (a.source !== 'generate' && a.source !== 'import') throw new SenderError('source must be generate or import');
+    if (a.source === 'import' && (!a.draftA.trim() || !a.draftB.trim())) throw new SenderError('import two drafts');
+    for (const d of [a.draftA, a.draftB]) if (d.length > MAX_POST) throw new SenderError(`drafts must be at most ${MAX_POST} characters`);
+    if (ctx.db.campaignFlow.campaignId.find(a.campaignId)) throw new SenderError('campaign already started');
+    ctx.db.campaignFlow.insert({
+      campaignId: a.campaignId, brand: a.brand.trim().replace(/^@/, ''), source: a.source, stage: 'concepts',
+      draftA: a.draftA.trim(), draftB: a.draftB.trim(), experimentId: 0n, videoId: '', winnerText: '',
+      requestedBy: ctx.sender, createdAt: ctx.timestamp, updatedAt: ctx.timestamp, shippedAt: undefined,
+    } as Row<'campaignFlow'>);
+  }
+);
+
+// Owner moves the campaign along; empty strings / 0 keep the current value.
+export const updateCampaignFlow = spacetimedb.reducer(
+  { campaignId: t.string(), stage: t.string(), experimentId: t.u64(), videoId: t.string(), winnerText: t.string() },
+  (ctx, a) => {
+    const row = ctx.db.campaignFlow.campaignId.find(a.campaignId);
+    if (!row) throw new SenderError('unknown campaign');
+    if (!row.requestedBy.equals(ctx.sender)) throw new SenderError('not your campaign');
+    if (a.stage && !FLOW_STAGES.includes(a.stage)) throw new SenderError(`stage must be one of ${FLOW_STAGES.join(', ')}`);
+    if (a.winnerText.length > MAX_POST) throw new SenderError(`the post must be at most ${MAX_POST} characters`);
+    if (a.experimentId && !ctx.db.labExperiment.experimentId.find(a.experimentId)) throw new SenderError('unknown experiment');
+    if (a.videoId && !ctx.db.campaignVideo.videoId.find(a.videoId)) throw new SenderError('unknown video');
+    const stage = a.stage || row.stage;
+    ctx.db.campaignFlow.campaignId.update({
+      ...row, stage, experimentId: a.experimentId || row.experimentId, videoId: a.videoId || row.videoId,
+      winnerText: a.winnerText || row.winnerText, updatedAt: ctx.timestamp,
+      shippedAt: stage === 'shipped' ? (row.shippedAt ?? ctx.timestamp) : row.shippedAt,
+    });
+  }
+);
+
+// ---------- Per-draft videos and video edits ----------
+const MAX_OPEN_VIDEOS = 6; // a few campaigns' drafts can queue; the workers take them in order
+
+function openVideos(ctx: Ctx) {
+  return [...ctx.db.campaignVideo.iter()].filter(v => v.requestedBy.equals(ctx.sender) && v.status !== 'done' && v.status !== 'failed');
+}
+
+function ownedFlow(ctx: Ctx, campaignId: string) {
+  const flow = ctx.db.campaignFlow.campaignId.find(campaignId);
+  if (!flow) throw new SenderError('unknown campaign');
+  if (!flow.requestedBy.equals(ctx.sender)) throw new SenderError('not your campaign');
+  return flow;
+}
+
+function linkDraft(ctx: Ctx, campaignId: string, draft: string, videoId: string) {
+  const row = { linkId: `${campaignId}:${draft}`, campaignId, draft, videoId, updatedAt: ctx.timestamp };
+  if (ctx.db.campaignDraftVideo.linkId.find(row.linkId)) ctx.db.campaignDraftVideo.linkId.update(row);
+  else ctx.db.campaignDraftVideo.insert(row);
+  const exp = ctx.db.campaignFlow.campaignId.find(campaignId)?.experimentId ?? 0n;
+  const media = `${exp}:${draft}`;
+  if (exp && ctx.db.labDraftMedia.mediaId.find(media)) ctx.db.labDraftMedia.mediaId.delete(media); // re-attached when done
+}
+
+function queueVideo(ctx: Ctx, base: { brand: string; campaignId: string; news: string; goal: string }, suffix: string) {
+  if (openVideos(ctx).length >= MAX_OPEN_VIDEOS) throw new SenderError('a few videos are already queued');
+  const videoId = `${base.brand.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${ctx.timestamp.microsSinceUnixEpoch}-${suffix}`;
+  ctx.db.campaignVideo.insert({
+    videoId, brand: base.brand, campaignId: base.campaignId, news: base.news, goal: base.goal, status: 'queued', progress: 0,
+    title: '', videoUrl: '', thumbnailUrl: '', durationS: 0, scriptJson: '', reviewJson: '', error: undefined,
+    requestedBy: ctx.sender, createdAt: ctx.timestamp, updatedAt: ctx.timestamp,
+  } as Row<'campaignVideo'>);
+  return videoId;
+}
+
+export const requestDraftVideo = spacetimedb.reducer(
+  { campaignId: t.string(), draft: t.string(), news: t.string(), goal: t.string() },
+  (ctx, a) => {
+    const flow = ownedFlow(ctx, a.campaignId);
+    if (a.draft !== 'A' && a.draft !== 'B') throw new SenderError('draft must be A or B');
+    if (!a.news.trim() || a.news.length > MAX_VIDEO_TEXT) throw new SenderError(`describe the post in 1..${MAX_VIDEO_TEXT} characters`);
+    const existing = ctx.db.campaignDraftVideo.linkId.find(`${a.campaignId}:${a.draft}`);
+    if (existing && ctx.db.campaignVideo.videoId.find(existing.videoId)?.status !== 'failed') return; // already has one
+    const mode = ctx.db.videoMode.key.find('global');
+    if (mode?.mode === 'off') return; // /ops switched video generation off
+    if (mode?.mode === 'reuse') {
+      const reuse = (a.draft === 'B' && mode.reuseB) || mode.reuseA;
+      if (reuse && ctx.db.campaignVideo.videoId.find(reuse)?.status === 'done') { linkDraft(ctx, a.campaignId, a.draft, reuse); return; }
+    }
+    const videoId = queueVideo(ctx, { brand: flow.brand, campaignId: a.campaignId, news: a.news.trim(), goal: a.goal.trim() }, a.draft.toLowerCase());
+    linkDraft(ctx, a.campaignId, a.draft, videoId);
+  }
+);
+
+export const requestVideoEdit = spacetimedb.reducer(
+  { parentId: t.string(), instruction: t.string(), beatsJson: t.string() },
+  (ctx, a) => {
+    const parent = videoRow(ctx, a.parentId);
+    if (!parent.requestedBy.equals(ctx.sender)) throw new SenderError('not your video');
+    if (parent.status !== 'done') throw new SenderError('the video is not finished yet');
+    if (a.instruction.length > MAX_VIDEO_TEXT) throw new SenderError(`instructions must be at most ${MAX_VIDEO_TEXT} characters`);
+    if (a.beatsJson.length > 4000) throw new SenderError('edited script is too long');
+    if (!a.instruction.trim() && !a.beatsJson.trim()) throw new SenderError('say what to change');
+    const videoId = queueVideo(ctx, parent, 'edit');
+    ctx.db.videoEdit.insert({ videoId, parentId: parent.videoId, instruction: a.instruction.trim(), beatsJson: a.beatsJson, createdAt: ctx.timestamp });
+    for (const link of [...ctx.db.campaignDraftVideo.campaignId.filter(parent.campaignId)]) {
+      if (link.videoId === parent.videoId) linkDraft(ctx, link.campaignId, link.draft, videoId);
+    }
+  }
+);
+
+// ---------- Brand engagement anchor ----------
+export const setBrandBaseline = spacetimedb.reducer(
+  { brandUserId: t.string(), posts: t.u32(), likes: t.f64(), reposts: t.f64(), replies: t.f64(), quotes: t.f64(),
+    views: t.f64(), likeScale: t.f64(), repostScale: t.f64(), replyScale: t.f64(), quoteScale: t.f64(), viewScale: t.f64(),
+    baselineRunId: t.string(), note: t.string() },
+  (ctx, a) => {
+    requireAdmin(ctx);
+    for (const v of [a.likeScale, a.repostScale, a.replyScale, a.quoteScale, a.viewScale]) {
+      if (!(v >= 0 && v <= 100000)) throw new SenderError('scales must be in [0, 100000]');
+    }
+    const row = { ...a, note: a.note.slice(0, 300), updatedAt: ctx.timestamp };
+    if (ctx.db.brandBaseline.brandUserId.find(a.brandUserId)) ctx.db.brandBaseline.brandUserId.update(row);
+    else ctx.db.brandBaseline.insert(row);
+  }
+);
+
+export const clearBrandBaseline = spacetimedb.reducer({ brandUserId: t.string() }, (ctx, { brandUserId }) => {
+  requireAdmin(ctx);
+  ctx.db.brandBaseline.brandUserId.delete(brandUserId);
+});
+
+// ---------- Draft tweet copy ----------
+export const requestDraftCopy = spacetimedb.reducer(
+  { campaignId: t.string(), draft: t.string(), headline: t.string() },
+  (ctx, a) => {
+    ownedFlow(ctx, a.campaignId);
+    if (a.draft !== 'A' && a.draft !== 'B') throw new SenderError('draft must be A or B');
+    if (!a.headline.trim() || a.headline.length > 200) throw new SenderError('headline must be 1..200 characters');
+    const copyId = `${a.campaignId}:${a.draft}`;
+    const prev = ctx.db.draftCopy.copyId.find(copyId);
+    if (prev && prev.status !== 'failed' && prev.headline === a.headline.trim()) return; // already written / writing
+    const row = { copyId, campaignId: a.campaignId, draft: a.draft, headline: a.headline.trim(), text: '', status: 'queued',
+                  error: undefined, requestedBy: ctx.sender, updatedAt: ctx.timestamp };
+    if (prev) ctx.db.draftCopy.copyId.update(row as Row<'draftCopy'>); else ctx.db.draftCopy.insert(row as Row<'draftCopy'>);
+  }
+);
+
+export const setDraftCopy = spacetimedb.reducer(
+  { copyId: t.string(), status: t.string(), text: t.string(), error: t.string(), workerVersion: t.u32() },
+  (ctx, a) => {
+    requireAdmin(ctx);
+    requireWorker(a.workerVersion);
+    if (a.status !== 'failed') notPaused(ctx);
+    const row = ctx.db.draftCopy.copyId.find(a.copyId);
+    if (!row) throw new SenderError('unknown draft copy');
+    if (!['writing', 'done', 'failed'].includes(a.status)) throw new SenderError('bad status');
+    if (a.status === 'writing' && row.status !== 'queued') throw new SenderError('already claimed');
+    ctx.db.draftCopy.copyId.update({ ...row, status: a.status, text: a.text.slice(0, MAX_POST),
+      error: a.error ? a.error.slice(0, 300) : undefined, updatedAt: ctx.timestamp });
+  }
+);
+
+// ---------- Ops (hidden /ops page) ----------
+const SCALE_MODES = ['linear', 'anchored'];
+const MAX_TWINS_SETTING = 500;
+const MAX_FOLLOWERS_SETTING = 5000;
+
+// /ops is open to anyone with the site (owner's choice: internal tool). Kept as a hook in case it needs locking again.
+function requireOps(_ctx: Ctx) {}
+
+export const addOpsAdmin = spacetimedb.reducer({ identity: t.identity(), note: t.string() }, (ctx, a) => {
+  requireAdmin(ctx);
+  const row = { identity: a.identity, note: a.note.slice(0, 120), addedAt: ctx.timestamp };
+  if (ctx.db.opsAdmin.identity.find(a.identity)) ctx.db.opsAdmin.identity.update(row); else ctx.db.opsAdmin.insert(row);
+});
+
+export const removeOpsAdmin = spacetimedb.reducer({ identity: t.identity() }, (ctx, { identity }) => {
+  requireAdmin(ctx);
+  ctx.db.opsAdmin.identity.delete(identity);
+});
+
+export const setSimSettings = spacetimedb.reducer(
+  { twinsPerBrand: t.u32(), followersScraped: t.u32(), simTwins: t.u32(), scaleMode: t.string() },
+  (ctx, a) => {
+    requireOps(ctx);
+    if (a.twinsPerBrand < 5 || a.twinsPerBrand > MAX_TWINS_SETTING) throw new SenderError(`twins per brand must be 5..${MAX_TWINS_SETTING}`);
+    if (a.followersScraped < 20 || a.followersScraped > MAX_FOLLOWERS_SETTING) throw new SenderError(`followers scraped must be 20..${MAX_FOLLOWERS_SETTING}`);
+    if (a.simTwins > MAX_TWINS_SETTING) throw new SenderError(`simulated twins must be 0..${MAX_TWINS_SETTING}`);
+    if (!SCALE_MODES.includes(a.scaleMode)) throw new SenderError('scale mode must be linear or anchored');
+    const row = { key: 'global', ...a, fillReplies: 0, updatedAt: ctx.timestamp };
+    if (ctx.db.simSettings.key.find('global')) ctx.db.simSettings.key.update(row); else ctx.db.simSettings.insert(row);
+  }
+);
+
+export const requestTwinTopup = spacetimedb.reducer({ brand: t.string(), count: t.u32() }, (ctx, a) => {
+  requireOps(ctx);
+  const brand = a.brand.trim().replace(/^@/, '').toLowerCase();
+  if (!/^[a-z0-9_]{1,15}$/.test(brand)) throw new SenderError('invalid X handle');
+  if (a.count < 1 || a.count > MAX_TWINS_SETTING) throw new SenderError(`count must be 1..${MAX_TWINS_SETTING}`);
+  ctx.db.twinTopup.insert({ topupId: 0n, brand, count: a.count, status: 'queued', error: undefined,
+                            createdAt: ctx.timestamp, updatedAt: ctx.timestamp } as Row<'twinTopup'>);
+});
+
+export const setTwinTopup = spacetimedb.reducer({ topupId: t.u64(), status: t.string(), error: t.string(), workerVersion: t.u32() }, (ctx, a) => {
+  requireAdmin(ctx);
+  requireWorker(a.workerVersion);
+  if (a.status !== 'failed') notPaused(ctx);
+  const row = ctx.db.twinTopup.topupId.find(a.topupId);
+  if (!row) throw new SenderError('unknown top-up');
+  if (!['running', 'done', 'failed'].includes(a.status)) throw new SenderError('bad status');
+  if (a.status === 'running' && row.status !== 'queued') throw new SenderError('already claimed');
+  ctx.db.twinTopup.topupId.update({ ...row, status: a.status, error: a.error ? a.error.slice(0, 300) : undefined, updatedAt: ctx.timestamp });
+});
+
+const PAUSED = 'Paused from ops';
+
+// Worker writes (claims, progress, finishes) are refused while paused, so no worker anywhere keeps going.
+function notPaused(ctx: Ctx) {
+  if (ctx.db.opsState.key.find('global')?.paused) throw new SenderError('workers are paused from ops');
+}
+
+// Everything queued or in flight fails with a clear reason; resuming does not restart it (run it again).
+function stopInFlight(ctx: Ctx) {
+  const now = ctx.timestamp;
+  for (const r of [...ctx.db.labExperiment.iter()]) {
+    if (r.status === 'queued' || r.status === 'running') ctx.db.labExperiment.experimentId.update({ ...r, status: 'failed', error: PAUSED });
+  }
+  for (const r of [...ctx.db.onboarding.iter()]) {
+    if (r.status !== 'ready' && r.status !== 'failed') ctx.db.onboarding.onboardingId.update({ ...r, status: 'failed', error: PAUSED, updatedAt: now });
+  }
+  for (const r of [...ctx.db.campaignVideo.iter()]) {
+    if (r.status !== 'done' && r.status !== 'failed') ctx.db.campaignVideo.videoId.update({ ...r, status: 'failed', error: PAUSED, updatedAt: now });
+  }
+  for (const r of [...ctx.db.draftCopy.iter()]) {
+    if (r.status === 'queued' || r.status === 'writing') ctx.db.draftCopy.copyId.update({ ...r, status: 'failed', error: PAUSED, updatedAt: now });
+  }
+  for (const r of [...ctx.db.twinTopup.iter()]) {
+    if (r.status === 'queued' || r.status === 'running') ctx.db.twinTopup.topupId.update({ ...r, status: 'failed', error: PAUSED, updatedAt: now });
+  }
+  for (const r of [...ctx.db.creativeJob.iter()]) {
+    if (r.status === 'pending' || r.status === 'running') ctx.db.creativeJob.jobId.update({ ...r, status: 'failed', error: PAUSED, finishedAt: now });
+  }
+}
+
+export const setOpsState = spacetimedb.reducer({ paused: t.bool(), hidden: t.bool() }, (ctx, a) => {
+  requireOps(ctx);
+  const prev = ctx.db.opsState.key.find('global');
+  const row = { key: 'global', paused: a.paused, hidden: a.hidden, updatedAt: ctx.timestamp };
+  if (prev) ctx.db.opsState.key.update(row); else ctx.db.opsState.insert(row);
+  if (a.paused && !prev?.paused) stopInFlight(ctx);
+  if (a.hidden && !prev?.hidden) {
+    ctx.db.opsHidden.key.delete('global');
+    ctx.db.opsHidden.insert({ key: 'global', since: ctx.timestamp });
+  }
+  if (!a.hidden) ctx.db.opsHidden.key.delete('global');
+});
+
+// ---------- Purge one brand ----------
+// Removes everything a brand left behind so it can be onboarded from zero: onboarding + ingestion/twin-build runs, its
+// audience (followers shared with another brand are kept), posts, twins, graph, campaigns, Lab runs, videos, snapshots.
+function purgeRuns(ctx: Ctx, runIds: Set<string>) {
+  for (const r of [...ctx.db.simProb.iter()]) if (runIds.has(r.runId)) ctx.db.simProb.simProbId.delete(r.simProbId);
+  for (const r of [...ctx.db.simNode.iter()]) if (runIds.has(r.runId)) ctx.db.simNode.simNodeId.delete(r.simNodeId);
+  for (const r of [...ctx.db.cascadeReplay.iter()]) if (runIds.has(r.runId)) ctx.db.cascadeReplay.scheduledId.delete(r.scheduledId);
+  for (const r of [...ctx.db.simSignalProb.iter()]) if (runIds.has(r.runId)) ctx.db.simSignalProb.simSignalProbId.delete(r.simSignalProbId);
+  for (const r of [...ctx.db.simSignal.iter()]) if (runIds.has(r.runId)) ctx.db.simSignal.simSignalId.delete(r.simSignalId);
+  for (const r of [...ctx.db.simNodeSignal.iter()]) if (runIds.has(r.runId)) ctx.db.simNodeSignal.simNodeSignalId.delete(r.simNodeSignalId);
+  for (const r of [...ctx.db.simEvent.iter()]) if (runIds.has(r.runId)) ctx.db.simEvent.simEventId.delete(r.simEventId);
+  for (const r of [...ctx.db.simSignalSource.iter()]) if (runIds.has(r.runId)) ctx.db.simSignalSource.simSignalSourceId.delete(r.simSignalSourceId);
+  for (const r of [...ctx.db.simOutsideTick.iter()]) if (runIds.has(r.runId)) ctx.db.simOutsideTick.simOutsideTickId.delete(r.simOutsideTickId);
+  for (const r of [...ctx.db.simComment.iter()]) if (runIds.has(r.runId)) ctx.db.simComment.simCommentId.delete(r.simCommentId);
+  for (const id of runIds) { ctx.db.simProjection.runId.delete(id); ctx.db.simRun.runId.delete(id); }
+}
+
+function purgePosts(ctx: Ctx, authors: Set<string>) {
+  const posts = new Set([...ctx.db.xPost.iter()].filter(p => authors.has(p.authorUserId)).map(p => p.postId));
+  for (const r of [...ctx.db.xPostReference.iter()]) if (posts.has(r.postId)) ctx.db.xPostReference.id.delete(r.id);
+  for (const r of [...ctx.db.xPostEntity.iter()]) if (posts.has(r.postId)) ctx.db.xPostEntity.entityId.delete(r.entityId);
+  for (const r of [...ctx.db.xContextAnnotation.iter()]) if (posts.has(r.postId)) ctx.db.xContextAnnotation.annotationId.delete(r.annotationId);
+  for (const r of [...ctx.db.xPostMedia.iter()]) if (posts.has(r.postId)) ctx.db.xPostMedia.id.delete(r.id);
+  for (const id of posts) ctx.db.xPost.postId.delete(id);
+}
+
+function purgeCampaigns(ctx: Ctx, campaignIds: Set<string>) {
+  for (const r of [...ctx.db.creativeBrief.iter()]) if (campaignIds.has(r.campaignId)) ctx.db.creativeBrief.briefId.delete(r.briefId);
+  for (const r of [...ctx.db.adVariant.iter()]) if (campaignIds.has(r.campaignId)) ctx.db.adVariant.variantId.delete(r.variantId);
+  for (const r of [...ctx.db.creativeJob.iter()]) if (campaignIds.has(r.campaignId)) ctx.db.creativeJob.jobId.delete(r.jobId);
+  for (const r of [...ctx.db.campaignDraftVideo.iter()]) if (campaignIds.has(r.campaignId)) ctx.db.campaignDraftVideo.linkId.delete(r.linkId);
+  for (const r of [...ctx.db.draftCopy.iter()]) if (campaignIds.has(r.campaignId)) ctx.db.draftCopy.copyId.delete(r.copyId);
+  for (const id of campaignIds) { ctx.db.campaignFlow.campaignId.delete(id); ctx.db.campaign.campaignId.delete(id); }
+}
+
+export const purgeBrand = spacetimedb.reducer({ handle: t.string() }, (ctx, { handle }) => {
+  requireAdmin(ctx);
+  const h = handle.trim().replace(/^@/, '').toLowerCase();
+  if (!/^[a-z0-9_.]{1,64}$/.test(h)) throw new SenderError('invalid handle');
+  if ([...ctx.db.onboarding.iter()].some(r => r.handle === h && !['ready', 'failed'].includes(r.status))) {
+    throw new SenderError(`@${h} is still onboarding; wait or pause workers first`);
+  }
+  const brand = [...ctx.db.xUser.iter()].find(u => u.username.toLowerCase() === h);
+  const B = brand?.userId ?? '';
+  // Audience: drop this brand's links; a follower goes only if no other brand still has them.
+  const people = new Set<string>();
+  for (const r of [...ctx.db.audienceMembership.iter()]) if (r.brandUserId === B) { people.add(r.followerUserId); ctx.db.audienceMembership.membershipId.delete(r.membershipId); }
+  for (const r of [...ctx.db.twinAudience.iter()]) if (r.brandUserId === B) { people.add(r.userId); ctx.db.twinAudience.twinAudienceId.delete(r.twinAudienceId); }
+  for (const r of [...ctx.db.audienceEdge.iter()]) if (r.brandUserId === B) ctx.db.audienceEdge.edgeId.delete(r.edgeId);
+  const stillUsed = new Set([...[...ctx.db.audienceMembership.iter()].map(r => r.followerUserId), ...[...ctx.db.twinAudience.iter()].map(r => r.userId),
+                             ...[...ctx.db.audienceMembership.iter()].map(r => r.brandUserId)]);
+  const gone = new Set([...people].filter(id => !stillUsed.has(id)));
+  if (B && !stillUsed.has(B)) gone.add(B);
+  for (const r of [...ctx.db.twinNiche.iter()]) if (gone.has(r.userId)) ctx.db.twinNiche.twinNicheId.delete(r.twinNicheId);
+  purgePosts(ctx, gone);
+  for (const id of gone) { ctx.db.twin.userId.delete(id); ctx.db.xUser.userId.delete(id); }
+  if (B) ctx.db.archivedProfile.userId.delete(B);
+  // Runs and jobs.
+  for (const r of [...ctx.db.onboarding.iter()]) if (r.handle === h) ctx.db.onboarding.onboardingId.delete(r.onboardingId);
+  for (const r of [...ctx.db.xIngestionRun.iter()]) if (r.targetUsername.toLowerCase() === h) ctx.db.xIngestionRun.ingestionRunId.delete(r.ingestionRunId);
+  const builds = new Set([...ctx.db.twinBuildRun.iter()].filter(r => r.brandUserId === B).map(r => r.runId));
+  for (const r of [...ctx.db.twinBuildJob.iter()]) if (builds.has(r.runId)) ctx.db.twinBuildJob.jobId.delete(r.jobId);
+  for (const id of builds) ctx.db.twinBuildRun.runId.delete(id);
+  // Lab, campaigns, videos, snapshots, brand settings.
+  const experiments = [...ctx.db.labExperiment.iter()].filter(r => r.brand.toLowerCase() === h || (B && r.brandUserId === B));
+  for (const e of experiments) {
+    for (const d of ['A', 'B']) ctx.db.labDraftMedia.mediaId.delete(`${e.experimentId}:${d}`);
+    ctx.db.labExperiment.experimentId.delete(e.experimentId);
+  }
+  purgeRuns(ctx, new Set([...ctx.db.simRun.iter()].filter(r => B && r.brandUserId === B).map(r => r.runId)));
+  purgeCampaigns(ctx, new Set([...[...ctx.db.campaign.iter()].filter(r => B && r.brandUserId === B).map(r => r.campaignId),
+                               ...[...ctx.db.campaignFlow.iter()].filter(r => r.brand.toLowerCase() === h).map(r => r.campaignId)]));
+  for (const r of [...ctx.db.campaignVideo.iter()]) if (r.brand.toLowerCase() === h) ctx.db.campaignVideo.videoId.delete(r.videoId);
+  for (const r of [...ctx.db.audienceSnapshot.iter()]) if (r.brand.toLowerCase() === h || (B && r.brandUserId === B)) ctx.db.audienceSnapshot.snapshotId.delete(r.snapshotId);
+  if (B) { ctx.db.brandBaseline.brandUserId.delete(B); ctx.db.brandKit.brandUserId.delete(B); }
+});
+
+// Re-queue a failed creative job (same campaign, same owner) after its cause is fixed.
+export const retryCreativeJob = spacetimedb.reducer({ jobId: t.u64() }, (ctx, { jobId }) => {
+  requireAdmin(ctx);
+  notPaused(ctx);
+  const row = ctx.db.creativeJob.jobId.find(jobId);
+  if (!row) throw new SenderError('unknown creative job');
+  if (row.status !== 'failed') throw new SenderError(`job is ${row.status}, not failed`);
+  ctx.db.creativeJob.jobId.update({ ...row, status: 'pending', claimedBy: undefined, claimedAt: undefined, error: undefined, finishedAt: undefined });
+});
+
+const MIN_VIDEO_SECONDS = 6;
+const MAX_VIDEO_SECONDS = 60;
+export const setVideoSettings = spacetimedb.reducer({ maxSeconds: t.u32(), voiceId: t.string() }, (ctx, a) => {
+  requireOps(ctx);
+  if (a.maxSeconds < MIN_VIDEO_SECONDS || a.maxSeconds > MAX_VIDEO_SECONDS) throw new SenderError(`length must be ${MIN_VIDEO_SECONDS}..${MAX_VIDEO_SECONDS} seconds`);
+  const voiceId = a.voiceId.trim();
+  if (!/^[A-Za-z0-9]{10,40}$/.test(voiceId)) throw new SenderError('voice id must be an ElevenLabs voice id (letters and digits)');
+  const row = { key: 'global', maxSeconds: a.maxSeconds, voiceId, updatedAt: ctx.timestamp };
+  if (ctx.db.videoSettings.key.find('global')) ctx.db.videoSettings.key.update(row); else ctx.db.videoSettings.insert(row);
+});
+
+export const setVideoMode = spacetimedb.reducer({ mode: t.string(), reuseA: t.string(), reuseB: t.string() }, (ctx, a) => {
+  requireOps(ctx);
+  if (!['generate', 'off', 'reuse'].includes(a.mode)) throw new SenderError('mode must be generate, off or reuse');
+  for (const id of [a.reuseA, a.reuseB]) {
+    if (id && ctx.db.campaignVideo.videoId.find(id)?.status !== 'done') throw new SenderError(`video ${id} is not a finished video`);
+  }
+  if (a.mode === 'reuse' && !a.reuseA) throw new SenderError('pick a video to reuse');
+  const row = { key: 'global', mode: a.mode, reuseA: a.reuseA, reuseB: a.reuseB, updatedAt: ctx.timestamp };
+  if (ctx.db.videoMode.key.find('global')) ctx.db.videoMode.key.update(row); else ctx.db.videoMode.insert(row);
 });

@@ -2,6 +2,7 @@
 import logging
 import time
 
+from .config import WORKER_VERSION
 from .simulate import run_lab
 from .stdb import StdbError
 
@@ -14,13 +15,15 @@ def _run_one(stdb, client, row: dict, runner) -> tuple[bool, object]:
     """Claim and run one queued experiment. Returns (claimed, outcome); outcome is None when it failed."""
     exp_id = row["experiment_id"]
     try:
-        stdb.call("claim_lab_experiment", exp_id)
+        stdb.call("claim_lab_experiment", exp_id, WORKER_VERSION)
     except StdbError:
         return False, None  # another worker took it, or it is no longer queued
+    log.info("experiment %s (@%s): simulating", exp_id, row["brand"])
     try:
         out = runner(stdb, client, row["brand"], row["draft_a"], row["draft_b"],
                      on_runs=lambda a, b: stdb.call("attach_lab_runs", exp_id, a, b))
         stdb.call("finish_lab_experiment", exp_id, out.winner, out.lift)
+        log.info("experiment %s: done, winner %s (%+.0f%%)", exp_id, out.winner, out.lift * 100)
         return True, out
     except BaseException as exc:  # noqa: BLE001 - record every failure, including Ctrl-C, then re-raise those
         try:
@@ -88,13 +91,18 @@ def reap_stale(stdb, *, now_micros: int | None = None) -> int:
 
 
 def run_lab_worker(stdb, client, *, poll_seconds: float = 2.0, max_loops: int | None = None, sleep=time.sleep) -> None:
-    loops = 0
-    while max_loops is None or loops < max_loops:
+    from .ops_pause import PauseWatch, guarded, nap
+    watch = PauseWatch(stdb).start()
+
+    def step() -> None:
         try:
             reap_stale(stdb)
             if run_pending_labs(stdb, client):
                 log.info("lab worker finished a batch")
         except Exception as exc:  # noqa: BLE001 - keep polling through transient errors
             log.warning("lab worker poll failed: %s: %s", type(exc).__name__, exc)
+    loops = 0
+    while max_loops is None or loops < max_loops:
+        guarded(watch, step)
         loops += 1
-        sleep(poll_seconds)
+        nap(watch, sleep, poll_seconds)
