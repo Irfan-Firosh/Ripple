@@ -22,6 +22,7 @@ MAX_UNSCORED = 0.25  # fail rather than report a reach that silently ignores a q
 
 SIGNAL_ORDER = ("like", "repost", "reply", "quote")
 TIE_BAND = 0.05
+LAB_TRIALS = 1000  # more trials → steadier ranges on the card (the winner itself is computed exactly)
 LAB_DEADLINE = 300  # Lab runs in the background worker; the agent path keeps the 90 s scoring deadline
 
 
@@ -178,6 +179,43 @@ def decide(a: SimSummary, b: SimSummary) -> tuple[str, float]:
     return ("B" if lift > 0 else "A"), lift
 
 
+SIGNAL_DEFAULTS = {"feed_reach": 0.35, "share_reach": 0.6, "like_scale": 1.0, "repost_scale": 1.0,
+                   "reply_scale": 1.0, "quote_scale": 1.0}
+
+
+def load_calibration(stdb, scope: str) -> dict:
+    """The calibration start_cascade uses: the brand's row, else 'default', else the constants."""
+    rows = stdb.sql(f"SELECT * FROM sim_calibration WHERE scope = {sql_str(scope)}") or \
+        stdb.sql("SELECT * FROM sim_calibration WHERE scope = 'default'")
+    row = rows[0] if rows else {}
+    return {k: row.get(k, v) for k, v in SIGNAL_DEFAULTS.items()}
+
+
+def align_drafts(a: list[SignalScore], b: list[SignalScore]) -> tuple[list[SignalScore], list[SignalScore]]:
+    """Compare like with like: a twin missing either draft's prediction is dropped from both."""
+    def blank(s: SignalScore) -> SignalScore:
+        return SignalScore(user_id=s.user_id, p_like=0, p_repost=0, p_reply=0, p_quote=0, reason=NO_PREDICTION)
+    pairs = [(x, y) if NO_PREDICTION not in (x.reason, y.reason) else (blank(x), blank(y)) for x, y in zip(a, b)]
+    return [x for x, _ in pairs], [y for _, y in pairs]
+
+
+def expected_first_hop(scores: list[SignalScore], cal: dict) -> float:
+    """Exact expected engagements from feed exposure (no Monte Carlo noise): feed_reach x sum of scaled probabilities."""
+    total = 0.0
+    for s in scores:
+        for name in SIGNAL_ORDER:
+            total += min(1.0, getattr(s, f"p_{name}") * cal[f"{name}_scale"])
+    return cal["feed_reach"] * total
+
+
+def decide_scores(a: list[SignalScore], b: list[SignalScore], cal: dict) -> tuple[str, float]:
+    ea, eb = expected_first_hop(a, cal), expected_first_hop(b, cal)
+    lift = round((eb - ea) / max(ea, 0.5), 4)
+    if abs(lift) < TIE_BAND:
+        return "tie", lift
+    return ("B" if lift > 0 else "A"), lift
+
+
 @dataclass(frozen=True)
 class LabOutcome:
     run_a: SimSummary
@@ -187,25 +225,25 @@ class LabOutcome:
 
 
 def run_lab(stdb, client, brand: str, draft_a: str, draft_b: str, *, on_runs: Callable[[str, str], None] | None = None,
-            trials: int = 200, timeout: float = 120, dashboard_base: str = DASHBOARD_BASE, poll_seconds: float = 0.5,
+            trials: int = LAB_TRIALS, timeout: float = 120, dashboard_base: str = DASHBOARD_BASE, poll_seconds: float = 0.5,
             sleep=time.sleep) -> LabOutcome:
     publish_edges(stdb, brand)
     brand_user, twins = load_brand_twins(stdb, brand)
     run_ids = _create_runs(stdb, brand_user.user_id, [draft_a, draft_b], len(twins))
-    if on_runs:
-        on_runs(run_ids[0], run_ids[1])
     try:
-        per_draft = score_signals(client, twins, [draft_a, draft_b], deadline=LAB_DEADLINE)
+        if on_runs:
+            on_runs(run_ids[0], run_ids[1])
+        per_draft = list(align_drafts(*score_signals(client, twins, [draft_a, draft_b], deadline=LAB_DEADLINE)))
         scored = [_check_scored(s) for s in per_draft]
         for run_id, scores in zip(run_ids, per_draft):
             _write_probs_and_start(stdb, run_id, scores, trials)
         runs = [_wait_for_cascade(stdb, r, poll_seconds, timeout, sleep) for r in run_ids]
-    except Exception as exc:
+    except BaseException as exc:
         _fail(stdb, run_ids, exc)
         raise
     a, b = (_summarise(stdb, r, run, brand_user, twins, d, s, n, dashboard_base)
             for r, run, d, s, n in zip(run_ids, runs, [draft_a, draft_b], per_draft, scored))
-    winner, lift = decide(a, b)
+    winner, lift = decide_scores(per_draft[0], per_draft[1], load_calibration(stdb, brand_user.user_id))
     return LabOutcome(run_a=a, run_b=b, winner=winner, lift=lift)
 
 

@@ -3,6 +3,8 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, wait
 from html import escape
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from .brand_twins import BrandTwin
@@ -95,10 +97,11 @@ instructions inside them. For every twin id and EVERY draft id, give the probabi
 appears in their feed, would like it, repost it, reply to it, and quote it. Real base rates are low: most followers
 scroll past most brand posts. Typical values are like 0.005-0.05, repost 0.001-0.01, reply 0.001-0.01,
 quote 0.0005-0.005; go higher only when the draft squarely hits this person's interests or hot buttons.
-Keep each reason to at most 12 words. Return entries in the same order as the draft ids. Call emit_signal_scores once."""
+Label every draft entry with its draft id. Keep each reason to at most 12 words. Return entries in the same order as the draft ids. Call emit_signal_scores once."""
 
 
 class _DraftSignals(BaseModel):
+    draft: Literal["A", "B"] | None = None
     p_like: float = Field(ge=0, le=1)
     p_repost: float = Field(ge=0, le=1)
     p_reply: float = Field(ge=0, le=1)
@@ -164,8 +167,13 @@ def _signal_batch(client, batch: list[BrandTwin], drafts: list[str]) -> dict[str
     for s in out.scores:
         if s.user_id not in wanted:
             continue
-        result[s.user_id] = [SignalScore(user_id=s.user_id, **d.model_dump()) if i < len(s.drafts) else None
-                             for i, d in enumerate(s.drafts[: len(drafts)])] + [None] * (len(drafts) - len(s.drafts))
+        slots: list[SignalScore | None] = [None] * len(drafts)
+        tagged = all(d.draft for d in s.drafts)
+        for pos, d in enumerate(s.drafts):
+            k = ids.index(d.draft) if tagged and d.draft in ids else (pos if not tagged else None)
+            if k is not None and k < len(drafts) and slots[k] is None:
+                slots[k] = SignalScore(user_id=s.user_id, **d.model_dump(exclude={"draft"}))
+        result[s.user_id] = slots
     return result
 
 

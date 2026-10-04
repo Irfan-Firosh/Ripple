@@ -6,20 +6,11 @@ on a train split and an evaluation on a held-out test split.
 from datetime import datetime, timedelta, timezone
 
 from .bsky import fetch_brand_posts, fetch_engagers
-from .simulate import run_simulation
-from .stdb import sql_str
+from .simulate import load_calibration, run_simulation
 
 SIGNALS = ("like", "repost", "reply", "quote")
 FLOOR, CEIL = 0.01, 10.0
 SMOOTHING = 0.5  # added to each signal's observed total: zero in a few posts means rare, not impossible
-
-
-def _current(stdb, scope: str) -> dict:
-    rows = stdb.sql(f"SELECT * FROM sim_calibration WHERE scope = {sql_str(scope)}") or \
-        stdb.sql("SELECT * FROM sim_calibration WHERE scope = 'default'")
-    r = rows[0] if rows else {}
-    return {"feed_reach": r.get("feed_reach", 0.35), "share_reach": r.get("share_reach", 0.6),
-            **{f"{s}_scale": r.get(f"{s}_scale", 1.0) for s in SIGNALS}}
 
 
 def anchor(stdb, client, brand: str, *, posts: int = 5, settle_days: int = 2, simulate=run_simulation,
@@ -41,7 +32,7 @@ def anchor(stdb, client, brand: str, *, posts: int = 5, settle_days: int = 2, si
         people = fetch_people(p.uri)
         for s in SIGNALS:
             observed[s] += len(people[s] & followers) / len(sample)
-    cal = _current(stdb, brand_row["user_id"])
+    cal = load_calibration(stdb, brand_row["user_id"])
     for s in SIGNALS:
         if predicted[s] > 0:
             cal[f"{s}_scale"] = round(min(CEIL, max(FLOOR, cal[f"{s}_scale"] * observed[s] / predicted[s])), 4)

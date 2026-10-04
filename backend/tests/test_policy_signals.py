@@ -70,3 +70,9 @@ def test_scoring_calls_get_a_60s_timeout_and_one_retry():
 def test_prompt_asks_for_short_reasons():
     from twins.policy import SIGNAL_SYSTEM
     assert "12 words" in SIGNAL_SYSTEM
+
+
+def test_entries_are_mapped_by_draft_id_not_position():
+    tagged = {"user_id": "a", "drafts": [{"draft": "B", "p_like": 0.4, "p_repost": 0, "p_reply": 0, "p_quote": 0, "reason": "r"}]}
+    out = score_signals(FakeClient([{"scores": [tagged]}]), [bt("a", "x", 1)], ["A", "B"], workers=1)
+    assert out[1][0].p_like == 0.4 and out[0][0].reason == NO_PREDICTION

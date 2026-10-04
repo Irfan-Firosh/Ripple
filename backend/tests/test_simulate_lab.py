@@ -49,3 +49,33 @@ def test_run_lab_gives_scoring_the_longer_lab_deadline(monkeypatch):
     run_lab(sim_db(), FakeClient([{"scores": [two("1", 0.2, 0.6), two("2", 0.01, 0.02)]}]), "spacetimedb", "a", "b",
             sleep=lambda _: None)
     assert seen["deadline"] == sim.LAB_DEADLINE == 300
+
+
+def sig(uid, like, reason="r"):
+    from twins.policy import SignalScore
+    return SignalScore(user_id=uid, p_like=like, p_repost=0, p_reply=0, p_quote=0, reason=reason)
+
+
+CAL = {"feed_reach": 0.5, "share_reach": 0.6, "like_scale": 1.0, "repost_scale": 1.0, "reply_scale": 1.0, "quote_scale": 1.0}
+
+
+def test_identical_drafts_always_tie():
+    from twins.simulate import decide_scores
+    a = [sig(str(i), 0.03) for i in range(999)]
+    assert decide_scores(a, list(a), CAL) == ("tie", 0.0)
+
+
+def test_decide_scores_uses_exact_expected_engagements():
+    from twins.simulate import decide_scores
+    a = [sig(str(i), 0.10) for i in range(20)]          # expected 20 x 0.10 x 0.5 = 1.0
+    b = [sig(str(i), 0.11) for i in range(20)]          # 1.1
+    assert decide_scores(a, b, CAL) == ("B", 0.1)
+
+
+def test_twins_missing_either_draft_are_dropped_from_both():
+    from twins.policy import NO_PREDICTION
+    from twins.simulate import align_drafts
+    a = [sig("1", 0.2), sig("2", 0.3)]
+    b = [sig("1", 0.4), sig("2", 0, reason=NO_PREDICTION)]
+    a2, b2 = align_drafts(a, b)
+    assert a2[1].reason == NO_PREDICTION and a2[1].p_like == 0 and a2[0].p_like == 0.2 and b2[0].p_like == 0.4
