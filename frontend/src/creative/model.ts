@@ -26,6 +26,8 @@ export type BrandKit = { brandUserId: string; displayName: string; productDescri
 export type Segment = { slug: string; label: string; description: string; count: number; share: number };
 export type CreativeHandoff = { campaign: Campaign; variants: (Variant & { brief?: Brief; segment: string })[]; recordedRehearsal?: boolean; recordedAt?: string };
 
+export const MIN_SEGMENT = 1; // matches MIN_SEGMENT_TWINS in the module
+
 export function audienceSegments(
   brandId: string,
   audience: readonly { brandUserId: string; userId: string }[],
@@ -42,7 +44,7 @@ export function audienceSegments(
   const counts = new Map<string, number>();
   for (const row of main.values()) counts.set(row.niche, (counts.get(row.niche) ?? 0) + 1);
   return { total: members.size, segments: catalog
-    .filter(row => !['other', 'politics_society'].includes(row.slug) && (counts.get(row.slug) ?? 0) >= 15)
+    .filter(row => !['other', 'politics_society'].includes(row.slug) && (counts.get(row.slug) ?? 0) >= MIN_SEGMENT)
     .map(row => ({ ...row, count: counts.get(row.slug)!, share: counts.get(row.slug)! / members.size }))
     .sort((a, b) => b.count - a.count || a.slug.localeCompare(b.slug)) };
 }

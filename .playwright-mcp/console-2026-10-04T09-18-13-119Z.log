@@ -1,0 +1,8 @@
+[      63ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-K4RMU5RS.js?v=7c9e8583:22164
+[  655736ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/src/ops/HiddenGate.tsx?t=1791106148848:0
+[  655736ms] [ERROR] [vite] Failed to reload /src/ops/HiddenGate.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:808
+[  655778ms] [ERROR] You are calling ReactDOMClient.createRoot() on a container that has already been passed to createRoot() before. Instead, call root.render() on the existing root instead if you want to update it. @ http://localhost:5173/node_modules/.vite/deps/chunk-K4RMU5RS.js?v=7c9e8583:18914
+[  655781ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/src/ops/HiddenGate.tsx?t=1791106148853:0
+[  655783ms] [ERROR] [vite] Failed to reload /src/ops/HiddenGate.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:808
+[  655861ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-K4RMU5RS.js?v=7c9e8583:22164
+[  656199ms] [LOG] %cℹ️ INFO%c Connecting to SpacetimeDB WS... color: #fff; background-color: #007bff; padding: 2px 5px; border-radius: 3px; color: #007bff; @ http://localhost:5173/node_modules/.vite/deps/spacetimedb.js?v=7c9e8583:5207

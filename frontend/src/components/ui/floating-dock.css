@@ -21,3 +21,6 @@
 @media (prefers-reduced-motion: reduce) {
   .floating-dock *, .floating-dock *::before, .floating-dock *::after { transition: none !important; animation: none !important; }
 }
+/* Workspace-only light treatment; the landing navbar keeps its own palette. */
+html[data-theme="light"] .ripple-workspace-nav .workspace-nav{background:#fff;color:#171717;border-color:#00000014;box-shadow:0 6px 24px #00000006}
+html[data-theme="light"] .ripple-workspace-nav .fd-mobile-toggle,html[data-theme="light"] .ripple-workspace-nav .fd-mobile-menu{background:#fff;color:#171717}

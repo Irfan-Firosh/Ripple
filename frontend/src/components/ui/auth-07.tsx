@@ -16,7 +16,7 @@ export default function Auth7({ signIn = false }: { signIn?: boolean }) {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.title = `${signIn ? "Sign in" : "Get started"} — Ripple`;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#091322" : "#f8f7f3");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#080808" : "#f8f7f3");
     try { localStorage.setItem("ripple-theme", theme); } catch { /* Optional storage. */ }
   }, [theme, signIn]);
 
@@ -24,11 +24,11 @@ export default function Auth7({ signIn = false }: { signIn?: boolean }) {
     variables: {
       colorPrimary: theme === "dark" ? "#e6bc88" : "#805322",
       colorPrimaryForeground: theme === "dark" ? "#172233" : "#fff8ec",
-      colorBackground: theme === "dark" ? "#091322" : "#f8f7f3",
+      colorBackground: theme === "dark" ? "#080808" : "#f8f7f3",
       colorForeground: theme === "dark" ? "#f3f1ed" : "#1d2d40",
-      colorMuted: theme === "dark" ? "#101d2e" : "#eeefec",
+      colorMuted: theme === "dark" ? "#151515" : "#eeefec",
       colorMutedForeground: theme === "dark" ? "#a8b5c5" : "#637284",
-      colorInput: theme === "dark" ? "#101d2e" : "#ffffff",
+      colorInput: theme === "dark" ? "#151515" : "#ffffff",
       colorInputForeground: theme === "dark" ? "#f3f1ed" : "#1d2d40",
       fontFamily: '"DM Sans", sans-serif',
       borderRadius: "1.5rem",

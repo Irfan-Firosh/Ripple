@@ -5,6 +5,8 @@ import { SIGNALS, SIGNAL_LABEL, type LabEvent, type LabRun, type Signal } from '
 import type { LabComment } from './labComments';
 import { formatCount } from './SignalRow';
 import { experimentDate } from './labTime';
+import { LabDraftVideo } from './LabDraftVideo';
+import './lab-media.css';
 
 type LabTweetProps = {
   draft: 'A' | 'B'; author: TweetAuthor; text: string; createdAt: number; run: LabRun | null;
@@ -35,6 +37,7 @@ export function LabTweet({ draft, author, text, createdAt, run, counts, comments
   return <section className={`lab-post-column lab-draft-${draft.toLowerCase()}`} aria-labelledby={`lab-post-${draft}`} data-replay-tick={tick}>
     <div className="lab-post-label"><h2 id={`lab-post-${draft}`}><span className="lab-draft-badge">{draft}</span>Draft {draft}</h2><span>{winner ? 'Leading draft' : replaying ? 'Replaying reactions' : run?.status === 'scoring' ? 'Scoring…' : 'Audience simulation'}</span></div>
     <TweetCard author={author} text={text} metadata={<>{timestamp && <span title={`Experiment created ${date.toLocaleString()}`}>{timestamp}<span aria-hidden="true"> · </span></span>}<span>{run?.status === 'done' ? 'Simulated · Median forecast' : 'Simulated · Recorded trial'}</span></>}>
+      <LabDraftVideo draft={draft} />
       <div className="lab-tweet-metrics" aria-label={`Draft ${draft} engagement`}>
         {SIGNALS.map(signal => {
           const Icon = icons[signal], value = counts?.[signal] ?? null, range = run?.signals?.[signal];

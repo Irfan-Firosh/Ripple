@@ -41,7 +41,7 @@ def test_onboarding_scrapes_builds_graphs_then_marks_ready():
     assert run_id == "onboard-7-raycast"
     assert db.reducers("set_onboarding_progress")[1][2] == "42"
     (_, handle, kw), (_, _, bkw), edges, after = rec.calls
-    assert handle == "raycast" and kw["run_id"] == run_id and kw["max_new_timelines"] == LIVE_TIMELINES
+    assert handle == "raycast" and kw["run_id"] == run_id and kw["max_new_timelines"] == max(LIVE_TIMELINES, LIVE_TWINS)
     assert bkw["limit"] == LIVE_TWINS and bkw["richest_first"] and bkw["skip_existing"]
     assert edges == ("edges", "raycast") and after == ("after_ready", "raycast", 120)
 

@@ -40,7 +40,7 @@ async function mockDatabase(page: Page): Promise<MockState> {
       case 'twin': rows = users.slice(1).map(user => ({ user_id: user.user_id, username: user.username, post_count: 3, engagement_rate: .1, reply_share: .2, tone: 'friendly', persona_summary: 'Builder', hot_buttons: [] })); break;
       case 'twin_niche': rows = users.slice(1).map(user => ({ user_id: user.user_id, niche: 'builders', affinity: .9 })); break;
       case 'twin_audience': rows = users.slice(1).map(user => ({ brand_user_id: 'brand', user_id: user.user_id })); break;
-      case 'x_post': case 'x_post_entity': break;
+      case 'x_post': case 'x_post_entity': case 'ops_hidden': case 'sim_settings': break;
       default: throw new Error(`Unexpected SQL: ${query}`);
     }
     await route.fulfill({ json: wire(rows) });
@@ -114,7 +114,7 @@ test('live build lights the stages and hands the new X brand to its audience gra
   await expect(stages.nth(0)).toHaveAttribute('data-complete', 'true');
   await expect(stages.nth(0).getByRole('img')).toHaveCount(0);
   await expect(stages.nth(1).getByRole('img', { name: 'Building your audience' })).toBeVisible();
-  await expect(stages.nth(1)).toHaveText('Twins'); await expect(avatar).toHaveAttribute('data-state', 'working');
+  await expect(stages.nth(1)).toHaveText('Analyzing your audience'); await expect(avatar).toHaveAttribute('data-state', 'working');
   await expect(page.locator('.on-sheet')).not.toContainText(/\b(300|34|60)\b/);
   state.status = 'graph'; state.ready = 60;
   await expect(stages.nth(1)).toHaveAttribute('data-complete', 'true'); await expect(avatar).toHaveAttribute('data-state', 'working');
@@ -188,9 +188,43 @@ test('onboarding inherits the app theme, switches palettes, and persists on relo
   await expect(page.locator('.on-group')).toHaveCSS('opacity', '1');
   await page.screenshot({ path: '/tmp/ripple-onboarding-light.png', fullPage: true });
   await page.getByRole('button', { name: 'Switch to dark mode' }).click();
-  await expect(page.locator('.on-page')).toHaveCSS('background-color', 'rgb(9, 19, 34)');
+  await expect(page.locator('.on-page')).toHaveCSS('background-color', 'rgb(8, 8, 8)');
   await expect(page.getByRole('button', { name: 'Continue' })).toHaveCSS('background-color', 'rgb(230, 188, 136)');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(page.getByRole('button', { name: 'Switch to light mode' })).toBeVisible();
+});
+
+test('new campaign skips the brief questions and starts its real build', async ({ page }) => {
+  const state = await mockDatabase(page);
+  await page.goto('/onboarding?flow=campaign');
+  await expect(page.getByRole('heading', { name: 'New campaign', exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Your brand on X' }).fill('@Raycast');
+  await page.getByRole('textbox', { name: 'Campaign name' }).fill('Launch day');
+  await page.getByRole('button', { name: 'Build audience' }).click();
+  await expect(page.getByRole('list', { name: 'Build stages' })).toBeVisible();
+  await expect(page).toHaveURL('/onboarding?flow=campaign&build=42');
+  expect(state.calls).toEqual([
+    { name: 'request_onboarding', args: ['raycast'] },
+    { name: 'update_onboarding_brief', args: [42, '', '', 'Launch day', '', 'reposts'] },
+  ]);
+  await expect(page.getByText('Analyzing your audience', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Who are you?' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Back to campaigns' })).toHaveAttribute('href', '/home');
+  state.status = 'ready';
+  await expect(page.getByRole('button', { name: 'See your audience' })).toBeEnabled({ timeout: 10000 });
+});
+
+test('campaign build URL resumes on reload and failed builds can restart', async ({ page }) => {
+  const state = await mockDatabase(page); state.status = 'twins';
+  await page.goto('/onboarding?flow=campaign&build=42');
+  await expect(page.getByRole('list', { name: 'Build stages' })).toBeVisible();
+  await expect(page.getByRole('textbox')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('list', { name: 'Build stages' })).toBeVisible();
+  state.status = 'failed'; state.error = 'Could not read this account';
+  await expect(page.getByText('Could not read this account')).toBeVisible({ timeout: 10000 });
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page).toHaveURL('/onboarding?flow=campaign');
+  await expect(page.getByRole('textbox', { name: 'Your brand on X' })).toBeVisible();
 });

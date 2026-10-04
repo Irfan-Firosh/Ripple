@@ -36,12 +36,18 @@ def aggregate_segments(stdb, brand_user_id: str, selected=None, *, limit=4) -> l
     members = defaultdict(list)
     for uid, values in affinities.items():
         members[min(values, key=lambda slug: (-values[slug], slug))].append(uid)
-    available = {slug for slug, ids in members.items() if slug not in EXCLUDED_SEGMENTS and len(ids) >= MIN_SEGMENT_SIZE}
+    usable = {slug for slug, ids in members.items() if slug not in EXCLUDED_SEGMENTS and ids}
+    available = {slug for slug in usable if len(members[slug]) >= MIN_SEGMENT_SIZE}
     if selected:
-        invalid = set(selected) - available
-        if invalid:
-            raise ValueError("segments unavailable, excluded, or smaller than 15 personas: " + ", ".join(sorted(invalid)))
-        available &= set(selected)
+        # Never a roadblock: a chosen niche with anyone in it is used whatever its size; if none of the chosen
+        # niches exist, the biggest niches stand in. Only an audience with no analysed people at all stops here.
+        chosen = set(selected) & usable
+        if chosen:
+            available = chosen
+    if not available:
+        available = usable
+    if selected and not available:
+        raise ValueError("no analysed audience yet for this brand; wait for its twins to build")
     result = []
     # Hashtags/media use aggregate counts only. Raw post text, authors and alt text are not LLM inputs.
     posts = {r["post_id"]: r["author_user_id"] for r in stdb.sql("SELECT post_id, author_user_id FROM x_post") if r["author_user_id"] in twins}

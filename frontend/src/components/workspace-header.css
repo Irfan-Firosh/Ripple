@@ -1,0 +1,16 @@
+/* One header geometry for every workspace destination. */
+.workspace-header.home-header,.workspace-header.flow-header,.workspace-header.lab-header,.workspace-header.nt-header{display:flex;align-items:center;gap:20px;min-height:78px;padding:0 32px;max-width:none;box-sizing:border-box}
+.workspace-header.home-header,.workspace-header.flow-header{position:relative;width:calc(100% + 72px);margin:-24px -36px 0}
+.workspace-header.lab-header{position:relative;min-height:78px;margin:0 0 28px}
+.workspace-header.nt-header{position:absolute;top:0;left:0;right:0;height:78px}
+.workspace-header .ripple-wordmark{flex:0 0 auto;gap:9px;font-size:25px;font-weight:600;line-height:30px;letter-spacing:-1.5px}
+.workspace-header .ripple-wordmark>svg{width:24px;height:24px;flex:0 0 24px}
+.workspace-header>.ripple-workspace-nav{top:15px}
+.workspace-header .lab-crumb{display:none}
+@media(max-width:1200px) and (min-width:981px){.workspace-header .lab-brands,.workspace-header .nt-brands{max-width:230px}.workspace-header .lab-brands button,.workspace-header .nt-brands a{font-size:11px;padding-inline:7px}}
+@media(max-width:980px){.workspace-header>.ripple-workspace-nav{position:relative;inset:auto;transform:none;margin-left:0;order:4}.workspace-header .lab-brands,.workspace-header .nt-brands{margin-left:auto}.workspace-header .lab-header-actions{margin-left:0}.workspace-header.home-header>.ripple-workspace-nav,.workspace-header.flow-header>.ripple-workspace-nav{margin-left:auto}.workspace-header.home-header>.home-controls{order:3}.workspace-header.flow-header>.flow-theme{order:3}}
+@media(max-width:800px){.workspace-header.home-header,.workspace-header.flow-header,.workspace-header.lab-header,.workspace-header.nt-header{padding-inline:16px;gap:12px;min-height:78px}.workspace-header.home-header,.workspace-header.flow-header{width:calc(100% + 32px);margin:-20px -16px 0}.workspace-header.lab-header{flex-wrap:wrap;align-content:center;row-gap:12px;padding-top:24px;padding-bottom:16px}.workspace-header.lab-header .ripple-wordmark{margin-right:auto}.workspace-header.lab-header .lab-brands{order:5;margin:0;max-width:100%;width:100%;justify-content:flex-start}.workspace-header.lab-header .lab-header-actions{margin-left:0}.workspace-header.nt-header .nt-brands{position:absolute;top:82px;right:16px;max-width:calc(100% - 32px);overflow-x:auto}.workspace-header.nt-header .nt-header-actions{margin-left:auto}.workspace-header.nt-header .nt-page-name{display:none}}
+
+@media(max-width:800px){.home-page{padding:20px 16px 48px}}
+@media(max-width:980px){.workspace-header.flow-header>.flow-theme,.workspace-header.home-header>.home-controls{margin-left:auto}.workspace-header.flow-header>.ripple-workspace-nav,.workspace-header.home-header>.ripple-workspace-nav{margin-left:0}}
+@media(min-width:981px) and (max-width:1200px){.workspace-header .fd-desktop{display:none}.workspace-header .fd-mobile{display:block}.workspace-header>.ripple-workspace-nav{position:relative;inset:auto;transform:none;order:4;margin-left:0}.workspace-header.home-header>.home-controls,.workspace-header.flow-header>.flow-theme{margin-left:auto}.workspace-header .lab-brands,.workspace-header .nt-brands{margin-left:auto}}

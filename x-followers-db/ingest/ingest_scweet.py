@@ -188,3 +188,20 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def ingest_brand_posts(username: str, limit: int = 40) -> int:
+    """The brand's own recent posts (likes, reposts, replies, quotes, views): the real anchor for the simulation and
+    the "recent posts" a campaign can start from."""
+    username = username.lstrip("@").strip()
+    s = scweet_client()
+    info = s.get_user_info([username])
+    if not info:
+        raise RuntimeError(f"@{username} not found on X")
+    target = user_v2(info[0])
+    call("upsert_x_user", *user_args(target))
+    rows = s.get_profile_tweets([username], limit=limit)
+    mapped = [post_v2(t, author_id=target["id"]) for t in rows if not t.get("is_retweet")]
+    mine = [(p, m) for p, m in mapped if p["author_id"] == target["id"]]
+    run_parallel([c for p, m in mine for c in post_calls(p, m)])
+    return len(mine)

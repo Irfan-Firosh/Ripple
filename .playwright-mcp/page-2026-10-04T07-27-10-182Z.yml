@@ -1,0 +1,36 @@
+- main [ref=f1e3]:
+  - generic [ref=f1e4]:
+    - link "Ripple home" [ref=f1e5] [cursor=pointer]:
+      - /url: /home
+      - generic [ref=f1e8]: ripple
+    - navigation "Workspace navigation" [ref=f1e10]:
+      - link "Home" [ref=f1e11] [cursor=pointer]:
+        - /url: /home
+      - link "Audience" [ref=f1e12] [cursor=pointer]:
+        - /url: /dashboard?brand=raycast
+      - link "Campaign" [ref=f1e13] [cursor=pointer]:
+        - /url: /campaign?brand=raycast
+      - link "Lab" [ref=f1e14] [cursor=pointer]:
+        - /url: /lab?brand=raycast
+    - button "Switch to light mode" [ref=f1e15] [cursor=pointer]
+  - generic [ref=f1e22]:
+    - generic [ref=f1e23]: "@RAYCAST · CAMPAIGN"
+    - list [ref=f1e24]:
+      - listitem [ref=f1e25]: Audience
+      - listitem [ref=f1e28]:
+        - generic [ref=f1e29]: "2"
+        - text: Concepts
+      - listitem [ref=f1e30]:
+        - generic [ref=f1e31]: "3"
+        - text: Test
+      - listitem [ref=f1e32]:
+        - generic [ref=f1e33]: "4"
+        - text: Launch
+    - heading "Start a campaign." [level=1] [ref=f1e34]
+    - generic [ref=f1e35]:
+      - button "Generate Two concepts, copy and a video for your top segment." [ref=f1e36] [cursor=pointer]:
+        - generic [ref=f1e40]: Generate
+        - generic [ref=f1e41]: Two concepts, copy and a video for your top segment.
+      - button "Import Bring drafts you already have, or recent posts." [ref=f1e42] [cursor=pointer]:
+        - generic [ref=f1e46]: Import
+        - generic [ref=f1e47]: Bring drafts you already have, or recent posts.

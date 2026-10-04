@@ -35,3 +35,8 @@ agent*_data.json
 
 # superpowers plan workspaces (ledgers, review packages)
 .superpowers/
+
+# Rendered campaign videos (large, regenerated on demand)
+frontend/public/generated/videos/
+data/research/
+frontend/public/generated/brands/

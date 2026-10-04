@@ -64,7 +64,7 @@ export function LabComposer({ brand: initialBrand, onClose, onQueued }: LabCompo
       <header><h2>New experiment</h2><button className="lab-icon" aria-label="Close" onClick={onClose}><X size={16} /></button></header>
       <form onSubmit={submit}>
         <label className="lab-field"><span className="lab-field-label">Audience</span>
-          <select value={brand} onChange={e => setBrand(e.target.value)}>{!BRANDS.some(b => b.handle === initialBrand) && <option value={initialBrand}>@{initialBrand}</option>}{BRANDS.map(b => <option key={b.handle} value={b.handle}>{b.label}</option>)}</select>
+          <select value={brand} onChange={e => setBrand(e.target.value)}>{!brands.some(b => b.handle === initialBrand) && <option value={initialBrand}>@{initialBrand}</option>}{brands.map(b => <option key={b.handle} value={b.handle}>{b.label}</option>)}</select>
         </label>
         <label className="lab-field"><span className="lab-field-label">Title <em>optional</em></span>
           <input value={title} maxLength={MAX_TITLE} onChange={e => setTitle(e.target.value)} placeholder="e.g. Windows launch" />

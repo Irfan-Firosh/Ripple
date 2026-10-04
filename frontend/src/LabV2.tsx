@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Download, LoaderCircle, Moon, Pause, Play, Plus, RotateCcw, Sun } from 'lucide-react';
-import { RippleMark, initialTheme } from './App';
+import { initialTheme } from './App';
+import { RippleLogo } from './components/RippleLogo';
 import { RippleWorkspaceNav } from './components/ui/floating-dock';
 import { BRANDS } from './audience/liveAudience';
 import { loadCampaignDrafts, type CampaignDrafts } from './creative/handoff';
@@ -82,8 +83,8 @@ export default function LabV2() {
   };
 
   return <main className="lab-page campaign-page v2-page">
-    <header className="lab-header">
-      <a className="brand" href="/" aria-label="Ripple home"><RippleMark size={26} /><span>Ripple</span></a>
+    <header className="lab-header workspace-header">
+      <RippleLogo />
       <span className="lab-crumb">Lab v2</span><RippleWorkspaceNav brand={brand} />
       <nav className="lab-brands" aria-label="Audience">{BRANDS.map(b => <button key={b.handle} disabled={busy}
         aria-current={b.handle === brand ? 'page' : undefined} onClick={() => reset(b.handle)}>{b.label}</button>)}</nav>

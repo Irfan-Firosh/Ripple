@@ -11,13 +11,14 @@ test('lab shows two tweets whose interactions play out live, in whole numbers, w
   await expect(b).toBeVisible();
   await expect(a).toContainText('Raycast for Windows is here.');
   for (const metric of ['replies', 'reposts', 'likes', 'views']) await expect(a.locator(`[data-metric="${metric}"]`)).toBeVisible();
-  // Counters start low and climb while the replay plays.
+  await expect(page.getByRole('button', { name: 'Replay', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Resimulate', exact: true })).toBeVisible();
   const likes = a.locator('[data-metric="likes"] [data-count]');
-  // Profile loading may outlast autoplay; explicitly restart the real recorded trial.
-  await page.getByRole('button', { name: 'Replay', exact: true }).click();
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
-  const first = Number(await likes.getAttribute('data-count'));
-  await expect.poll(async () => Number(await likes.getAttribute('data-count')), { timeout: 30000 }).toBeGreaterThan(first);
+  const median = await page.evaluate(async () => {
+    const data = await import('/src/lab/labData.ts');
+    return (await data.loadExperiment('7')).a?.signals?.like.p50;
+  });
+  await expect.poll(async () => Number(await likes.getAttribute('data-count')), { timeout: 30000 }).toBe(median);
   // Every visible count is a whole number.
   for (const text of await page.locator('[data-count]').allTextContents()) expect(text).toMatch(/^\d{1,3}(,\d{3})*$/);
   // Comments show up under the tweets as replies.
@@ -27,19 +28,14 @@ test('lab shows two tweets whose interactions play out live, in whole numbers, w
   await expect(page.locator('body')).not.toContainText(/wind tunnel|bookmark|likes on reposts/i);
 });
 
-test('dock navigates experiments and the composer validates drafts', async ({ page }) => {
+test('dock navigates experiments and offers campaign selection', async ({ page }) => {
   await page.goto('/lab?brand=raycast.com&exp=7');
   const dock = page.getByRole('navigation', { name: 'Experiments' });
   await expect(dock.getByRole('button', { name: /Local AI launch/ }).first()).toBeVisible({ timeout: 30000 });
   await dock.getByRole('button', { name: /Local AI launch/ }).first().click();
   await expect(page).toHaveURL(/exp=3/);
-  await dock.getByRole('button', { name: 'New experiment' }).click();
-  const dialog = page.getByRole('dialog', { name: 'New experiment' });
-  await expect(dialog.getByRole('button', { name: 'Run in Lab' })).toBeDisabled();
-  await dialog.getByLabel('Draft A').fill('x'.repeat(1001));
-  await dialog.getByLabel('Draft B').fill('ok');
-  await expect(dialog.getByText(/at most 1000 characters/)).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Run in Lab' })).toBeDisabled();
+  await expect(dock.getByRole('button', { name: /Select campaign|Create new campaign/ })).toBeVisible();
+  await expect(dock.getByRole('button', { name: 'New experiment' })).toHaveCount(0);
 });
 
 test('lab has no sideways scroll on a phone', async ({ page }) => {
