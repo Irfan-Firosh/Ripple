@@ -8,8 +8,8 @@ Ripple tests a post on Claude-built digital twins of a brand's real audience bef
 | Agent | Address | Does |
 | --- | --- | --- |
 | ripple-orchestrator | (teammate fills in) | ASI:One chat, cards, payments |
-| ripple-audience | (printed on startup) | "Why would @x engage?", audience by niche |
-| ripple-simulation | (printed on startup) | Reach prediction: Claude policy + Monte Carlo cascade in SpacetimeDB |
+| ripple-audience | `agent1q07r393mdp7n306qrp0p2n94drp7f6ku7vnz6faz6tacucdqtpeqkl7xeql` | "Why would @x engage?", audience by niche |
+| ripple-simulation | `agent1qdsk5qq0xfq3x0r8a8wwq7ddtlzc9z9shx4dndxm37nfcx55q40xwqydpm0` | Reach prediction: Claude policy + Monte Carlo cascade in SpacetimeDB |
 
 Run: `cd backend && uv run python -m agents.simulation_agent` and `uv run python -m agents.audience_agent`.
 Needs `.env`: `CLAUDE_API_KEY`, `RIPPLE_AUDIENCE_SEED`, `RIPPLE_SIMULATION_SEED` (+ optional `AGENTVERSE_API_KEY`).

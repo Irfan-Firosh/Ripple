@@ -96,3 +96,20 @@ Ripple's SpacetimeDB live state and its real scraped X data map directly onto "r
    - exposed as the Simulation agent, so the chat returns real reach numbers.
 3. **Interactive Cards** (results and "compare drafts") and the **Payment Protocol**.
 4. **Paperwork:** README badges and addresses, a public ASI:One shared chat, the demo video, and registration through the Submission Agent.
+
+## Orchestrator ↔ Ripple agents contract (2026-10-04)
+
+- Import messages from `backend/agents/contracts.py`; never redefine them (protocol digests must match).
+- Simulation agent `ripple-simulation` (`agent1qdsk5qq0xfq3x0r8a8wwq7ddtlzc9z9shx4dndxm37nfcx55q40xwqydpm0`):
+  - `SimulateRequest` → `SimulateResult`. Measured: 95 X twins in about 20 s, 999 Bluesky twins in about 76 s. Use `timeout=150` and send a "Simulating…" chat message first.
+  - `CompareRequest` → `CompareResult`. Runs one simulation per draft, so call it only after payment and allow `timeout` ≥ 3 × 90 s.
+- Audience agent `ripple-audience` (`agent1q07r393mdp7n306qrp0p2n94drp7f6ku7vnz6faz6tacucdqtpeqkl7xeql`):
+  - `WhyRequest` → `WhyResult`. An unknown handle comes back as `ok=False` with "not in @brand's audience".
+  - `AudienceRequest` → `AudienceResult` (at most 7 niches).
+- Payment: `PaymentGate` from `backend/agents/payment.py`:
+  - `orchestrator.include(gate.protocol, publish_manifest=True)`, then `await gate.request(ctx, user, ref, desc, on_paid=...)`;
+  - `on_paid` fires only after testnet verification (amount, recipient, sender, tx success, tx not reused).
+- Every `SimulateResult` has a `dashboard_url` (`/dashboard?brand=…&run=…`) for the "Watch it spread" card button; it replays the run live.
+- `brand` is `spacetimedb` (X, 95 twins) or `raycast.com` (Bluesky, 999 twins).
+- Local testing without Agentverse: `RIPPLE_AGENTS_LOCAL=1` on every agent (see `backend/agents/README.md`).
+
