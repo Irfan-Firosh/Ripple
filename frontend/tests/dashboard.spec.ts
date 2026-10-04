@@ -98,7 +98,7 @@ test('landing-style desktop navigation opens the Lab for the current brand', asy
   await expect(audience).toHaveAttribute('aria-current', 'page');
   const lab = nav.getByRole('link', { name: 'Lab', exact: true });
   await expect(lab).toHaveAttribute('href', '/lab?brand=raycast.com');
-  await expect(nav).toContainText('HomeAudienceLab');
+  await expect(nav).toContainText('HomeAudienceCampaignsLabLab v2');
   expect(await nav.evaluate(el => getComputedStyle(el).borderRadius)).toBe('999px');
   await expect(nav.locator('svg')).toHaveCount(0);
   await lab.click();

@@ -518,8 +518,70 @@ const onboarding = table(
     updatedAt: t.timestamp(),
   }
 );
+// ---------- Creative: campaign generation, written by backend/creative (Grok). ----------
+const BriefTheme = t.object('BriefTheme', {
+  text: t.string(), support: t.f64(), twinIds: t.array(t.string()),
+});
+const brandKitFields = {
+  brandUserId: t.string(), displayName: t.string(), productDescription: t.string(),
+  valueProps: t.array(t.string()), palette: t.array(t.string()), visualStyle: t.string(),
+  bannedClaims: t.array(t.string()), referenceImageUrls: t.array(t.string()),
+};
+const brandKit = table({ name: 'brand_kit', public: true }, {
+  ...brandKitFields, brandUserId: t.string().primaryKey(), updatedAt: t.timestamp(),
+});
+const campaign = table({ name: 'campaign', public: true }, {
+  campaignId: t.string().primaryKey(), brandUserId: t.string().index('btree'),
+  name: t.string(), goal: t.string(), offer: str(), channel: t.string(), aspectRatio: t.string(),
+  segments: t.array(t.string()), variantsPerBrief: t.u8(), status: t.string(),
+  createdBy: t.identity(), createdAt: t.timestamp(),
+});
+const creativeBriefFields = {
+  briefId: t.string(), campaignId: t.string(), segment: t.string(), version: t.u32(),
+  audienceLabel: t.string(), share: t.f64(), twinCount: t.u32(),
+  keyInterests: t.array(BriefTheme), avoid: t.array(BriefTheme),
+  tone: t.string(), messageAngle: t.string(), valueProps: t.array(t.string()),
+  headlineOptions: t.array(t.string()), cta: t.string(), visualCues: t.array(t.string()),
+  visualAvoid: t.array(t.string()), format: t.string(), model: t.string(), evidenceJson: str(),
+};
+const creativeBrief = table({ name: 'creative_brief', public: true }, {
+  ...creativeBriefFields, briefId: t.string().primaryKey(), campaignId: t.string().index('btree'),
+  editedByUser: t.bool(), createdAt: t.timestamp(),
+});
+const adVariantFields = {
+  jobId: t.u64(), variantId: t.string(), campaignId: t.string(), briefId: t.string(),
+  parentVariantId: str(), rootVariantId: t.string(), depth: t.u8(), operation: t.string(),
+  instruction: str(), imagePrompt: t.string(), headline: t.string(), cta: t.string(),
+  aspectRatio: t.string(), model: t.string(), quality: t.string(), status: t.string(),
+  imageUrl: str(), xaiFileId: str(), costUsdTicks: t.u64(), error: str(),
+};
+const adVariant = table({ name: 'ad_variant', public: true }, {
+  ...adVariantFields, variantId: t.string().primaryKey(), campaignId: t.string().index('btree'),
+  briefId: t.string().index('btree'), jobId: t.u64().index('btree'), status: t.string().index('btree'),
+  starred: t.bool(), approved: t.bool(), createdAt: t.timestamp(), updatedAt: t.timestamp(),
+});
+const creativeJob = table({ name: 'creative_job', public: true }, {
+  jobId: t.u64().primaryKey().autoInc(), campaignId: t.string().index('btree'),
+  kind: t.string(), targetId: t.string(), instruction: str(), aspectRatio: str(),
+  status: t.string().index('btree'), requestedBy: t.identity(), error: str(),
+  reservedVariants: t.u8(), claimedBy: t.option(t.identity()), claimedAt: t.option(t.timestamp()),
+  createdAt: t.timestamp(), finishedAt: t.option(t.timestamp()),
+});
+
+// Immutable audience versions survive replacement of active imported data.
+const audienceSnapshot = table({ name: 'audience_snapshot', public: true }, {
+  snapshotId: t.string().primaryKey(), brand: t.string().index('btree'), brandUserId: t.string(),
+  title: t.string(), sourceRunId: t.string(), people: t.u32(), niches: t.u32(),
+  payload: t.string(), createdAt: t.u64(), archivedAt: t.timestamp(),
+});
+const archivedProfile = table({ name: 'archived_profile', public: true }, {
+  userId: t.string().primaryKey(), username: t.string(), name: t.string(),
+  profileImageUrl: t.string(), verified: t.bool(),
+});
 
 const spacetimedb = schema({
+  audienceSnapshot,
+  archivedProfile,
   admin,
   xUser,
   audienceMembership,
@@ -552,6 +614,11 @@ const spacetimedb = schema({
   simOutsideTick,
   simComment,
   onboarding,
+  brandKit,
+  campaign,
+  creativeBrief,
+  adVariant,
+  creativeJob,
 });
 export default spacetimedb;
 
@@ -563,6 +630,51 @@ type Row<K extends keyof Ctx['db']> = Ctx['db'][K] extends { insert(row: infer R
 function requireAdmin(ctx: Ctx) {
   if (!ctx.db.admin.identity.find(ctx.sender)) throw new SenderError('not authorized');
 }
+
+export const archiveAudience = spacetimedb.reducer({ snapshotId: t.string(), brand: t.string(), brandUserId: t.string(),
+  title: t.string(), sourceRunId: t.string(), people: t.u32(), niches: t.u32(), payload: t.string(), createdAt: t.u64() }, (ctx, a) => {
+  requireAdmin(ctx);
+  if (a.payload.length > 20_000_000) throw new SenderError('audience snapshot is too large');
+  const data = JSON.parse(a.payload);
+  if (data.brand?.userId !== a.brandUserId || data.members?.length !== a.people) throw new SenderError('invalid audience snapshot');
+  if (!ctx.db.audienceSnapshot.snapshotId.find(a.snapshotId)) ctx.db.audienceSnapshot.insert({ ...a, archivedAt: ctx.timestamp });
+});
+
+export const archiveProfiles = spacetimedb.reducer({}, ctx => {
+  requireAdmin(ctx);
+  for (const u of ctx.db.xUser.iter()) {
+    const row = { userId: u.userId, username: u.username, name: u.name, profileImageUrl: u.profileImageUrl ?? '', verified: u.verified ?? false };
+    if (!ctx.db.archivedProfile.userId.find(u.userId)) ctx.db.archivedProfile.insert(row);
+  }
+});
+
+// One atomic reset, guarded against dropping unarchived data or active worker inputs.
+export const resetImportedAudiences = spacetimedb.reducer({}, ctx => {
+  requireAdmin(ctx);
+  if ([...ctx.db.labExperiment.iter()].some(r => ['queued', 'running'].includes(r.status))
+    || [...ctx.db.onboarding.iter()].some(r => !['ready', 'failed'].includes(r.status))
+    || [...ctx.db.twinBuildRun.iter()].some(r => ['pending', 'running'].includes(r.status))
+    || [...ctx.db.xIngestionRun.iter()].some(r => ['pending', 'running'].includes(r.status))) {
+    throw new SenderError('wait for active audience builds and Lab experiments to finish before resetting imports');
+  }
+  const brands = new Set([...ctx.db.twinAudience.iter(), ...ctx.db.audienceMembership.iter()].map(r => r.brandUserId));
+  const archived = new Set([...ctx.db.audienceSnapshot.iter()].map(r => r.brandUserId));
+  if ([...brands].some(id => !archived.has(id))) throw new SenderError('archive every audience before resetting imports');
+  if ([...ctx.db.xUser.iter()].some(u => !ctx.db.archivedProfile.userId.find(u.userId))) throw new SenderError('archive profiles before resetting imports');
+  for (const r of [...ctx.db.audienceMembership.iter()]) ctx.db.audienceMembership.membershipId.delete(r.membershipId);
+  for (const r of [...ctx.db.twinAudience.iter()]) ctx.db.twinAudience.twinAudienceId.delete(r.twinAudienceId);
+  for (const r of [...ctx.db.twinNiche.iter()]) ctx.db.twinNiche.twinNicheId.delete(r.twinNicheId);
+  for (const r of [...ctx.db.audienceEdge.iter()]) ctx.db.audienceEdge.edgeId.delete(r.edgeId);
+  for (const r of [...ctx.db.twin.iter()]) ctx.db.twin.userId.delete(r.userId);
+  for (const r of [...ctx.db.xPostReference.iter()]) ctx.db.xPostReference.id.delete(r.id);
+  for (const r of [...ctx.db.xPostEntity.iter()]) ctx.db.xPostEntity.entityId.delete(r.entityId);
+  for (const r of [...ctx.db.xContextAnnotation.iter()]) ctx.db.xContextAnnotation.annotationId.delete(r.annotationId);
+  for (const r of [...ctx.db.xPostMedia.iter()]) ctx.db.xPostMedia.id.delete(r.id);
+  for (const r of [...ctx.db.xPost.iter()]) ctx.db.xPost.postId.delete(r.postId);
+  for (const r of [...ctx.db.xUser.iter()]) ctx.db.xUser.userId.delete(r.userId);
+  for (const r of [...ctx.db.xIngestionRun.iter()]) ctx.db.xIngestionRun.ingestionRunId.delete(r.ingestionRunId);
+  for (const r of [...ctx.db.backtestResult.iter()]) ctx.db.backtestResult.backtestResultId.delete(r.backtestResultId);
+});
 
 const RUN_STATUSES = ['pending', 'running', 'completed', 'partial', 'failed'];
 
@@ -1347,3 +1459,303 @@ export const failOnboarding = spacetimedb.reducer(
     ctx.db.onboarding.onboardingId.update({ ...row, status: 'failed', error: error.slice(0, 300), updatedAt: ctx.timestamp });
   }
 );
+// ---------- Creative reducers ----------
+const CREATIVE_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9', '2:3', '3:2', '9:19.5', '19.5:9', '9:20', '20:9', '1:2', '2:1', '21:9', '5:2', 'auto'];
+const CREATIVE_FORMATS = ['product_ui', 'lifestyle', 'typographic', 'illustration', 'meme'];
+const CREATIVE_KINDS = ['generate', 'edit', 'regenerate', 'resize', 'branch', 'tweak_prompt'];
+const CREATIVE_TERMINAL = ['ready', 'failed', 'filtered'];
+const CREATIVE_LEASE_MICROS = 180_000_000n;
+function creativeText(value: string, label: string, max: number, allowEmpty = false) {
+  if ((!allowEmpty && !value.trim()) || value.length > max) throw new SenderError(`${label} must be ${allowEmpty ? '0' : '1'}..${max} characters`);
+}
+function creativeStrings(values: string[], label: string, count: number, length: number) {
+  if (values.length > count) throw new SenderError(`too many ${label}`);
+  for (const value of values) creativeText(value, label, length);
+}
+function creativeRatio(value: string) {
+  if (!CREATIVE_RATIOS.includes(value)) throw new SenderError('unsupported aspect ratio');
+}
+function campaignIn(ctx: Ctx, campaignId: string) {
+  const row = ctx.db.campaign.campaignId.find(campaignId);
+  if (!row) throw new SenderError('unknown campaign');
+  return row;
+}
+function ownedCampaign(ctx: Ctx, campaignId: string) {
+  const row = campaignIn(ctx, campaignId);
+  if (!row.createdBy.equals(ctx.sender)) throw new SenderError('campaign belongs to another identity');
+  if (row.status === 'handed_off') throw new SenderError('campaign has already been handed off');
+  return row;
+}
+function variantIn(ctx: Ctx, variantId: string) {
+  const row = ctx.db.adVariant.variantId.find(variantId);
+  if (!row) throw new SenderError('unknown variant');
+  return row;
+}
+function validateAdCopy(ctx: Ctx, campaignId: string, ...copy: string[]) {
+  const parent = campaignIn(ctx, campaignId);
+  const kit = ctx.db.brandKit.brandUserId.find(parent.brandUserId);
+  for (const value of copy) {
+    if (/@[\w.-]+|did:[\w:.-]+|at:\/\//i.test(value)) throw new SenderError('ad copy cannot include personal handles or identifiers');
+    const banned = kit?.bannedClaims.find(claim => value.toLowerCase().includes(claim.toLowerCase()));
+    if (banned) throw new SenderError(`ad copy contains a brand claim to avoid: ${banned}`);
+  }
+}
+function mainSegmentMembers(ctx: Ctx, brandUserId: string) {
+  const segments = new Map<string, string[]>();
+  for (const link of ctx.db.twinAudience.brandUserId.filter(brandUserId)) {
+    if (!ctx.db.twin.userId.find(link.userId)) continue;
+    let main: { niche: string; affinity: number } | undefined;
+    for (const rating of ctx.db.twinNiche.userId.filter(link.userId)) {
+      if (!main || rating.affinity > main.affinity || (rating.affinity === main.affinity && rating.niche < main.niche)) main = rating;
+    }
+    if (main) segments.set(main.niche, [...(segments.get(main.niche) ?? []), link.userId]);
+  }
+  return segments;
+}
+function activeCreativeJobs(ctx: Ctx) {
+  return [...ctx.db.creativeJob.status.filter('pending'), ...ctx.db.creativeJob.status.filter('running')];
+}
+function assertCreativeCapacity(ctx: Ctx, campaignId: string, requested: number) {
+  const existing = [...ctx.db.adVariant.campaignId.filter(campaignId)].length;
+  let reserved = 0;
+  for (const job of activeCreativeJobs(ctx).filter(j => j.campaignId === campaignId)) {
+    // Placeholders count as variants; only unproduced reservation slots count again.
+    reserved += Math.max(0, job.reservedVariants - [...ctx.db.adVariant.jobId.filter(job.jobId)].length);
+  }
+  if (existing + reserved + requested > 60) throw new SenderError('campaign limit of 60 variants reached');
+}
+function enqueueCreative(ctx: Ctx, campaignId: string, kind: string, targetId: string, instruction: string | undefined, aspectRatio: string | undefined, reservedVariants: number) {
+  ctx.db.creativeJob.insert({ jobId: 0n, campaignId, kind, targetId, instruction, aspectRatio, reservedVariants,
+    status: 'pending', requestedBy: ctx.sender, error: undefined, claimedBy: undefined,
+    claimedAt: undefined, createdAt: ctx.timestamp, finishedAt: undefined });
+}
+function runningCreativeJob(ctx: Ctx, jobId: bigint) {
+  const row = ctx.db.creativeJob.jobId.find(jobId);
+  if (!row) throw new SenderError('unknown creative job');
+  if (row.status !== 'running') throw new SenderError(`creative job is ${row.status}`);
+  if (!row.claimedBy?.equals(ctx.sender)) throw new SenderError('creative job claimed by another worker');
+  if (!row.claimedAt || ctx.timestamp.microsSinceUnixEpoch - row.claimedAt.microsSinceUnixEpoch >= CREATIVE_LEASE_MICROS) throw new SenderError('creative job lease expired; recover and claim again');
+  return row;
+}
+function refreshCampaignStatus(ctx: Ctx, campaignId: string) {
+  const row = campaignIn(ctx, campaignId);
+  if (row.status === 'handed_off') return;
+  const active = activeCreativeJobs(ctx).filter(j => j.campaignId === campaignId);
+  const status = active.some(j => j.kind !== 'brief') ? 'generating' : active.length ? 'briefing'
+    : [...ctx.db.adVariant.campaignId.filter(campaignId)].length ? 'reviewing' : 'draft';
+  ctx.db.campaign.campaignId.update({ ...row, status });
+}
+export const createCampaign = spacetimedb.reducer(
+  { campaignId: t.string(), brandUserId: t.string(), name: t.string(), goal: t.string(), offer: str(), channel: t.string(), aspectRatio: t.string(), segments: t.array(t.string()), variantsPerBrief: t.u8() },
+  (ctx, args) => {
+    creativeText(args.campaignId, 'campaign id', 100);
+    creativeText(args.name, 'name', 120); creativeText(args.goal, 'goal', 600);
+    if (args.offer !== undefined) creativeText(args.offer, 'offer', 300, true);
+    if (!['bluesky', 'x', 'instagram'].includes(args.channel)) throw new SenderError('unsupported channel');
+    creativeRatio(args.aspectRatio);
+    if (args.variantsPerBrief < 2 || args.variantsPerBrief > 4) throw new SenderError('variants per brief must be 2..4');
+    if (!args.segments.length || args.segments.length > 4 || new Set(args.segments).size !== args.segments.length) throw new SenderError('choose 1..4 unique segments');
+    if (ctx.db.campaign.campaignId.find(args.campaignId)) throw new SenderError('campaign id already exists');
+    const members = mainSegmentMembers(ctx, args.brandUserId);
+    for (const segment of args.segments) {
+      if (!ctx.db.niche.slug.find(segment) || ['politics_society', 'other'].includes(segment)) throw new SenderError('unsupported audience segment');
+      if ((members.get(segment)?.length ?? 0) < 15) throw new SenderError('each segment needs at least 15 twins');
+    }
+    // The first request can contain four brief-only jobs; another campaign cannot
+    // use that exception to bypass the sender concurrency cap.
+    if (activeCreativeJobs(ctx).some(j => j.requestedBy.equals(ctx.sender))) throw new SenderError('finish existing creative jobs before creating a campaign');
+    ctx.db.campaign.insert({ ...args, offer: args.offer, status: 'briefing', createdBy: ctx.sender, createdAt: ctx.timestamp });
+    for (const segment of args.segments) enqueueCreative(ctx, args.campaignId, 'brief', `${args.campaignId}:${segment}:1`, undefined, undefined, 0);
+  }
+);
+export const requestCreative = spacetimedb.reducer(
+  { campaignId: t.string(), kind: t.string(), targetId: t.string(), instruction: str(), aspectRatio: str() },
+  (ctx, { campaignId, kind, targetId, instruction, aspectRatio }) => {
+    const row = ownedCampaign(ctx, campaignId);
+    if (!CREATIVE_KINDS.includes(kind)) throw new SenderError('unsupported creative operation');
+    if (instruction !== undefined) creativeText(instruction, 'instruction', kind === 'tweak_prompt' ? 4000 : 300, true);
+    if (['edit', 'branch', 'tweak_prompt'].includes(kind) && !instruction?.trim()) throw new SenderError('instruction required');
+    if (aspectRatio !== undefined) creativeRatio(aspectRatio);
+    if (kind === 'resize' && !aspectRatio) throw new SenderError('resize requires an aspect ratio');
+    if (kind === 'generate') {
+      const brief = ctx.db.creativeBrief.briefId.find(targetId);
+      if (!brief || brief.campaignId !== campaignId) throw new SenderError('brief is not in this campaign');
+    } else {
+      const parent = variantIn(ctx, targetId);
+      if (parent.campaignId !== campaignId || parent.status !== 'ready' || !parent.imageUrl) throw new SenderError('a ready parent variant in this campaign is required');
+      if (parent.depth >= 64) throw new SenderError('variant lineage is too deep');
+    }
+    if (activeCreativeJobs(ctx).filter(j => j.requestedBy.equals(ctx.sender)).length >= 3) throw new SenderError('at most 3 open creative jobs per sender');
+    const reserved = kind === 'generate' ? row.variantsPerBrief : 1;
+    assertCreativeCapacity(ctx, campaignId, reserved);
+    enqueueCreative(ctx, campaignId, kind, targetId, instruction, aspectRatio, reserved);
+    ctx.db.campaign.campaignId.update({ ...row, status: 'generating' });
+  }
+);
+export const deleteCampaign = spacetimedb.reducer({ campaignId: t.string() }, (ctx, { campaignId }) => {
+  const campaign = campaignIn(ctx, campaignId);
+  if (!campaign.createdBy.equals(ctx.sender) && !ctx.db.admin.identity.find(ctx.sender)) {
+    throw new SenderError('campaign belongs to another identity');
+  }
+  // Remove the queue first so an interrupted worker cannot publish more output.
+  for (const job of [...ctx.db.creativeJob.campaignId.filter(campaignId)]) ctx.db.creativeJob.jobId.delete(job.jobId);
+  for (const variant of [...ctx.db.adVariant.campaignId.filter(campaignId)]) ctx.db.adVariant.variantId.delete(variant.variantId);
+  for (const brief of [...ctx.db.creativeBrief.campaignId.filter(campaignId)]) ctx.db.creativeBrief.briefId.delete(brief.briefId);
+  ctx.db.campaign.campaignId.delete(campaignId);
+});
+const editableBriefFields = {
+  audienceLabel: t.string(), tone: t.string(), messageAngle: t.string(), valueProps: t.array(t.string()),
+  headlineOptions: t.array(t.string()), cta: t.string(), visualCues: t.array(t.string()),
+  visualAvoid: t.array(t.string()), format: t.string(),
+};
+function validateBriefCopy(fields: { audienceLabel: string; tone: string; messageAngle: string; valueProps: string[]; headlineOptions: string[]; cta: string; visualCues: string[]; visualAvoid: string[]; format: string }) {
+  creativeText(fields.audienceLabel, 'audience label', 120); creativeText(fields.tone, 'tone', 300);
+  creativeText(fields.messageAngle, 'message angle', 500);
+  creativeStrings(fields.valueProps, 'value props', 3, 300);
+  creativeStrings(fields.headlineOptions, 'headlines', 3, 100); creativeText(fields.cta, 'CTA', 60);
+  creativeStrings(fields.visualCues, 'visual cues', 5, 300); creativeStrings(fields.visualAvoid, 'visual avoid', 5, 300);
+  if (!CREATIVE_FORMATS.includes(fields.format)) throw new SenderError('unsupported creative format');
+}
+export const editBrief = spacetimedb.reducer({ briefId: t.string(), ...editableBriefFields }, (ctx, { briefId, ...fields }) => {
+  const prev = ctx.db.creativeBrief.briefId.find(briefId);
+  if (!prev) throw new SenderError('unknown brief');
+  ownedCampaign(ctx, prev.campaignId); validateBriefCopy(fields);
+  validateAdCopy(ctx, prev.campaignId, ...fields.headlineOptions, fields.cta);
+  const versions = [...ctx.db.creativeBrief.campaignId.filter(prev.campaignId)].filter(b => b.segment === prev.segment);
+  const version = Math.max(...versions.map(b => b.version)) + 1;
+  ctx.db.creativeBrief.insert({ ...prev, ...fields, briefId: `${prev.campaignId}:${prev.segment}:${version}`, version, editedByUser: true, createdAt: ctx.timestamp });
+});
+export const setVariantCopy = spacetimedb.reducer({ variantId: t.string(), headline: t.string(), cta: t.string() }, (ctx, { variantId, headline, cta }) => {
+  const row = variantIn(ctx, variantId); ownedCampaign(ctx, row.campaignId);
+  if (row.status !== 'ready') throw new SenderError('variant must be ready');
+  creativeText(headline, 'headline', 100, true); creativeText(cta, 'CTA', 60, true);
+  validateAdCopy(ctx, row.campaignId, headline, cta);
+  ctx.db.adVariant.variantId.update({ ...row, headline, cta, approved: false, updatedAt: ctx.timestamp });
+});
+export const starVariant = spacetimedb.reducer({ variantId: t.string(), starred: t.bool() }, (ctx, { variantId, starred }) => {
+  const row = variantIn(ctx, variantId); ownedCampaign(ctx, row.campaignId);
+  ctx.db.adVariant.variantId.update({ ...row, starred, updatedAt: ctx.timestamp });
+});
+export const approveVariant = spacetimedb.reducer({ variantId: t.string(), approved: t.bool() }, (ctx, { variantId, approved }) => {
+  const row = variantIn(ctx, variantId); ownedCampaign(ctx, row.campaignId);
+  if (approved && (row.status !== 'ready' || !row.imageUrl)) throw new SenderError('only ready images can be approved');
+  ctx.db.adVariant.variantId.update({ ...row, approved, updatedAt: ctx.timestamp });
+});
+export const handoffCampaign = spacetimedb.reducer({ campaignId: t.string() }, (ctx, { campaignId }) => {
+  const row = ownedCampaign(ctx, campaignId);
+  if (activeCreativeJobs(ctx).some(j => j.campaignId === campaignId)) throw new SenderError('finish creative jobs before handoff');
+  if (![...ctx.db.adVariant.campaignId.filter(campaignId)].some(v => v.status === 'ready' && v.approved && v.imageUrl)) throw new SenderError('approve at least one ready variant before handoff');
+  ctx.db.campaign.campaignId.update({ ...row, status: 'handed_off' });
+});
+export const upsertBrandKit = spacetimedb.reducer(brandKitFields, (ctx, fields) => {
+  requireAdmin(ctx);
+  if (!ctx.db.xUser.userId.find(fields.brandUserId)) throw new SenderError('unknown brand user');
+  creativeText(fields.displayName, 'display name', 120); creativeText(fields.productDescription, 'product description', 2000);
+  creativeStrings(fields.valueProps, 'value props', 10, 500); creativeStrings(fields.palette, 'palette', 12, 7);
+  if (fields.palette.some(color => !/^#[0-9a-fA-F]{6}$/.test(color))) throw new SenderError('palette must contain six-digit hex colors');
+  creativeText(fields.visualStyle, 'visual style', 1000); creativeStrings(fields.bannedClaims, 'banned claims', 30, 300);
+  creativeStrings(fields.referenceImageUrls, 'reference images', 4, 2000);
+  if (fields.referenceImageUrls.some(url => !/^https:\/\//.test(url))) throw new SenderError('references must be HTTPS URLs');
+  const row = { ...fields, updatedAt: ctx.timestamp };
+  if (ctx.db.brandKit.brandUserId.find(fields.brandUserId)) ctx.db.brandKit.brandUserId.update(row);
+  else ctx.db.brandKit.insert(row);
+});
+export const publishBrief = spacetimedb.reducer({ jobId: t.u64(), ...creativeBriefFields }, (ctx, { jobId, ...fields }) => {
+  requireAdmin(ctx);
+  const job = runningCreativeJob(ctx, jobId); const parent = campaignIn(ctx, fields.campaignId);
+  if (job.kind !== 'brief' || job.campaignId !== fields.campaignId || job.targetId !== fields.briefId) throw new SenderError('brief does not match claimed job');
+  if (!parent.segments.includes(fields.segment) || fields.briefId !== `${fields.campaignId}:${fields.segment}:1` || fields.version !== 1) throw new SenderError('invalid initial brief identity');
+  validateBriefCopy(fields);
+  if (!Number.isFinite(fields.share) || fields.share < 0 || fields.share > 1 || fields.twinCount < 15) throw new SenderError('invalid audience count or share');
+  const members = new Set(mainSegmentMembers(ctx, parent.brandUserId).get(fields.segment) ?? []);
+  if (fields.twinCount !== members.size) throw new SenderError('brief twin count does not match segment');
+  for (const themes of [fields.keyInterests, fields.avoid]) {
+    if (themes.length > 5) throw new SenderError('too many brief themes');
+    for (const theme of themes) {
+      creativeText(theme.text, 'theme', 200); const ids = new Set(theme.twinIds);
+      if ([...ids].some(id => !members.has(id))) throw new SenderError('theme cites a twin outside its segment');
+      const support = ids.size / members.size;
+      if (!Number.isFinite(theme.support) || Math.abs(theme.support - support) > 0.000001 || support < 0.08) throw new SenderError('theme support must equal cited segment membership and be at least 0.08');
+    }
+  }
+  creativeText(fields.model, 'model', 100);
+  if (fields.evidenceJson !== undefined) {
+    creativeText(fields.evidenceJson, 'evidence', 100000, true);
+    try { JSON.parse(fields.evidenceJson); } catch { throw new SenderError('evidence must be JSON'); }
+  }
+  if (ctx.db.creativeBrief.briefId.find(fields.briefId)) return;
+  ctx.db.creativeBrief.insert({ ...fields, evidenceJson: fields.evidenceJson, editedByUser: false, createdAt: ctx.timestamp } as Row<'creativeBrief'>);
+});
+export const upsertVariant = spacetimedb.reducer(adVariantFields, (ctx, fields) => {
+  requireAdmin(ctx);
+  const job = runningCreativeJob(ctx, fields.jobId); const parentCampaign = campaignIn(ctx, fields.campaignId);
+  const brief = ctx.db.creativeBrief.briefId.find(fields.briefId);
+  if (job.kind === 'brief' || job.campaignId !== fields.campaignId || !brief || brief.campaignId !== fields.campaignId) throw new SenderError('variant does not match claimed job or campaign brief');
+  if (fields.operation !== (job.kind === 'tweak_prompt' ? 'generate' : job.kind)) throw new SenderError('variant operation does not match job');
+  if (job.kind === 'generate') {
+    if (fields.briefId !== job.targetId || fields.parentVariantId || fields.rootVariantId !== fields.variantId || fields.depth !== 0) throw new SenderError('invalid root variant lineage');
+  } else {
+    const parent = variantIn(ctx, job.targetId);
+    if (fields.parentVariantId !== parent.variantId || fields.rootVariantId !== parent.rootVariantId || fields.depth !== parent.depth + 1 || fields.briefId !== parent.briefId) throw new SenderError('invalid child variant lineage');
+  }
+  creativeText(fields.variantId, 'variant id', 120); creativeText(fields.imagePrompt, 'image prompt', 64000);
+  creativeText(fields.headline, 'headline', 100, true); creativeText(fields.cta, 'CTA', 60, true);
+  creativeText(fields.model, 'model', 100);
+  if (!['grok-imagine-image-2.0', 'grok-imagine-image'].includes(fields.model)) throw new SenderError('only Grok Imagine image models are supported');
+  if (fields.quality !== 'low') throw new SenderError('quality must be low for the campaign budget');
+  creativeRatio(fields.aspectRatio);
+  if (fields.aspectRatio !== (job.aspectRatio ?? parentCampaign.aspectRatio) && job.kind === 'generate') throw new SenderError('variant ratio does not match requested ratio');
+  if (!['queued', 'generating', ...CREATIVE_TERMINAL].includes(fields.status)) throw new SenderError('invalid variant status');
+  if (fields.status === 'ready' && !fields.imageUrl) throw new SenderError('ready variant needs a hosted image URL');
+  if (fields.imageUrl && !(/^https:\/\//.test(fields.imageUrl) || /^\/generated\/[a-zA-Z0-9_.-]+$/.test(fields.imageUrl))) throw new SenderError('image must be an HTTPS URL or local generated asset');
+  if (fields.instruction !== undefined) creativeText(fields.instruction, 'instruction', job.kind === 'tweak_prompt' ? 4000 : 300, true);
+  if (fields.error !== undefined) creativeText(fields.error, 'error', 2000, true);
+  const prev = ctx.db.adVariant.variantId.find(fields.variantId);
+  if (prev) {
+    if (prev.jobId !== fields.jobId || prev.campaignId !== fields.campaignId || prev.briefId !== fields.briefId || prev.parentVariantId !== fields.parentVariantId || prev.rootVariantId !== fields.rootVariantId || prev.depth !== fields.depth) throw new SenderError('variant identity is immutable');
+    if (CREATIVE_TERMINAL.includes(prev.status)) {
+      if (prev.status === fields.status && prev.imageUrl === fields.imageUrl && prev.imagePrompt === fields.imagePrompt) return;
+      throw new SenderError('variant already has a terminal result');
+    }
+    if (prev.status === 'generating' && fields.status === 'queued') throw new SenderError('variant cannot return to queued');
+    ctx.db.adVariant.variantId.update({ ...prev, ...fields, parentVariantId: fields.parentVariantId, instruction: fields.instruction, imageUrl: fields.imageUrl, xaiFileId: fields.xaiFileId, error: fields.error, updatedAt: ctx.timestamp });
+  } else {
+    if ([...ctx.db.adVariant.jobId.filter(fields.jobId)].length >= job.reservedVariants) throw new SenderError('job variant reservation exhausted');
+    if ([...ctx.db.adVariant.campaignId.filter(fields.campaignId)].length >= 60) throw new SenderError('campaign variant limit reached');
+    ctx.db.adVariant.insert({ ...fields, parentVariantId: fields.parentVariantId, instruction: fields.instruction, imageUrl: fields.imageUrl, xaiFileId: fields.xaiFileId, error: fields.error, starred: false, approved: false, createdAt: ctx.timestamp, updatedAt: ctx.timestamp } as Row<'adVariant'>);
+  }
+});
+export const claimCreativeJob = spacetimedb.reducer({ jobId: t.u64() }, (ctx, { jobId }) => {
+  requireAdmin(ctx); const row = ctx.db.creativeJob.jobId.find(jobId);
+  if (!row || row.status !== 'pending') throw new SenderError('creative job unavailable or already claimed');
+  ctx.db.creativeJob.jobId.update({ ...row, status: 'running', claimedBy: ctx.sender, claimedAt: ctx.timestamp });
+});
+export const heartbeatCreativeJob = spacetimedb.reducer({ jobId: t.u64() }, (ctx, { jobId }) => {
+  requireAdmin(ctx); const row = runningCreativeJob(ctx, jobId);
+  ctx.db.creativeJob.jobId.update({ ...row, claimedAt: ctx.timestamp });
+});
+export const finishCreativeJob = spacetimedb.reducer({ jobId: t.u64() }, (ctx, { jobId }) => {
+  requireAdmin(ctx); const row = runningCreativeJob(ctx, jobId);
+  if (row.kind === 'brief') {
+    if (!ctx.db.creativeBrief.briefId.find(row.targetId)) throw new SenderError('brief must be published before finishing');
+  } else {
+    const outputs = [...ctx.db.adVariant.jobId.filter(jobId)];
+    if (outputs.length !== row.reservedVariants || outputs.some(v => !CREATIVE_TERMINAL.includes(v.status))) throw new SenderError('all reserved variants need terminal results before finishing');
+  }
+  ctx.db.creativeJob.jobId.update({ ...row, status: 'done', error: undefined, finishedAt: ctx.timestamp });
+  refreshCampaignStatus(ctx, row.campaignId);
+});
+export const failCreativeJob = spacetimedb.reducer({ jobId: t.u64(), error: t.string() }, (ctx, { jobId, error }) => {
+  requireAdmin(ctx); const row = runningCreativeJob(ctx, jobId); creativeText(error, 'error', 2000);
+  for (const variant of ctx.db.adVariant.jobId.filter(jobId)) {
+    if (!CREATIVE_TERMINAL.includes(variant.status)) ctx.db.adVariant.variantId.update({ ...variant, status: 'failed', error, updatedAt: ctx.timestamp });
+  }
+  ctx.db.creativeJob.jobId.update({ ...row, status: 'failed', error, finishedAt: ctx.timestamp });
+  refreshCampaignStatus(ctx, row.campaignId);
+});
+export const resetStaleCreativeJobs = spacetimedb.reducer(ctx => {
+  requireAdmin(ctx);
+  for (const row of [...ctx.db.creativeJob.status.filter('running')]) {
+    if (!row.claimedAt || ctx.timestamp.microsSinceUnixEpoch - row.claimedAt.microsSinceUnixEpoch >= CREATIVE_LEASE_MICROS) ctx.db.creativeJob.jobId.update({ ...row, status: 'pending', claimedBy: undefined, claimedAt: undefined, error: undefined });
+  }
+});

@@ -5,8 +5,10 @@ from uagents import Agent, Bureau, Context
 
 from twins.config import MissingSecret
 
-from .agents import STARTER_PROMPTS, build_audience_agent, build_orchestrator
-from .config import AUDIENCE, BUREAU_PORT, ORCHESTRATOR, SIMULATOR_ADDRESS, SIMULATOR_EXTERNAL, agentverse_api_key
+from .agents import STARTER_PROMPTS, _stdb, build_audience_agent, build_orchestrator
+from .creative import build_creative_director, build_image_gen
+from .config import (AUDIENCE, BUREAU_PORT, CREATIVE_DIRECTOR, IMAGE_GEN, ORCHESTRATOR, SIMULATOR_ADDRESS, SIMULATOR_EXTERNAL,
+                     agentverse_api_key)
 from .registration import connect_mailbox
 
 
@@ -26,16 +28,19 @@ def _register_on_startup(agent: Agent, starter_prompts: list[str] | None = None)
 
 def main(argv: list[str]) -> int:
     if "--addresses" in argv:
-        for spec in (ORCHESTRATOR, AUDIENCE):
+        for spec in (ORCHESTRATOR, AUDIENCE, CREATIVE_DIRECTOR, IMAGE_GEN):
             print(f"{spec.name}: {spec.address}")
         where = "external" if SIMULATOR_EXTERNAL else "in this Bureau"
         print(f"simulator: {SIMULATOR_ADDRESS} ({where})" if SIMULATOR_ADDRESS else
               "simulator: (not configured: set RIPPLE_SIMULATION_SEED or RIPPLE_SIMULATOR_ADDRESS)")
         return 0
     orchestrator, audience = build_orchestrator(), build_audience_agent()
+    director, image_gen = build_creative_director(_stdb), build_image_gen(_stdb)
     _register_on_startup(orchestrator, STARTER_PROMPTS)
     _register_on_startup(audience)
-    agents = [orchestrator, audience]
+    _register_on_startup(director)
+    _register_on_startup(image_gen)
+    agents = [orchestrator, audience, director, image_gen]
     if SIMULATOR_ADDRESS and not SIMULATOR_EXTERNAL:  # our Simulation agent (backend/agents) runs alongside
         from agents.simulation_agent import agent as simulator
         _register_on_startup(simulator)

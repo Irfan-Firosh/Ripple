@@ -43,6 +43,45 @@ class ReactResult(Model):
     error: str = ""
 
 
+class BriefRequest(Model):
+    brand: str
+    campaign_id: str
+    goal: str
+    segments: list[str] = []
+    offer: str = ""
+    n: int = 3
+    aspect_ratio: str = "1:1"
+
+
+class BriefResult(Model):
+    campaign_id: str
+    brief_ids: list[str] = []
+    error: str = ""
+
+
+class GenerateRequest(Model):
+    campaign_id: str
+    brief_id: str
+    n: int = 3
+    aspect_ratio: str = "1:1"
+
+
+class EditRequest(Model):
+    campaign_id: str
+    parent_variant_id: str
+    operation: str
+    instruction: str = ""
+    aspect_ratio: str = ""
+
+
+class VariantsResult(Model):
+    campaign_id: str
+    variant_ids: list[str] = []
+    image_urls: list[str] = []
+    warnings: list[str] = []
+    error: str = ""
+
+
 # Contract for the Simulation agent (reach / cascade), which is built separately.
 class SimulateRequest(Model):
     brand: str

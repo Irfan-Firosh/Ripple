@@ -1,0 +1,313 @@
+{
+  "recordedAt": "2026-10-04T03:25:07.031458+00:00",
+  "campaign": {
+    "campaignId": "e48d517d-5bb1-4969-83ea-9aa5d22471d7",
+    "brandUserId": "did:plc:w2wcqqbevx536r4vau7f2pae",
+    "name": "Introduce Raycast AI to people building useful tools.",
+    "goal": "Introduce Raycast AI to people building useful tools.",
+    "offer": null,
+    "channel": "bluesky",
+    "aspectRatio": "1:1",
+    "segments": [
+      "culture_lifestyle"
+    ],
+    "variantsPerBrief": 2,
+    "status": "handed_off"
+  },
+  "brandKit": {
+    "brandUserId": "did:plc:w2wcqqbevx536r4vau7f2pae",
+    "displayName": "Raycast",
+    "productDescription": "A keyboard-first launcher and productivity toolkit for Mac.",
+    "valueProps": [
+      "Find tools from a keyboard-first launcher",
+      "Extend everyday workflows with extensions",
+      "Keep useful commands close at hand"
+    ],
+    "palette": [
+      "#FF6363",
+      "#111111",
+      "#F4F4F5"
+    ],
+    "visualStyle": "dark UI, crisp minimal composition, keyboard-first workspace",
+    "bannedClaims": [
+      "fastest",
+      "free forever",
+      "guaranteed"
+    ],
+    "referenceImageUrls": []
+  },
+  "briefs": [
+    {
+      "briefId": "e48d517d-5bb1-4969-83ea-9aa5d22471d7:culture_lifestyle:1",
+      "campaignId": "e48d517d-5bb1-4969-83ea-9aa5d22471d7",
+      "segment": "culture_lifestyle",
+      "version": 1,
+      "audienceLabel": "Tool-building creators and workflow enthusiasts",
+      "share": 0.14714714714714713,
+      "twinCount": 147,
+      "keyInterests": [
+        {
+          "text": "Developer tools and productivity workflows",
+          "support": 0.23129251700680273,
+          "twinIds": [],
+          "evidenceCount": 34
+        },
+        {
+          "text": "Design craft and creative tooling",
+          "support": 0.14285714285714285,
+          "twinIds": [],
+          "evidenceCount": 21
+        },
+        {
+          "text": "Pop culture media and music appreciation",
+          "support": 0.3741496598639456,
+          "twinIds": [],
+          "evidenceCount": 55
+        },
+        {
+          "text": "Humor absurdist observations and everyday life",
+          "support": 0.3129251700680272,
+          "twinIds": [],
+          "evidenceCount": 46
+        },
+        {
+          "text": "Community personal milestones and genuine shares",
+          "support": 0.3129251700680272,
+          "twinIds": [],
+          "evidenceCount": 46
+        }
+      ],
+      "avoid": [
+        {
+          "text": "Crypto web3 and finance speculation",
+          "support": 0.40816326530612246,
+          "twinIds": [],
+          "evidenceCount": 60
+        },
+        {
+          "text": "Dense technical deep dives without context",
+          "support": 0.8775510204081632,
+          "twinIds": [],
+          "evidenceCount": 129
+        },
+        {
+          "text": "Self promotion and generic hype",
+          "support": 0.6054421768707483,
+          "twinIds": [],
+          "evidenceCount": 89
+        },
+        {
+          "text": "Gaming esports and competitive content",
+          "support": 0.4557823129251701,
+          "twinIds": [],
+          "evidenceCount": 67
+        },
+        {
+          "text": "Mainstream news hype and viral trends",
+          "support": 0.7346938775510204,
+          "twinIds": [],
+          "evidenceCount": 108
+        }
+      ],
+      "tone": "Witty conversational tool-focused with cultural nods and genuine engagement",
+      "messageAngle": "Raycast AI helps builders extend workflows with smart contextual tools",
+      "valueProps": [
+        "Find tools from a keyboard-first launcher",
+        "Extend everyday workflows with extensions",
+        "Keep useful commands close at hand"
+      ],
+      "headlineOptions": [
+        "Keyboard-first AI for builders",
+        "Extend your tools instantly",
+        "Commands that keep up with you"
+      ],
+      "cta": "Try Raycast AI",
+      "visualCues": [
+        "dark UI panels",
+        "crisp minimal keyboard focus",
+        "subtle extension icons",
+        "clean workspace composition",
+        "soft highlight on active commands"
+      ],
+      "visualAvoid": [
+        "bright gradients",
+        "dense text walls",
+        "stock lifestyle photos",
+        "cluttered mockups"
+      ],
+      "format": "product_ui",
+      "model": "grok-4.3",
+      "editedByUser": false
+    },
+    {
+      "briefId": "e48d517d-5bb1-4969-83ea-9aa5d22471d7:culture_lifestyle:2",
+      "campaignId": "e48d517d-5bb1-4969-83ea-9aa5d22471d7",
+      "segment": "culture_lifestyle",
+      "version": 2,
+      "audienceLabel": "Tool-building creators and workflow enthusiasts",
+      "share": 0.14714714714714713,
+      "twinCount": 147,
+      "keyInterests": [
+        {
+          "text": "Developer tools and productivity workflows",
+          "support": 0.23129251700680273,
+          "twinIds": [],
+          "evidenceCount": 34
+        },
+        {
+          "text": "Design craft and creative tooling",
+          "support": 0.14285714285714285,
+          "twinIds": [],
+          "evidenceCount": 21
+        },
+        {
+          "text": "Pop culture media and music appreciation",
+          "support": 0.3741496598639456,
+          "twinIds": [],
+          "evidenceCount": 55
+        },
+        {
+          "text": "Humor absurdist observations and everyday life",
+          "support": 0.3129251700680272,
+          "twinIds": [],
+          "evidenceCount": 46
+        },
+        {
+          "text": "Community personal milestones and genuine shares",
+          "support": 0.3129251700680272,
+          "twinIds": [],
+          "evidenceCount": 46
+        }
+      ],
+      "avoid": [
+        {
+          "text": "Crypto web3 and finance speculation",
+          "support": 0.40816326530612246,
+          "twinIds": [],
+          "evidenceCount": 60
+        },
+        {
+          "text": "Dense technical deep dives without context",
+          "support": 0.8775510204081632,
+          "twinIds": [],
+          "evidenceCount": 129
+        },
+        {
+          "text": "Self promotion and generic hype",
+          "support": 0.6054421768707483,
+          "twinIds": [],
+          "evidenceCount": 89
+        },
+        {
+          "text": "Gaming esports and competitive content",
+          "support": 0.4557823129251701,
+          "twinIds": [],
+          "evidenceCount": 67
+        },
+        {
+          "text": "Mainstream news hype and viral trends",
+          "support": 0.7346938775510204,
+          "twinIds": [],
+          "evidenceCount": 108
+        }
+      ],
+      "tone": "Witty conversational tool-focused with cultural nods and genuine engagement",
+      "messageAngle": "Keep your tools close and make room for the work that matters.",
+      "valueProps": [
+        "Find tools from a keyboard-first launcher",
+        "Extend everyday workflows with extensions",
+        "Keep useful commands close at hand"
+      ],
+      "headlineOptions": [
+        "Keyboard-first AI for builders",
+        "Extend your tools instantly",
+        "Commands that keep up with you"
+      ],
+      "cta": "Try Raycast AI",
+      "visualCues": [
+        "dark UI panels",
+        "crisp minimal keyboard focus",
+        "subtle extension icons",
+        "clean workspace composition",
+        "soft highlight on active commands"
+      ],
+      "visualAvoid": [
+        "bright gradients",
+        "dense text walls",
+        "stock lifestyle photos",
+        "cluttered mockups"
+      ],
+      "format": "product_ui",
+      "model": "grok-4.3",
+      "editedByUser": true
+    }
+  ],
+  "variants": [
+    {
+      "variantId": "creative-62-1",
+      "campaignId": "e48d517d-5bb1-4969-83ea-9aa5d22471d7",
+      "briefId": "e48d517d-5bb1-4969-83ea-9aa5d22471d7:culture_lifestyle:2",
+      "parentVariantId": null,
+      "rootVariantId": "creative-62-1",
+      "depth": 0,
+      "operation": "generate",
+      "instruction": null,
+      "imagePrompt": "Minimal dark UI workspace with a keyboard integrated into a horizontal clean dashboard layout, subtle extension icons aligned like musical notes along the lower frame, soft highlight on selected commands, crisp product UI mood with cultural tooling nod, top third left empty, no text logos or people, using deep black off-white and accent red tones. Brand: Raycast. Palette: #FF6363, #111111, #F4F4F5. Style: dark UI, crisp minimal composition, keyboard-first workspace. Composition: 1:1 social ad, clear focal point, leave clean negative space in the top third for a headline overlay. Avoid unsupported claims: fastest, free forever, guaranteed. No real or recognizable people, no celebrity likeness, no political, religious, medical or demographic symbolism. Do not render any text, logos, watermarks, or real people's faces.",
+      "headline": "Commands that keep up with you",
+      "cta": "Try Raycast AI",
+      "aspectRatio": "1:1",
+      "model": "grok-imagine-image-2.0",
+      "quality": "low",
+      "status": "ready",
+      "imageUrl": "/rehearsal/creative-62-1.jpg",
+      "costUsdTicks": "400000000",
+      "error": null,
+      "starred": false,
+      "approved": false
+    },
+    {
+      "variantId": "creative-62-0",
+      "campaignId": "e48d517d-5bb1-4969-83ea-9aa5d22471d7",
+      "briefId": "e48d517d-5bb1-4969-83ea-9aa5d22471d7:culture_lifestyle:2",
+      "parentVariantId": null,
+      "rootVariantId": "creative-62-0",
+      "depth": 0,
+      "operation": "generate",
+      "instruction": null,
+      "imagePrompt": "Crisp minimal dark composition on a matte black workspace surface with a centered Mac keyboard in sharp focus, subtle extension icons softly orbiting the keyboard like satellites in the lower two-thirds, dark UI panels with soft red highlights on active commands, clean productivity mood, top third empty for overlay, no text logos or people, palette of #111111 #F4F4F5 #FF6363. Brand: Raycast. Palette: #FF6363, #111111, #F4F4F5. Style: dark UI, crisp minimal composition, keyboard-first workspace. Composition: 1:1 social ad, clear focal point, leave clean negative space in the top third for a headline overlay. Avoid unsupported claims: fastest, free forever, guaranteed. No real or recognizable people, no celebrity likeness, no political, religious, medical or demographic symbolism. Do not render any text, logos, watermarks, or real people's faces.",
+      "headline": "Your next idea, one shortcut away",
+      "cta": "Try Raycast AI",
+      "aspectRatio": "1:1",
+      "model": "grok-imagine-image-2.0",
+      "quality": "low",
+      "status": "ready",
+      "imageUrl": "/rehearsal/creative-62-0.jpg",
+      "costUsdTicks": "400000000",
+      "error": null,
+      "starred": false,
+      "approved": false
+    },
+    {
+      "variantId": "creative-63-0",
+      "campaignId": "e48d517d-5bb1-4969-83ea-9aa5d22471d7",
+      "briefId": "e48d517d-5bb1-4969-83ea-9aa5d22471d7:culture_lifestyle:2",
+      "parentVariantId": "creative-62-0",
+      "rootVariantId": "creative-62-0",
+      "depth": 1,
+      "operation": "edit",
+      "instruction": "Bolder",
+      "imagePrompt": "Keep the composition, subject and brand palette. Change only: Bolder. Brand: Raycast. Palette: #FF6363, #111111, #F4F4F5. Style: dark UI, crisp minimal composition, keyboard-first workspace. Composition: 1:1 social ad, clear focal point, leave clean negative space in the top third for a headline overlay. Avoid unsupported claims: fastest, free forever, guaranteed. No real or recognizable people, no celebrity likeness, no political, religious, medical or demographic symbolism. Do not render any text, logos, watermarks, or real people's faces.",
+      "headline": "Your next idea, one shortcut away",
+      "cta": "Try Raycast AI",
+      "aspectRatio": "1:1",
+      "model": "grok-imagine-image-2.0",
+      "quality": "low",
+      "status": "ready",
+      "imageUrl": "/rehearsal/creative-63-0.jpg",
+      "costUsdTicks": "500000000",
+      "error": null,
+      "starred": false,
+      "approved": true
+    }
+  ]
+}

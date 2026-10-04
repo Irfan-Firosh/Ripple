@@ -22,12 +22,16 @@ class Asi1Error(RuntimeError):
 
 
 class CampaignPlan(BaseModel):
-    action: Literal["react", "audience", "help"]
+    action: Literal["react", "audience", "create", "help"]
     brand: str = DEFAULT_BRAND
     variants: list[str] = Field(default_factory=list, max_length=MAX_VARIANTS)
     niches: list[str] = Field(default_factory=list)
     sample_size: int = Field(20, ge=1, le=MAX_SAMPLE)
     question: str = ""
+    goal: str = Field("", max_length=600)
+    offer: str = Field("", max_length=300)
+    n: int = Field(3, ge=2, le=4)
+    aspect_ratio: Literal["1:1", "3:4", "4:3", "9:16", "16:9"] = "1:1"
 
     @field_validator("brand", mode="before")
     @classmethod
@@ -37,7 +41,7 @@ class CampaignPlan(BaseModel):
     @field_validator("niches")
     @classmethod
     def _known_niches(cls, value: list[str]) -> list[str]:
-        return [s for s in dict.fromkeys(value) if s in NICHE_SLUGS][:3]
+        return [s for s in dict.fromkeys(value) if s in NICHE_SLUGS and s not in {"politics_society", "other"}][:3]
 
 
 _CATALOG = "\n".join(f"- {n.slug}: {n.label} ({n.description})" for n in NICHES)
@@ -45,14 +49,19 @@ _CATALOG = "\n".join(f"- {n.slug}: {n.label} ({n.description})" for n in NICHES)
 PLANNER_SYSTEM = f"""You route requests for Ripple, which predicts how a brand's real social audience (simulated as
 personas built from their followers' public posts) would react to a draft post before it is published. Reply with ONE JSON object
 and nothing else:
-{{"action": "react" | "audience" | "help",
+{{"action": "react" | "audience" | "create" | "help",
   "brand": the brand's X or Bluesky handle without @ (e.g. "spacetimedb", "raycast.com"), or null if not named,
   "variants": [exact text of each draft post to test, verbatim, at most {MAX_VARIANTS}],
   "niches": [1-3 slugs from the catalog that the drafts or the question are about],
   "sample_size": how many personas to ask (default 20, max {MAX_SAMPLE}),
-  "question": an extra question the user wants each persona to answer, or ""}}
+  "question": an extra question the user wants each persona to answer, or "",
+  "goal": the campaign goal when action is create, otherwise "",
+  "offer": a user-provided offer, otherwise "",
+  "n": number of ads per segment for create (2-4, default 3),
+  "aspect_ratio": "1:1" by default, or "3:4", "4:3", "9:16", "16:9" if requested}}
 "react": the user gives one or more drafts and wants to know how the audience would react, or which is better.
 "audience": the user asks who in the audience cares about a topic, or what the audience is like.
+"create": the user asks to make, generate or design new ads/creatives for an audience. Preserve their goal.
 "help": anything else. Never invent drafts: copy them from the user's message.
 Niche catalog:
 {_CATALOG}"""
