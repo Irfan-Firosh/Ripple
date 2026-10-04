@@ -19,21 +19,26 @@ from twins.stdb import StdbClient
 
 from . import asi1
 from .audience import audience_profile, render_audience
-from .config import AUDIENCE, AVATAR_URL, DASHBOARD_URL, HANDLE, ORCHESTRATOR, SIMULATOR_ADDRESS, asi1_api_key
+from .config import (AUDIENCE, AVATAR_URL, HANDLE, ORCHESTRATOR, SIMULATOR_ADDRESS, asi1_api_key, dashboard_url,
+                     lab_url)
 from .messages import (
     AudienceRequest,
     AudienceResult,
+    LabRequest,
+    LabResult,
     ReactRequest,
     ReactResult,
     SimulateRequest,
     SimulateResult,
 )
+from .onboard import needs_onboarding, onboarding_reply
 from .reactions import react, render_report
 
 README = Path(__file__).with_name("README.md")
 REACT_TIMEOUT_S = 600
 AUDIENCE_TIMEOUT_S = 60
 SIMULATE_TIMEOUT_S = 300
+LAB_TIMEOUT_S = 600
 
 HELP = (
     "I'm Ripple: I predict how a brand's real social audience would react to a post before you publish it, using "
@@ -102,9 +107,21 @@ async def _ask(ctx: Context, address: str, request, reply_type, timeout: int):
     return result, result.error
 
 
+def render_lab(brand: str, lab: LabResult) -> list[str]:
+    head = "A and B are tied" if lab.winner == "tie" else f"{lab.winner} wins, {lab.lift:+.0%} expected engagement"
+    lines = ["", f"**Lab: every follower sees both** (Simulation agent): {head}"]
+    lines += [f"- {label}: {text}" for label, text in (("A", lab.summary_a), ("B", lab.summary_b)) if text]
+    lines.append(f"[Watch A vs B play out live]({lab_url(brand, lab.experiment_id)})")
+    return lines
+
+
 async def _reach_lines(ctx: Context, brand: str, drafts: list[str]) -> list[str]:
     if not SIMULATOR_ADDRESS:
         return []
+    if len(drafts) == 2:  # A vs B: one joint Lab experiment the web Lab replays live
+        lab, error = await _ask(ctx, SIMULATOR_ADDRESS, LabRequest(brand=brand, draft_a=drafts[0], draft_b=drafts[1]),
+                                LabResult, LAB_TIMEOUT_S)
+        return ["", f"**Lab** (Simulation agent): unavailable ({error})"] if error else render_lab(brand, lab)
     lines = ["", "**Projected reach** (Simulation agent):"]
     for i, draft in enumerate(drafts):
         sim, error = await _ask(ctx, SIMULATOR_ADDRESS, SimulateRequest(brand=brand, draft=draft),
@@ -127,7 +144,10 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
     if plan.action == "audience":
         result, error = await _ask(ctx, AUDIENCE.address, AudienceRequest(brand=plan.brand, niches=plan.niches),
                                    AudienceResult, AUDIENCE_TIMEOUT_S)
-        reply = f"Couldn't read @{plan.brand}'s audience: {error}" if error else render_audience(result, plan.niches)
+        if error and needs_onboarding(error):
+            reply = await asyncio.to_thread(onboarding_reply, _stdb(), plan.brand)
+        else:
+            reply = f"Couldn't read @{plan.brand}'s audience: {error}" if error else render_audience(result, plan.niches)
         await ctx.send(sender, _text(reply, end_session=True))
         return
     if plan.action != "react" or not plan.variants:
@@ -141,15 +161,16 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
                                             sample_size=plan.sample_size, question=plan.question),
                                ReactResult, REACT_TIMEOUT_S)
     if error:
-        await ctx.send(sender, _text(f"Couldn't get reactions from @{plan.brand}'s audience: {error}", end_session=True))
+        reply = (await asyncio.to_thread(onboarding_reply, _stdb(), plan.brand) if needs_onboarding(error)
+                 else f"Couldn't get reactions from @{plan.brand}'s audience: {error}")
+        await ctx.send(sender, _text(reply, end_session=True))
         return
     report = render_report(result) + "\n".join(await _reach_lines(ctx, plan.brand, plan.variants))
     try:
         report += "\n\n**Takeaway:** " + await asyncio.to_thread(asi1.takeaway, key, report)
     except asi1.Asi1Error as exc:
         ctx.logger.warning(f"takeaway skipped: {exc}")
-    if DASHBOARD_URL:
-        report += f"\n\n[Watch it spread live]({DASHBOARD_URL})"
+    report += f"\n\n[See @{plan.brand}'s audience]({dashboard_url(plan.brand)})"
     await ctx.send(sender, _text(report, end_session=True))
 
 

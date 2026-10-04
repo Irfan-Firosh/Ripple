@@ -68,3 +68,46 @@ def test_interrupt_still_marks_the_experiment_failed():
     with pytest.raises(KeyboardInterrupt):
         run_pending_labs(db, client=None, runner=interrupted)
     assert db.reducers("fail_lab_experiment")[0][0] == 1
+
+
+def exp_db():
+    return FakeStdb({"lab_experiment": [dict(experiment_id=4, brand="raycast.com", title="old", draft_a="x", draft_b="y",
+                                             status="done", winner="A", lift=-0.2)]})
+
+
+def test_run_experiment_queues_claims_and_runs_it_here():
+    from twins.lab import run_experiment
+    db = exp_db()
+
+    def request(reducer, *args):  # the reducer inserts a queued row, as SpacetimeDB would
+        if reducer == "request_lab_experiment":
+            db.tables["lab_experiment"].append(dict(experiment_id=5, brand="raycast.com", title="", draft_a=args[2],
+                                                    draft_b=args[3], status="queued", winner="", lift=0.0))
+        if reducer == "finish_lab_experiment":
+            db.tables["lab_experiment"][-1].update(status="done", winner=args[1], lift=args[2])
+    db.call = lambda reducer, *args: (db.calls.append((reducer, args)), request(reducer, *args))[0]
+    row, outcome = run_experiment(db, None, "Raycast.com", "a", "b", runner=ok_runner)
+    assert db.reducers("request_lab_experiment") == [("raycast.com", "", "a", "b")]
+    assert row["experiment_id"] == 5 and row["status"] == "done" and row["winner"] == "B"
+    assert outcome.winner == "B"
+
+
+def test_run_experiment_waits_when_the_lab_worker_claims_it_first():
+    from twins.lab import run_experiment
+    db = exp_db()
+
+    def call(reducer, *args):
+        db.calls.append((reducer, args))
+        if reducer == "request_lab_experiment":
+            db.tables["lab_experiment"].append(dict(experiment_id=6, brand="raycast.com", title="", draft_a="a",
+                                                    draft_b="b", status="queued", winner="", lift=0.0))
+        if reducer == "claim_lab_experiment":
+            raise StdbError("claim_lab_experiment -> HTTP 530: already claimed")
+    db.call = call
+    ticks = []
+
+    def sleep(_):
+        ticks.append(1)
+        db.tables["lab_experiment"][-1].update(status="done", winner="tie", lift=0.01)
+    row, outcome = run_experiment(db, None, "raycast.com", "a", "b", runner=ok_runner, sleep=sleep)
+    assert row["winner"] == "tie" and outcome is None and ticks

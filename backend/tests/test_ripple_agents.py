@@ -87,3 +87,42 @@ def test_aggregate_counts_actions_segments_and_failures():
     assert v.quotes == ["@alice (reply): nice"]
     report = render_report(ReactResult(brand="spacetimedb", personas=3, variants=[v]))
     assert "| A | 50% | 1 |" in report and "1 persona(s) failed" in report
+
+
+def test_lab_lines_render_winner_counts_and_live_link():
+    from ripple_agents.agents import render_lab
+    from ripple_agents.messages import LabResult
+    lines = render_lab("raycast.com", LabResult(brand="raycast.com", experiment_id="9", winner="B", lift=0.58,
+                                                summary_a="Likely ~26 likes.", summary_b="Likely ~40 likes."))
+    text = "\n".join(lines)
+    assert "B wins" in text and "+58%" in text and "- A: Likely ~26 likes." in text
+    assert "/lab?brand=raycast.com&exp=9" in text
+
+
+def test_lab_lines_tie():
+    from ripple_agents.agents import render_lab
+    from ripple_agents.messages import LabResult
+    assert "tied" in "\n".join(render_lab("raycast.com", LabResult(brand="raycast.com", experiment_id="2", winner="tie")))
+
+
+def test_unknown_x_brand_starts_onboarding_once_and_links_to_it():
+    from ripple_agents.onboard import onboarding_reply
+    db = FakeStdb()
+    text = onboarding_reply(db, "linear")
+    assert db.reducers("request_onboarding") == [("linear",)]
+    assert "@linear" in text and "/onboarding" in text
+
+
+def test_onboarding_already_running_still_answers():
+    from ripple_agents.onboard import onboarding_reply
+    db = FakeStdb()
+    db.fail_on.add("request_onboarding")
+    assert "@linear" in onboarding_reply(db, "linear")
+
+
+def test_bluesky_brand_is_not_onboarded():
+    from ripple_agents.onboard import needs_onboarding, onboarding_reply
+    db = FakeStdb()
+    assert needs_onboarding("@x.com has no personas yet") and not needs_onboarding("timeout")
+    assert needs_onboarding("LookupError: @linear has not been ingested yet")
+    assert "X" in onboarding_reply(db, "bsky.app") and db.reducers("request_onboarding") == []

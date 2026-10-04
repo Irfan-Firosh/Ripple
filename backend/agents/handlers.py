@@ -6,12 +6,15 @@ from typing import Callable
 
 from twins.ask import ask_twin
 from twins.brand_twins import load_brand_twins
+from twins.lab import run_experiment
 from twins.config import STDB_DATABASE, STDB_URL, load_api_key, load_stdb_token
 from twins.llm import make_client
 from twins.simulate import compare_drafts, profile_url, run_simulation
 from twins.stdb import StdbClient
 from twins.sync import load_twin
 
+from ripple_agents.messages import LabRequest as OrchLabRequest
+from ripple_agents.messages import LabResult as OrchLabResult
 from ripple_agents.messages import SimulateRequest as OrchSimulateRequest
 from ripple_agents.messages import SimulateResult as OrchSimulateResult
 
@@ -29,6 +32,7 @@ class Deps:
     compare: Callable
     why: Callable
     audience: Callable
+    lab: Callable | None = None  # (brand, draft_a, draft_b) -> (lab_experiment row, LabOutcome | None)
     allowed_senders: frozenset[str] | None = None  # None = anyone (dev); set it to the Orchestrator's address
     slots: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(SIMULATION_SLOTS))
 
@@ -118,6 +122,25 @@ async def handle_orchestrator_simulate(ctx, sender: str, msg: OrchSimulateReques
         await ctx.send(sender, OrchSimulateResult(brand=brand, error=str(exc)[:300]))
 
 
+async def handle_orchestrator_lab(ctx, sender: str, msg: OrchLabRequest, deps: Deps) -> None:
+    """A vs B for the Orchestrator: a real Lab experiment, so the chat answer links to the live replay."""
+    brand = msg.brand.strip().lstrip("@").lower()
+    if err := _request_error(deps, sender, brand) or (None if deps.lab else "Lab is not configured"):
+        await ctx.send(sender, OrchLabResult(brand=brand, error=err))
+        return
+    try:
+        async with deps.slots:
+            row, outcome = await asyncio.to_thread(deps.lab, brand, msg.draft_a, msg.draft_b)
+        if row["status"] != "done":
+            raise RuntimeError(row.get("error") or "the Lab experiment failed")
+        await ctx.send(sender, OrchLabResult(
+            brand=brand, experiment_id=str(row["experiment_id"]), winner=row["winner"], lift=row["lift"],
+            summary_a=_reach_summary(outcome.run_a) if outcome else "",
+            summary_b=_reach_summary(outcome.run_b) if outcome else ""))
+    except Exception as exc:
+        await ctx.send(sender, OrchLabResult(brand=brand, error=str(exc)[:300]))
+
+
 def default_deps() -> Deps:
     stdb = StdbClient(STDB_URL, STDB_DATABASE, token=load_stdb_token())
     client = make_client(load_api_key())
@@ -143,4 +166,5 @@ def default_deps() -> Deps:
 
     return Deps(simulate=lambda b, d, t: run_simulation(stdb, client, b, d, trials=t),
                 compare=lambda b, ds: compare_drafts(stdb, client, b, ds),
-                why=why, audience=audience, allowed_senders=allowed_senders())
+                why=why, audience=audience, allowed_senders=allowed_senders(),
+                lab=lambda b, a, bb: run_experiment(stdb, client, b, a, bb))
