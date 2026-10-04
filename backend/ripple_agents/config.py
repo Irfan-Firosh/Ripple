@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from uagents_core.identity import Identity
 
-from twins.config import load_secret
+from twins.config import MissingSecret, load_secret
 
 BUREAU_PORT = int(os.environ.get("RIPPLE_AGENTS_PORT", "8100"))
 HANDLE = os.environ.get("RIPPLE_AGENT_HANDLE", "ripple")
@@ -22,7 +22,12 @@ class AgentSpec:
 
     @property
     def seed(self) -> str:
-        return load_secret(self.seed_env)
+        try:
+            return load_secret(self.seed_env)
+        except MissingSecret:
+            if self.seed_env in {"AGENT_SEED_CREATIVE_DIRECTOR", "AGENT_SEED_IMAGE_GEN"}:
+                return load_secret("AGENT_SEED_ORCHESTRATOR") + ":" + self.name
+            raise
 
     @property
     def address(self) -> str:
@@ -31,6 +36,8 @@ class AgentSpec:
 
 ORCHESTRATOR = AgentSpec("ripple", "AGENT_SEED_ORCHESTRATOR")
 AUDIENCE = AgentSpec("ripple-audience", "AGENT_SEED_AUDIENCE")
+CREATIVE_DIRECTOR = AgentSpec("ripple-creative-director", "AGENT_SEED_CREATIVE_DIRECTOR")
+IMAGE_GEN = AgentSpec("ripple-image-gen", "AGENT_SEED_IMAGE_GEN")
 
 
 def asi1_api_key() -> str:

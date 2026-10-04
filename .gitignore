@@ -20,6 +20,7 @@ playwright-report/
 data/x_raw/
 data/bsky_raw/
 data/backups/
+data/logs/
 
 # Python caches
 __pycache__/

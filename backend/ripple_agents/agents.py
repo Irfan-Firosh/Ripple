@@ -19,10 +19,14 @@ from twins.stdb import StdbClient
 
 from . import asi1
 from .audience import audience_profile, render_audience
-from .config import AUDIENCE, AVATAR_URL, DASHBOARD_URL, HANDLE, ORCHESTRATOR, SIMULATOR_ADDRESS, asi1_api_key
+from .config import AUDIENCE, AVATAR_URL, CREATIVE_DIRECTOR, DASHBOARD_URL, HANDLE, IMAGE_GEN, ORCHESTRATOR, SIMULATOR_ADDRESS, asi1_api_key
 from .messages import (
     AudienceRequest,
     AudienceResult,
+    BriefRequest,
+    BriefResult,
+    GenerateRequest,
+    VariantsResult,
     ReactRequest,
     ReactResult,
     SimulateRequest,
@@ -42,11 +46,13 @@ HELP = (
     "- *How would @raycast.com's audience react to: \"Raycast AI now runs your extensions for you. Just ask.\"*\n"
     "- *Which is better for @raycast.com? A: \"…\" B: \"…\"*\n"
     "- *Who in @raycast.com's audience cares about developer tools?*"
+    "\n- *Make 3 ads for @raycast.com's developer-tools audience about Raycast AI.*"
 )
 STARTER_PROMPTS = [
     "How would @raycast.com's audience react to: \"Raycast AI now runs your extensions for you. Just ask.\"",
     "Who in @raycast.com's audience cares about developer tools?",
     "Which post is better for @raycast.com? A: \"Raycast for Windows is here.\" B: \"Stop alt-tabbing. Raycast now on Windows.\"",
+    "Make 3 ads for @raycast.com's developer-tools audience about Raycast AI.",
 ]
 
 
@@ -128,6 +134,40 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
         result, error = await _ask(ctx, AUDIENCE.address, AudienceRequest(brand=plan.brand, niches=plan.niches),
                                    AudienceResult, AUDIENCE_TIMEOUT_S)
         reply = f"Couldn't read @{plan.brand}'s audience: {error}" if error else render_audience(result, plan.niches)
+        await ctx.send(sender, _text(reply, end_session=True))
+        return
+    if plan.action == "create":
+        if not plan.goal.strip():
+            await ctx.send(sender, _text("Add a goal for the campaign, such as introducing Raycast AI to tool builders.", end_session=True))
+            return
+        campaign_id = str(uuid4())
+        await ctx.send(sender, _text(f"The creative director is briefing @{plan.brand}'s audience. Then Grok Imagine will create {plan.n} distinct ads per segment…"))
+        briefs, error = await _ask(ctx, CREATIVE_DIRECTOR.address,
+                                  BriefRequest(brand=plan.brand, campaign_id=campaign_id, goal=plan.goal,
+                                               segments=plan.niches, offer=plan.offer, n=plan.n, aspect_ratio=plan.aspect_ratio),
+                                  BriefResult, REACT_TIMEOUT_S)
+        if error:
+            await ctx.send(sender, _text(f"Couldn't create campaign briefs: {error}", end_session=True))
+            return
+        links = []
+        errors = []
+        for brief_id in briefs.brief_ids:
+            variants, error = await _ask(ctx, IMAGE_GEN.address,
+                                        GenerateRequest(campaign_id=campaign_id, brief_id=brief_id,
+                                                        n=plan.n, aspect_ratio=plan.aspect_ratio),
+                                        VariantsResult, REACT_TIMEOUT_S)
+            if error:
+                errors.append(error)
+            else:
+                links.extend(variants.image_urls)
+                errors.extend(variants.warnings)
+        reply = f"**Campaign for @{plan.brand}** · {len(links)} AI-generated creatives\n\n" + "\n".join(
+            f"- [Take {index + 1}]({url})" for index, url in enumerate(links))
+        reply += "\n\nSynthetic audience personas. These image links are for review. Use the campaign studio to create, refine and approve a campaign in your browser before simulation."
+        if errors:
+            reply += "\n\nSome segments could not finish: " + "; ".join(errors)
+        if DASHBOARD_URL:
+            reply += f"\n\n[Open campaign studio]({DASHBOARD_URL.rstrip('/')}/dashboard?view=studio)"
         await ctx.send(sender, _text(reply, end_session=True))
         return
     if plan.action != "react" or not plan.variants:

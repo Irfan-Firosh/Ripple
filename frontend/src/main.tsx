@@ -11,6 +11,9 @@ const AuthPage = lazy(() => import("./components/ui/auth-07"));
 const NetworkTestPage = lazy(() => import("./NetworkTestPage"));
 const LabPage = lazy(() => import("./lab/LabPage"));
 const LabGamePage = lazy(() => import("./lab-game/LabGamePage"));
+const CampaignStudio = lazy(() => import("./CampaignStudio"));
+const LabV2 = lazy(() => import("./LabV2"));
+const LogsPage = lazy(() => import("./LogsPage").then(module => ({ default: module.LogsPage })));
 const path = location.pathname.replace(/\/$/, "");
 const params = new URLSearchParams(location.search);
 createRoot(document.getElementById("root")!).render(
@@ -19,10 +22,16 @@ createRoot(document.getElementById("root")!).render(
       <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening the network…</div>}><NetworkTestPage /></Suspense>
     ) : path === "/lab-game" ? (
       <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening the islands…</div>}><LabGamePage /></Suspense>
+    ) : path === "/campaigns" || (path === "/dashboard" && params.get("view") === "studio") ? (
+      <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening campaigns…</div>}><CampaignStudio /></Suspense>
     ) : path === "/lab" ? (
       <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening the Lab…</div>}><LabPage /></Suspense>
+    ) : path === "/lab-v2" ? (
+      <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening Lab v2…</div>}><LabV2 /></Suspense>
     ) : location.pathname.replace(/\/$/, "") === "/visuals" ? (
       <Suspense fallback={<div style={{padding:40}}>Opening the visual playground…</div>}><VisualsPage /></Suspense>
+    ) : path === "/logs" ? (
+      <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening server logs…</div>}><LogsPage /></Suspense>
     ) : params.has("film") ? (
       <DemoFilm theme={params.get("theme") === "light" ? "light" : "dark"} />
     ) : (

@@ -27,6 +27,8 @@ The demo audience is Raycast's Bluesky followers: 999 personas built from 1,000 
 
 Shared state (raw follower data, personas, niches) lives in the SpacetimeDB database `ripple-mhacks`.
 
+The web dashboard also has a **Campaign studio**: audience-backed briefs, Grok Imagine ads, editable copy, take history, and approval before draft comparison. See [setup and demo instructions](docs/campaign-studio.md).
+
 ## Run the agents
 
 Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), an [ASI:One API key](https://asi1.ai), an
