@@ -144,7 +144,7 @@ def test_plan_tolerates_create_fields_left_empty_for_other_actions():
     # ASI:One fills unused create fields with 0 / "" / null; that must not sink an audience or react request.
     plan = asi1.CampaignPlan.model_validate({"action": "audience", "brand": "raycast.com", "goal": None, "offer": None,
                                              "n": 0, "aspect_ratio": "", "sample_size": 20, "question": ""})
-    assert (plan.n, plan.aspect_ratio, plan.goal, plan.offer) == (3, "1:1", "", "")
+    assert (plan.n, plan.aspect_ratio, plan.goal, plan.offer) == (2, "16:9", "", "")
 
 
 def test_plan_clamps_ad_count_and_keeps_valid_aspect():

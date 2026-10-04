@@ -1,0 +1,16 @@
+{
+  "Build an X audience": "build-x-audience",
+  "Test a post / compare two": "test-posts",
+  "Explore an audience": "explore-audience",
+  "Create campaign images": "create-images",
+  "Continue my request": "continue-request",
+  "Explore this audience": "explore-this-audience",
+  "Test a post": "test-post",
+  "Retry build": "retry-build",
+  "Check progress": "check-progress",
+  "Back to menu": "back-menu",
+  "Test another post / compare two": "test-more",
+  "Test this post": "test-this-post",
+  "Build audience": "build-audience",
+  "Continue": "continue"
+}

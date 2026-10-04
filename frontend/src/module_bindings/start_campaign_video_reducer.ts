@@ -16,4 +16,5 @@ export default {
   news: __t.string(),
   goal: __t.string(),
   campaignId: __t.string(),
+  workerVersion: __t.u32(),
 };

@@ -66,7 +66,7 @@ def react(stdb, client, brand: str, variants: list[str], niches: list[str], samp
 
 def render_report(result: ReactResult) -> str:
     lines = [f"**How @{result.brand}'s audience reacts**: the {result.personas} most relevant personas", "",
-             "| Variant | Engaged | Reply | Quote | Repost | Like | Ignore | Avg confidence |",
+             "| Variant | Engaged | Reply | Quote | Repost | Like | Ignore | Model self-rating |",
              "|---|---|---|---|---|---|---|---|"]
     for v in result.variants:
         a = v.actions

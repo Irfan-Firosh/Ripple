@@ -48,8 +48,10 @@ def _onboard(stdb, client, row: dict, ingest: Callable, build: Callable, edges: 
     brand_id = summary["brand_user_id"]
     log.info("onboarding %s: %s followers scraped, building twins", oid, summary.get("followers", "?"))
     stdb.call("set_onboarding_progress", oid, "twins", brand_id, run_id, twin_run)
+    previous = stdb.sql("SELECT * FROM onboarding WHERE handle = '" + handle.replace("'", "''") + "'")
+    refresh = any(r["status"] == "ready" and r["onboarding_id"] != oid for r in previous)
     build(stdb, client, handle, limit=settings.twins_per_brand, workers=LIVE_WORKERS, run_id=twin_run,
-          richest_first=True, skip_existing=True)
+          richest_first=True, skip_existing=not refresh)
     stdb.call("set_onboarding_progress", oid, "graph", brand_id, run_id, twin_run)
     edges(stdb, handle)
     _ensure_brand_kit(stdb, brand_id)

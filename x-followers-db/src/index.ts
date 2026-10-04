@@ -2146,10 +2146,11 @@ export const requestCampaignVideo = spacetimedb.reducer(
 
 // The worker (or the CLI) registers a video it is about to make, so CLI runs show up live too.
 export const startCampaignVideo = spacetimedb.reducer(
-  { videoId: t.string(), brand: t.string(), news: t.string(), goal: t.string(), campaignId: t.string() },
+  { videoId: t.string(), brand: t.string(), news: t.string(), goal: t.string(), campaignId: t.string(), workerVersion: t.u32() },
   (ctx, a) => {
     requireAdmin(ctx);
     notPaused(ctx);
+    if (a.workerVersion < 2) throw new SenderError(`video worker is out of date (v${a.workerVersion}); pull and restart it`);
     const row = ctx.db.campaignVideo.videoId.find(a.videoId);
     if (row) {
       if (row.status !== 'queued') throw new SenderError(`video ${a.videoId} already claimed`);

@@ -28,6 +28,7 @@ class RateLimited(Exception):
 
 def scweet_client():
     from Scweet import Scweet
+    from Scweet.config import ScweetConfig
 
     import hashlib
     import tempfile
@@ -51,7 +52,8 @@ def scweet_client():
     digest = hashlib.sha256("".join(a["cookies"]["auth_token"] for a in kept).encode()).hexdigest()[:12]
     state = ROOT / "data" / "scweet_state" / f"pool-{digest}.db"
     state.parent.mkdir(parents=True, exist_ok=True)
-    return Scweet(cookies=kept, db_path=str(state))
+    config = ScweetConfig(daily_requests_limit=int(os.environ.get("SCWEET_DAILY_REQUESTS_LIMIT", "300")))
+    return Scweet(cookies=kept, db_path=str(state), config=config)
 
 
 def cached(path: Path, offline: bool, fetch: Callable[[], list]) -> list:
@@ -107,7 +109,7 @@ def ingest(username: str, followers: int, posts: int, min_posts: int = 10, offli
     try:
         info = cached(cache / "target.json", offline, lambda: s.get_user_info([username]))
         if not info:
-            raise RuntimeError(f"@{username} not found on X")
+            raise RuntimeError(f"X returned no profile data for @{username}. Check session availability, daily scraper budget, or X rate limits before retrying.")
         target = user_v2(info[0])
         call("upsert_x_user", *user_args(target))
         raw = cached(cache / f"followers_{followers}.json", offline,
@@ -197,7 +199,7 @@ def ingest_brand_posts(username: str, limit: int = 40) -> int:
     s = scweet_client()
     info = s.get_user_info([username])
     if not info:
-        raise RuntimeError(f"@{username} not found on X")
+        raise RuntimeError(f"X returned no profile data for @{username}. Check session availability, daily scraper budget, or X rate limits before retrying.")
     target = user_v2(info[0])
     call("upsert_x_user", *user_args(target))
     rows = s.get_profile_tweets([username], limit=limit)

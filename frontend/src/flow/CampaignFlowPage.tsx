@@ -18,6 +18,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export default function CampaignFlowPage() {
   const brand = (params().get('brand') || 'raycast').toLowerCase().replace(/^@/, '');
+  const readOnly = params().get('view') === '1'; // Shared chat campaigns are operated by their Fetch identity.
   const [campaignId, setCampaignId] = useState<string | null>(params().get('id'));
   const [mode, setMode] = useState<'choose' | 'import'>(params().get('start') === 'import' ? 'import' : 'choose');
   const [theme, setTheme] = useState(initialTheme);
@@ -44,11 +45,12 @@ export default function CampaignFlowPage() {
     return () => abort.abort();
   }, [brand]);
   useEffect(() => { // keep the URL shareable and reload-safe
-    const q = new URLSearchParams({ brand, ...(campaignId ? { id: campaignId } : {}) });
+    const q = new URLSearchParams({ brand, ...(campaignId ? { id: campaignId } : {}), ...(readOnly ? { view: '1' } : {}) });
     history.replaceState(null, '', `/campaign?${q}`);
   }, [brand, campaignId]);
 
   const act = async (fn: () => Promise<void>) => {
+    if (readOnly) return;
     setBusy(true); setError('');
     try { await fn(); setRevision(r => r + 1); } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
   };
@@ -87,7 +89,7 @@ export default function CampaignFlowPage() {
   // Once the brief lands, ask for the two concepts (once).
   const brief = creative.briefs[0];
   useEffect(() => {
-    if (!brief || requested.current || creative.variants.length || creative.jobs.some(j => j.kind === 'generate')) return;
+    if (readOnly || !brief || requested.current || creative.variants.length || creative.jobs.some(j => j.kind === 'generate')) return;
     requested.current = true;
     void creative.run(conn => conn.reducers.requestCreative({ campaignId: brief.campaignId, kind: 'generate', targetId: brief.briefId }))
       .catch(e => setError(errorText(e)));
@@ -107,7 +109,7 @@ export default function CampaignFlowPage() {
   const copyB: DraftCopy | null = flow?.source === 'import' ? { text: flow.draft_b } : generatedCopy('B', 1);
   const askedCopy = useRef('');
   useEffect(() => {
-    if (!campaignId || flow?.source !== 'generate' || ready.length < 2) return;
+    if (readOnly || !campaignId || flow?.source !== 'generate' || ready.length < 2) return;
     const key = `${campaignId}:${ready[0].variantId}:${ready[1].variantId}:${copies.A?.status}:${copies.B?.status}`;
     if (askedCopy.current === key) return;
     const need = (['A', 'B'] as const).filter(d => !copies[d] || copies[d]?.status === 'failed');
@@ -120,7 +122,7 @@ export default function CampaignFlowPage() {
   // Every draft gets its own video, written from its own copy (requested once; edits make new versions).
   const askedFor = useRef('');
   useEffect(() => {
-    if (!campaignId || !flow || !copyA || !copyB || copyA.writing || copyB.writing || flow.stage === 'shipped') return;
+    if (readOnly || !campaignId || !flow || !copyA || !copyB || copyA.writing || copyB.writing || flow.stage === 'shipped') return;
     const key = `${campaignId}:${drafts.A ? 1 : 0}${drafts.B ? 1 : 0}`;
     if (drafts.A && drafts.B) return;
     if (askedFor.current === key) return;
@@ -151,7 +153,7 @@ export default function CampaignFlowPage() {
   const attached = useRef(new Set<string>());
   useEffect(() => {
     const exp = Number(flow?.experiment_id ?? 0);
-    if (!exp) return;
+    if (readOnly || !exp) return;
     for (const d of ['A', 'B'] as const) {
       const v = drafts[d];
       const key = `${exp}:${d}:${v?.video_id}`;
@@ -183,23 +185,24 @@ export default function CampaignFlowPage() {
           <p>From your audience to a campaign worth sharing.</p>
           <a className="flow-hero-link" href={`/dashboard?brand=${encodeURIComponent(brand)}`}>Explore your audience <ArrowRight size={14} /></a>
         </div>
-        {campaignId && <button className="flow-secondary flow-new" disabled={busy} onClick={() => { setCampaignId(null); setMode('choose'); setError(''); requested.current = false; }}><Plus size={15} />New campaign</button>}
+        {campaignId && !readOnly && <button className="flow-secondary flow-new" disabled={busy} onClick={() => { setCampaignId(null); setMode('choose'); setError(''); requested.current = false; }}><Plus size={15} />New campaign</button>}
       </section>
-      {!campaignId && <StartChoice busy={busy} onGenerate={() => void generate()} onImport={() => setMode('import')} />}
+      {!campaignId && <StartChoice busy={busy || readOnly} onGenerate={() => void generate()} onImport={() => setMode('import')} />}
       <div className="flow-workspace"><div className="flow-workspace-main">
       <ol className="flow-steps" aria-label="Campaign workflow">{STEPS.map((label, i) => <li key={label} data-state={i < step ? 'done' : i === step ? 'active' : 'next'}>
         {i < step ? <Check size={13} /> : <span>{i + 1}</span>}{label}</li>)}</ol>
+      {readOnly && <p className="flow-waiting">Continue testing, editing, and approving this campaign in your Ripple chat.</p>}
       {error && <p className="flow-error" role="alert">{error}</p>}
       {!campaignId && (busy || waitingAudience) && <><h1>Starting your campaign…</h1><p className="flow-waiting" role="status">Reading @{brand}'s audience.</p></>}
       {!campaignId && !busy && !waitingAudience && (mode === 'choose'
         ? <div className="flow-start-note"><h2>Your next campaign starts here.</h2><p>Generate from your audience or bring two drafts.</p></div>
         : <><div className="flow-section-heading"><h2>Bring your drafts.</h2><button className="flow-text-button" onClick={() => setMode('choose')}><ArrowLeft size={14} />Back</button></div><ImportStep brand={brand} posts={posts} busy={busy} onSubmit={importDrafts} /></>)}
       {campaignId && step === 1 && <><h1>Your two drafts.</h1>
-        <DraftsStep brand={brand} brandId={brandId} campaignId={campaignId} a={copyA} b={copyB} videos={drafts} busy={busy} waiting={waiting} onTest={() => void test()} onSaved={() => setRevision(r => r + 1)} /></>}
+        <DraftsStep brand={brand} brandId={brandId} campaignId={campaignId} a={copyA} b={copyB} videos={drafts} busy={busy || readOnly} readOnly={readOnly} waiting={waiting} onTest={() => void test()} onSaved={() => setRevision(r => r + 1)} /></>}
       {campaignId && step === 2 && <><h1>{experiment?.status === 'done' ? 'Results are in.' : 'Testing on your audience.'}</h1>
-        <TestStep experiment={experiment} labHref={`/lab?brand=${brand}&exp=${flow?.experiment_id}`} busy={busy} onApprove={d => void approve(d)} /></>}
+        <TestStep experiment={experiment} labHref={`/lab?brand=${brand}&exp=${flow?.experiment_id}`} busy={busy || readOnly} onApprove={d => void approve(d)} /></>}
       {campaignId && step === 3 && <><h1>{stage === 'shipped' ? 'Shipped.' : 'Ready to ship.'}</h1>
-        <LaunchStep brand={brand} brandId={brandId} text={post || flow?.winner_text || ''} onText={setPost} video={winnerVideo ?? video} shipped={stage === 'shipped'} busy={busy} onShip={ship} /></>}
+        <LaunchStep brand={brand} brandId={brandId} text={post || flow?.winner_text || ''} onText={setPost} video={winnerVideo ?? video} shipped={stage === 'shipped'} busy={busy || readOnly} onShip={ship} /></>}
       </div>
       <CampaignResearch brand={brand} campaignId={campaignId} flow={flow} campaigns={creative.campaigns ?? []} brief={brief} jobs={creative.jobs}
         onSelect={id => { requested.current = false; setCampaignId(id); setError(''); }} />

@@ -13,7 +13,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/fetch_demo.sh [start|check|status]
 
-  start   Preflight and start/reuse agents, onboarding, creative, Lab, and UI (default)
+  start   Preflight and start/reuse agents, onboarding, creative, video/copy, Lab, and UI (default)
   check   Check dependencies, secrets, and maincloud without starting services
   status  Show services started by this script and their log paths
 
@@ -43,7 +43,7 @@ running_pid() {
 
 status() {
   local service pid
-  for service in agents onboarding creative lab ui; do
+  for service in agents onboarding creative video lab ui; do
     pid="$(running_pid "$service")"
     if [[ -n "$pid" ]]; then
       printf '%-12s running (PID %s)  %s/%s.log\n' "$service" "$pid" "$RUN_DIR" "$service"
@@ -75,7 +75,8 @@ from twins.stdb import StdbClient
 from ripple_agents.config import ORCHESTRATOR
 
 required = ("ASI_ONE_API_KEY", "AGENTVERSE_API_KEY", "AGENT_SEED_ORCHESTRATOR",
-            "AGENT_SEED_AUDIENCE", "CLAUDE_API_KEY", "XAI_API_KEY")
+            "AGENT_SEED_AUDIENCE", "CLAUDE_API_KEY", "XAI_API_KEY", "CLAUDE_API_KEY_2",
+            "EXA_API_KEY", "ELEVENLABS_API_KEY")
 try:
     for name in required:
         load_secret(name)
@@ -147,6 +148,7 @@ start_service() {
 start_service agents uv run --project backend python -m ripple_agents
 start_service onboarding uv run --project backend python -m twins onboarding-worker
 start_service creative uv run --project backend python -m creative worker
+start_service video uv run --project backend python -m video worker
 start_service lab uv run --project backend python -m twins lab-worker
 SERVICE_DIR="$ROOT/frontend" start_service ui npm run dev -- --host 127.0.0.1 --port "$APP_PORT" --strictPort
 
@@ -160,7 +162,7 @@ for attempt in {1..20}; do
   sleep 1
 done
 curl --silent --max-time 2 "http://127.0.0.1:$AGENTS_PORT/submit" >/dev/null || die "agents did not open port $AGENTS_PORT; see $RUN_DIR/agents.log"
-for service in agents onboarding creative lab ui; do
+for service in agents onboarding creative video lab ui; do
   [[ -n "$(running_pid "$service")" ]] || die "$service stopped; see $RUN_DIR/$service.log"
 done
 

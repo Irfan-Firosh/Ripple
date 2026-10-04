@@ -1,47 +1,67 @@
 # Fetch.ai demo
 
-Open [Ripple on Agentverse](https://agentverse.ai/agents/details/agent1qvq9ea8vhcvwure28rvzzdjp23k2ffnmcq0d6sed9thmn85kvam5jvqdrlj), then **Chat with Agent** to use @ripple in ASI:One. Keep the local app at http://localhost:5173 running for optional visualization links. The primary workflow completes in chat.
+Open [Ripple on Agentverse](https://agentverse.ai/agents/details/agent1qvq9ea8vhcvwure28rvzzdjp23k2ffnmcq0d6sed9thmn85kvam5jvqdrlj), then **Chat with Agent** to use @ripple in ASI:One. The primary workflow completes in chat. The website is an optional live view of the same saved campaign and experiment.
 
-1. Send: **Build an X audience for @supermemory.** The ready card appears.
-2. Send: **What are the main interests in @supermemory’s audience?** Review the audience size and interests.
-3. Send: **Who in @supermemory’s audience cares about AI and developer tools?** Review the relevant segments and follower handles.
-4. Send: **Create 2 campaign images for @supermemory promoting that they are open sourcing their software. Goal: make it easier for developers.** This creates two images per segment, up to six across three segments. Allow roughly two minutes for generation; wait for the concept cards.
-5. Click **Test this post** on a concept. Wait for the loading bar to finish; review predicted reactions, sample responses, and reach.
-6. Click **Test another post / compare two**. Leave the audience blank to retain Supermemory. Enter Post A: **Open source memory for agents. Add memory today.** Enter Post B: **Ship smarter agents faster. Add memory today.** Click **Continue** and wait for the final A/B prediction. The overall winner comes from the full-audience Lab simulation; the interview sample can favor a different draft.
-7. Click **Watch A vs B play out live**. The Lab opens the exact saved experiment for Supermemory. Click **Replay** to restart its animation.
+1. **Build an X audience for @supermemory.** For a new company, follow **Check progress**, then **Continue my request**. A saved request resumes only after its audience is ready.
+2. **Research @supermemory.** Review recent launches, blog/changelog sources, and the company's own posts. Research is cached daily and feeds the generation pipeline.
+3. **What are the main interests in @supermemory's audience?** Or ask which segments care about a topic.
+4. Choose **Generate campaign**, then provide the launch/news and optional CTA. Ripple uses the main audience segment, a researched brief, two image concepts, and two full posts in the brand's voice. Defaults match the app: two concepts, 16:9. Explicit image counts/ratios remain supported; the first two concepts form the A/B campaign.
+5. Choose **Test both drafts**. The audience agent interviews the relevant sample; the simulation agent runs the exact saved drafts in the shared Lab. Review modeled engagement, segment differences, objections, and side-by-side analysis. Estimates are synthetic, not measured outcomes.
+6. Choose **Make campaign videos** to queue a distinct video for each draft. **Check campaign progress** returns stage/progress and the finished video links. **Edit a video** accepts A/B plus an instruction; **Edit image A/B** uses the same image-edit pipeline as the app.
+7. Choose **Approve A** or **Approve B** after testing. Ripple returns the tested copy and an **Open X composer** link. Review and publish in X yourself; nothing is automatically posted.
 
-The **Open campaign studio** link opens the exact campaign from chat, including its images. A fresh browser can review it and select two concepts for Lab v2; campaign mutations belong to the identity that created it. **See @supermemory’s audience** opens the matching dashboard.
+To import your own drafts, use **Test a post / compare two**. Two drafts become a saved campaign with the same test/approval/video flow. A single post retains the quick interview and reach workflow. A fresh chat has no audience or campaign selected. Switching companies clears the previous saved campaign.
 
-To demonstrate new-company onboarding, choose a valid X handle that is not built yet and ask to explore it. Ripple saves the request and queues scraping, persona building, and graph construction. **Check progress** shows the current stage. **Continue my request** resumes the saved analysis when ready. **Watch it build** opens that company's existing build in the app, then **See your audience** opens its graph. A new chat starts with no audience selected. @resend was verified through this entire onboarding flow on October 4, 2026; it is now already built.
+**Open campaign** opens `/campaign?brand=...&id=...&view=1`. A fresh browser can review chat-created work; mutations stay in the chat that created it. **Watch A vs B play out live** opens the exact saved experiment. Video completion attaches each draft's own video to that experiment, including videos that finish after testing.
 
 ## Services
 
-From the repository root, run `./scripts/fetch_demo.sh` right before presenting. It checks the required keys, X cookie presence, and read access to the `ripple-mhacks` maincloud database, then starts the agents, onboarding worker, creative worker, Lab worker, and local UI. It pins the frontend and backend to that database and reuses processes it started on a previous run. Logs and PID files are under `${TMPDIR:-/tmp}/ripple-fetch-demo-$(id -u)/`. Use `./scripts/fetch_demo.sh status` to check them, or `./scripts/fetch_demo.sh check` for preflight only. The launcher does not run the paid live rehearsal or create a new audience.
+Run `./scripts/fetch_demo.sh` after verification to start/reuse the agents, onboarding, creative, video/copy, Lab, and UI workers. It pins both sides to maincloud `ripple-mhacks`. Logs/PIDs are under `${TMPDIR:-/tmp}/ripple-fetch-demo-$(id -u)/`. `status` checks services; `check` performs credential/database preflight without publishing anything.
 
-Run each command in its own terminal from the repository root:
+Video files are currently served from the rendering machine's `frontend/public/generated/videos`. Run the video worker and demo UI on the same host; a worker on another machine needs shared media hosting to make its relative video links available here.
 
-```sh
-PYTHONPATH=backend uv run --project backend python -m ripple_agents
-PYTHONPATH=backend uv run --project backend python -m twins onboarding-worker
-PYTHONPATH=backend uv run --project backend python -m creative worker
-PYTHONPATH=backend uv run --project backend python -m twins lab-worker
-```
+Required local credentials: `ASI_ONE_API_KEY`, `AGENTVERSE_API_KEY`, `AGENT_SEED_ORCHESTRATOR`, `AGENT_SEED_AUDIENCE`, `CLAUDE_API_KEY`, `CLAUDE_API_KEY_2`, `XAI_API_KEY` (images and video thumbnails), `EXA_API_KEY`, `ELEVENLABS_API_KEY`, and a SpacetimeDB admin login. New X onboarding also needs the existing `X_AUTH_TOKEN*` session cookies. The current ingestion path uses Scweet; do not describe it as official X API ingestion.
 
-Start the frontend with `npm run dev` from `frontend/`. Backend services use `https://maincloud.spacetimedb.com` / `ripple-mhacks` by default. The frontend must use `VITE_SPACETIMEDB_URI=wss://maincloud.spacetimedb.com` and `VITE_SPACETIMEDB_DATABASE=ripple-mhacks`. A stale local campaign-test override prevents chat-created campaigns from opening. `RIPPLE_APP_URL` defaults to `http://localhost:5173`; set it to the deployed website URL if the demo should open on another machine. Keep provider keys, agent seeds, the database admin token, and working X session cookies in the documented local configuration.
+The Fetch Bureau uses the current `twins`, `creative`, and `video` pipelines. The older standalone `agents.audience_agent` and `agents.simulation_agent` entry points are retired. Existing live identities are preserved, so the ASI:One handle and links remain stable.
 
-## Verification
-
-The live rehearsal sends signed ACP messages through Agentverse's mailbox, exercises actual button selections and form values, generates real images, runs the exact two drafts above, and checks fresh and different-company sessions:
+## Verify before deployment
 
 ```sh
-PYTHONPATH=backend uv run --project backend python scripts/fetch_demo_check.py
-PYTHONPATH=backend uv run --project backend python scripts/fetch_demo_check.py --onboard NEW_X_HANDLE
+cd backend
+.venv/bin/python -m pytest -q
 ```
 
-These commands execute real provider calls. Evidence is saved to `/tmp/ripple-fetch-demo.json` and `/tmp/ripple-fetch-onboarding.json`. After rehearsal, run the live browser checks from `frontend/`:
+From `frontend/`, run `npm run build` and `npm test -- fetch-workflow.spec.ts --workers=1`.
+
+Rehearse real signed ACP messages and typed specialist orchestration locally before publishing profiles:
 
 ```sh
-RIPPLE_FETCH_LIVE_TEST=1 npm test -- fetch-handoff.spec.ts --workers=3
+PYTHONPATH=backend backend/.venv/bin/python scripts/fetch_workflow_check.py --videos
 ```
 
-The onboarding browser check uses the verified @resend build. All three live browser handoffs passed: six chat-created images opened under Supermemory and transferred into Lab v2; the exact A/B result opened experiment 18 and replayed; new-company onboarding opened @resend's populated dashboard. ACP buttons were exercised through the protocol; ASI:One's own card rendering was not available for browser automation in this session.
+This uses real paid providers, creates campaigns, renders two videos and an edited version, edits an image, tests both generated posts, approves a draft, imports the Office skit's bad/good posts, and checks fresh-session isolation. It does not publish the updated agents to Agentverse. Evidence is written to `/tmp/ripple-fetch-workflow.json`. Omit `--videos` for a faster core rehearsal.
+
+After deployment, add `--mailbox` to run the same check through Agentverse's signed mailbox transport. Its evidence is `/tmp/ripple-fetch-workflow-mailbox.json`.
+
+Verify the real browser handoffs from `frontend/`:
+
+```sh
+RIPPLE_FETCH_WORKFLOW_LIVE_TEST=1 npm test -- fetch-workflow.spec.ts --workers=1
+```
+
+The original `scripts/fetch_demo_check.py --onboard NEW_X_HANDLE` remains an onboarding-only mailbox check; its old image-only rehearsal is replaced by `fetch_workflow_check.py`.
+
+## Demo claims
+
+Pitch Ripple as an audience wind tunnel: test messaging against a model grounded in your existing audience before publishing. Current historical engagement anchoring adjusts simulation scale; it is not a held-out backtest, rank-correlation score, or guarantee of individual behavior. Do not claim those measurements without implementing and evaluating them.
+
+Existing actions retain the hosted image tiles. New workflow actions use native ACP buttons, so no additional asset deployment is required.
+
+After persona analysis, Fetch.ai offers **Expand to 50 · 0.1 test FET** and **No thanks, continue**. This is a
+testnet payment demo: the seller verifies the ledger transfer and saves the upgrade receipt, but does not expand
+the persona count. ASI:One checkout must include `buyer_fet_wallet` (or `buyer_fet_address`) in the commitment.
+The offer is scoped to the chat and analysis; skipped offers preserve all campaign actions. Web app behavior is unchanged.
+
+Interview reports and the checkout card arrive before the response stream closes and include an explicit reply-completion marker. **Show interview results**
+replays the latest saved report in the same chat without rerunning interviews. Reports from before this fix
+need one new analysis to be saved.
