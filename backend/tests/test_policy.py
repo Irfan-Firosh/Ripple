@@ -57,3 +57,8 @@ def test_a_failed_batch_scores_its_twins_as_ignore_instead_of_aborting():
             raise RuntimeError("overloaded")
     scores = score_twins(FailingClient([]), [bt("a", "x", 1)], "draft", workers=1)
     assert scores[0].p_engage == 0.0 and scores[0].reason == "no prediction"
+
+
+def test_default_parallelism_fits_a_1000_person_budget():
+    import inspect
+    assert inspect.signature(score_twins).parameters["workers"].default >= 16  # 100 batches inside ~120 s

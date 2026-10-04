@@ -70,7 +70,7 @@ def _score_batch_safely(client, batch: list[BrandTwin], draft: str) -> dict[str,
         return {}
 
 
-def score_twins(client, twins: list[BrandTwin], draft: str, *, batch_size: int = 10, workers: int = 8) -> list[TwinScore]:
+def score_twins(client, twins: list[BrandTwin], draft: str, *, batch_size: int = 10, workers: int = 16) -> list[TwinScore]:
     if not draft.strip():
         raise ValueError("draft is empty")
     batches = [twins[i:i + batch_size] for i in range(0, len(twins), batch_size)]
