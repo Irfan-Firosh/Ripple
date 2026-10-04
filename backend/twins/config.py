@@ -24,11 +24,15 @@ def _dotenv_value(env_path: Path, name: str) -> str:
     return ""
 
 
-def load_api_key(env_path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] = os.environ) -> str:
-    value = environ.get("CLAUDE_API_KEY", "").strip() or _dotenv_value(env_path, "CLAUDE_API_KEY")
+def load_secret(name: str, env_path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] = os.environ) -> str:
+    value = environ.get(name, "").strip() or _dotenv_value(env_path, name)
     if not value:
-        raise MissingSecret(f"CLAUDE_API_KEY is not set in the environment or in {env_path.name}")
+        raise MissingSecret(f"{name} is not set in the environment or in {env_path.name}")
     return value
+
+
+def load_api_key(env_path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] = os.environ) -> str:
+    return load_secret("CLAUDE_API_KEY", env_path, environ)
 
 
 def load_stdb_token(cli_toml: Path = CLI_TOML, environ: Mapping[str, str] = os.environ) -> str:
