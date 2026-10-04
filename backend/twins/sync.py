@@ -69,10 +69,18 @@ def _build_one(stdb, client, run_id: str, brand_user_id: str, account: Account, 
 
 
 def run_build(stdb, client, brand_username: str, *, min_posts: int = 0, workers: int = 4,
-              limit: int | None = None, run_id: str | None = None) -> BuildSummary:
+              limit: int | None = None, run_id: str | None = None, richest_first: bool = False,
+              skip_existing: bool = False) -> BuildSummary:
+    """Build twins for the brand's audience. Onboarding's live phase passes richest_first (followers with the
+    most posts first, so `limit` picks the best-evidenced) and skip_existing (backfills never rebuild)."""
     for niche in NICHES:  # keep the catalog in SpacetimeDB in step with the code
         stdb.call("upsert_niche", niche.slug, niche.label, niche.description)
     brand, accounts = load_audience(stdb, brand_username)
+    if skip_existing:
+        built = {r["user_id"] for r in stdb.sql("SELECT user_id FROM twin")}
+        accounts = [a for a in accounts if a.user.user_id not in built]
+    if richest_first:
+        accounts = sorted(accounts, key=lambda a: len(a.posts), reverse=True)
     accounts = accounts[:limit] if limit else accounts
     run_id = run_id or f"twins-{brand.username.lower()}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}"
     stdb.call("start_twin_build_run", run_id, brand.user_id, len(accounts))

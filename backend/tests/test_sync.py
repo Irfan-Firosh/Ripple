@@ -159,3 +159,18 @@ def test_run_build_publishes_the_niche_catalog_first():
     names = [r for r, _ in db.calls]
     assert names[:len(NICHES)] == ["upsert_niche"] * len(NICHES)
     assert db.reducers("upsert_niche")[0] == (NICHES[0].slug, NICHES[0].label, NICHES[0].description)
+
+
+def test_run_build_richest_first_with_limit_builds_accounts_with_most_posts():
+    db = audience_db()
+    db.tables["x_post"] += [post_row(f"c{i}", "3") for i in range(1, 6)]  # carol now has 6 posts
+    run_build(db, FakeClient([PERSONA]), "spacetimedb", workers=1, run_id="r", limit=1, richest_first=True)
+    assert db.reducers("start_twin_build_run") == [("r", "100", 1)]
+    assert [a[2] for a in db.reducers("set_twin_job_status") if a[3] == "queued"] == ["carol"]
+
+
+def test_run_build_skip_existing_leaves_built_twins_alone():
+    db = audience_db()
+    db.tables["twin"] = [{"user_id": "1"}, {"user_id": "2"}]
+    run_build(db, FakeClient([PERSONA]), "spacetimedb", workers=1, run_id="r", skip_existing=True)
+    assert [a[2] for a in db.reducers("set_twin_job_status") if a[3] == "queued"] == ["carol"]

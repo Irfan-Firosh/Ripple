@@ -496,6 +496,29 @@ const simComment = table(
   }
 );
 
+// Onboarding: a browser enters its brand's X handle; the backend worker scrapes followers (Scweet), builds twins and
+// the audience graph, advancing `status` so the form can show live progress. The brief fields are the user's answers.
+const onboarding = table(
+  { name: 'onboarding', public: true },
+  {
+    onboardingId: t.u64().primaryKey().autoInc(),
+    handle: t.string(),
+    brandUserId: t.string(), // '' until the brand profile is scraped
+    status: t.string().index('btree'), // queued | scraping | twins | graph | ready | failed
+    ingestionRunId: t.string(), // x_ingestion_run row with live follower/post counters
+    twinRunId: t.string(), // twin_build_run row with live ready/failed counters
+    ownerName: t.string(),
+    role: t.string(),
+    campaignName: t.string(),
+    campaignNews: t.string(),
+    goal: t.string(), // '' | reposts | likes | replies | views
+    error: str(),
+    requestedBy: t.identity().index('btree'),
+    createdAt: t.timestamp(),
+    updatedAt: t.timestamp(),
+  }
+);
+
 const spacetimedb = schema({
   admin,
   xUser,
@@ -528,6 +551,7 @@ const spacetimedb = schema({
   simSignalSource,
   simOutsideTick,
   simComment,
+  onboarding,
 });
 export default spacetimedb;
 
@@ -1247,5 +1271,79 @@ export const addSimComments = spacetimedb.reducer(
       if (ctx.db.simComment.simCommentId.find(row.simCommentId)) ctx.db.simComment.simCommentId.update(row);
       else ctx.db.simComment.insert(row);
     }
+  }
+);
+
+// ---------- Onboarding reducers ----------
+const HANDLE_RE = /^[A-Za-z0-9_]{1,15}$/;
+const ONBOARDING_GOALS = ['', 'reposts', 'likes', 'replies', 'views'];
+const ONBOARDING_STAGES = ['scraping', 'twins', 'graph', 'ready'];
+const MAX_BRIEF_SHORT = 80;
+const MAX_BRIEF_NEWS = 600;
+
+function onboardingRow(ctx: Ctx, onboardingId: bigint) {
+  const row = ctx.db.onboarding.onboardingId.find(onboardingId);
+  if (!row) throw new SenderError(`unknown onboarding ${onboardingId}`);
+  return row;
+}
+
+export const requestOnboarding = spacetimedb.reducer({ handle: t.string() }, (ctx, { handle }) => {
+  const clean = handle.trim().replace(/^@/, '');
+  if (!HANDLE_RE.test(clean)) throw new SenderError('enter a valid X handle');
+  const open = [...ctx.db.onboarding.requestedBy.filter(ctx.sender)]
+    .filter(o => o.status !== 'ready' && o.status !== 'failed');
+  if (open.length) throw new SenderError('an onboarding is already running');
+  ctx.db.onboarding.insert({
+    onboardingId: 0n, handle: clean.toLowerCase(), brandUserId: '', status: 'queued', ingestionRunId: '', twinRunId: '',
+    ownerName: '', role: '', campaignName: '', campaignNews: '', goal: '', error: undefined,
+    requestedBy: ctx.sender, createdAt: ctx.timestamp, updatedAt: ctx.timestamp,
+  } as Row<'onboarding'>);
+});
+
+export const updateOnboardingBrief = spacetimedb.reducer(
+  { onboardingId: t.u64(), ownerName: t.string(), role: t.string(), campaignName: t.string(),
+    campaignNews: t.string(), goal: t.string() },
+  (ctx, a) => {
+    const row = onboardingRow(ctx, a.onboardingId);
+    if (!row.requestedBy.equals(ctx.sender)) throw new SenderError('not your onboarding');
+    if (!ONBOARDING_GOALS.includes(a.goal)) throw new SenderError('unknown goal');
+    for (const v of [a.ownerName, a.role, a.campaignName]) {
+      if (v.length > MAX_BRIEF_SHORT) throw new SenderError(`answers must be at most ${MAX_BRIEF_SHORT} characters`);
+    }
+    if (a.campaignNews.length > MAX_BRIEF_NEWS) throw new SenderError(`the news must be at most ${MAX_BRIEF_NEWS} characters`);
+    ctx.db.onboarding.onboardingId.update({
+      ...row, ownerName: a.ownerName.trim(), role: a.role.trim(), campaignName: a.campaignName.trim(),
+      campaignNews: a.campaignNews.trim(), goal: a.goal, updatedAt: ctx.timestamp,
+    });
+  }
+);
+
+export const claimOnboarding = spacetimedb.reducer({ onboardingId: t.u64() }, (ctx, { onboardingId }) => {
+  requireAdmin(ctx);
+  const row = onboardingRow(ctx, onboardingId);
+  if (row.status !== 'queued') throw new SenderError(`onboarding ${onboardingId} already claimed`);
+  ctx.db.onboarding.onboardingId.update({ ...row, status: 'scraping', updatedAt: ctx.timestamp });
+});
+
+export const setOnboardingProgress = spacetimedb.reducer(
+  { onboardingId: t.u64(), status: t.string(), brandUserId: t.string(), ingestionRunId: t.string(), twinRunId: t.string() },
+  (ctx, a) => {
+    requireAdmin(ctx);
+    if (!ONBOARDING_STAGES.includes(a.status)) throw new SenderError(`status must be one of ${ONBOARDING_STAGES.join(', ')}`);
+    const row = onboardingRow(ctx, a.onboardingId);
+    ctx.db.onboarding.onboardingId.update({
+      ...row, status: a.status, brandUserId: a.brandUserId || row.brandUserId,
+      ingestionRunId: a.ingestionRunId || row.ingestionRunId, twinRunId: a.twinRunId || row.twinRunId,
+      updatedAt: ctx.timestamp,
+    });
+  }
+);
+
+export const failOnboarding = spacetimedb.reducer(
+  { onboardingId: t.u64(), error: t.string() },
+  (ctx, { onboardingId, error }) => {
+    requireAdmin(ctx);
+    const row = onboardingRow(ctx, onboardingId);
+    ctx.db.onboarding.onboardingId.update({ ...row, status: 'failed', error: error.slice(0, 300), updatedAt: ctx.timestamp });
   }
 );
