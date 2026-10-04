@@ -93,3 +93,7 @@
   .nt-header--workspace .nt-header-actions { order: 3; }
 }
 @media (max-width: 650px) { .nt-header--workspace { gap: 8px; } }
+/* More breathing room between the niche index and the window edge. */
+.nt-index { left:56px; }
+@media(max-width:1000px) { .nt-index { left:40px; } .nt-stage { left:210px; } }
+@media(max-width:640px) { .nt-index { left:24px; width:calc(100% - 48px); } }

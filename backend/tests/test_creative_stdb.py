@@ -63,9 +63,9 @@ def test_ownership_review_and_job_contracts(database):
         stdb.call("handoff_campaign", cid)
     stdb.call("request_creative", cid, "generate", bid, opt(None), opt(None))
     pending = stdb.sql(f"SELECT * FROM creative_job WHERE campaign_id = {sql_str(cid)} AND status = 'pending'")[0]
-    stdb.call("claim_creative_job", pending["job_id"])
+    stdb.call("claim_creative_job", pending["job_id"], 2)
     with pytest.raises(StdbError):
-        stdb.call("claim_creative_job", pending["job_id"])
+        stdb.call("claim_creative_job", pending["job_id"], 2)
     with pytest.raises(StdbError, match="terminal"):
         stdb.call("finish_creative_job", pending["job_id"])
     # Execute the already-claimed job through its real contract.

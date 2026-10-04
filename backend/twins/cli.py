@@ -1,5 +1,6 @@
 """Command line for the twin service."""
 import argparse
+import re
 import sys
 
 from .ask import ask_twin
@@ -36,6 +37,8 @@ def _parser() -> argparse.ArgumentParser:
     lw.add_argument("--max-loops", type=int)
     ow = sub.add_parser("onboarding-worker", help="scrape + twin + graph brands queued by request_onboarding")
     ow.add_argument("--poll", type=float, default=2.0)
+    oa = sub.add_parser("ops-admin", help="let a browser identity use the hidden /ops page")
+    oa.add_argument("identity", help="the hex identity the /ops page shows")
     a = sub.add_parser("ask", help="ask a twin directly (prints JSON, writes nothing)")
     a.add_argument("--username", required=True)
     a.add_argument("--draft", required=True)
@@ -57,6 +60,14 @@ def _ask(args, stdb, client) -> int:
 def main(argv: list[str] | None = None, *, stdb=None, client=None) -> int:
     args = _parser().parse_args(argv)
     stdb = stdb or StdbClient(STDB_URL, STDB_DATABASE, token=load_stdb_token())
+    if args.cmd == "ops-admin":
+        identity = args.identity.strip().removeprefix("0x").lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", identity):
+            print("identity must be 64 hex characters", file=sys.stderr)
+            return 1
+        stdb.call("add_ops_admin", {"__identity__": f"0x{identity}"}, "ops page")
+        print("added; reload /ops")
+        return 0
     client = client or make_client(load_api_key())
     if args.cmd == "build":
         s = run_build(stdb, client, args.brand, min_posts=args.min_posts, workers=args.workers, limit=args.limit)

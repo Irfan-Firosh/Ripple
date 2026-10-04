@@ -1,0 +1,46 @@
+.ops-page{min-height:100svh;background:var(--bg);color:var(--fg);font-family:"DM Sans",sans-serif;padding:40px 16px 96px;max-width:880px;margin:0 auto;box-sizing:border-box}
+.ops-page h1{font:500 32px "Space Grotesk",sans-serif;letter-spacing:-1px;margin:0}
+.ops-page header p,.ops-hint{color:var(--muted);font-size:13px;margin:6px 0 0}
+.ops-card{border:1px solid var(--line);border-radius:16px;padding:22px;margin-top:20px;background:var(--panel,transparent)}
+.ops-card h2{font:500 19px "Space Grotesk",sans-serif;margin:0 0 16px}
+.ops-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px}
+.ops-field{display:flex;flex-direction:column;gap:6px;font-size:12px;min-width:0}
+.ops-field span{color:var(--muted)}
+.ops-field small{color:var(--muted);font-size:11px}
+.ops-page input[type=number],.ops-page input:not([type]){background:var(--soft);border:1px solid var(--line);border-radius:8px;color:var(--fg);padding:9px 10px;font:13px "Space Mono",monospace;width:100%;box-sizing:border-box}
+.ops-mode{border:0;padding:0;margin:20px 0;display:flex;flex-direction:column;gap:8px;font-size:13px}
+.ops-mode legend{color:var(--muted);font-size:12px;margin-bottom:6px}
+.ops-mode label{display:flex;gap:8px;align-items:center}
+.ops-mode input{accent-color:var(--accent)}
+.ops-page button{background:var(--accent);color:var(--bg);border:0;border-radius:999px;padding:9px 18px;font:500 13px "DM Sans",sans-serif;cursor:pointer}
+.ops-page button:disabled{opacity:.4;cursor:not-allowed}
+.ops-page button.ops-ghost{background:none;color:var(--fg);border:1px solid var(--line)}
+.ops-page button:focus-visible,.ops-page input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ops-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px}
+.ops-table th{text-align:left;color:var(--muted);font-weight:400;font-size:12px}
+.ops-table th,.ops-table td{padding:9px 6px;border-bottom:1px solid var(--line)}
+.ops-table td:not(:first-child){font-family:"Space Mono",monospace}
+.ops-inline{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.ops-inline .ops-field{width:150px}
+.ops-list{list-style:none;padding:0;margin:14px 0 0;font-size:12px;color:var(--muted);display:grid;gap:4px}
+.ops-video{display:flex;gap:16px;padding:16px 0;border-top:1px solid var(--line)}
+.ops-video img,.ops-thumb{width:160px;aspect-ratio:16/9;object-fit:contain;border-radius:8px;background:var(--soft);flex-shrink:0}
+.ops-video-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;font-size:13px}
+.ops-ranges{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ops-row{display:flex;gap:8px}
+.ops-locked{border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin-top:20px;font-size:13px}
+.ops-locked p{margin:0 0 8px}
+.ops-cmd{display:block;font:12px "Space Mono",monospace;overflow-wrap:anywhere;background:var(--soft);padding:8px 10px;border-radius:8px}
+.ops-note{font-size:13px;color:var(--accent);min-height:20px;margin-top:16px}
+@media(max-width:640px){.ops-video{flex-direction:column}.ops-video img,.ops-thumb{width:100%}.ops-ranges{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ops-hidden{min-height:100svh;background:var(--bg);color:var(--fg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px 16px;text-align:center;font-family:"DM Sans",sans-serif}
+.ops-hidden h1{font:500 28px "Space Grotesk",sans-serif;letter-spacing:-.8px;margin:18px 0 0}
+.ops-hidden p{color:var(--muted);font-size:14px;margin:0}
+.ops-hidden a{margin-top:8px;background:var(--accent);color:var(--bg);border-radius:999px;padding:10px 20px;text-decoration:none;font-size:14px}
+.ops-switches{display:flex;gap:12px;flex-wrap:wrap}
+.ops-switch{display:flex;flex-direction:column;gap:6px;flex:1;min-width:220px;border:1px solid var(--line);border-radius:12px;padding:14px}
+.ops-switch b{font-size:14px}
+.ops-switch small{color:var(--muted);font-size:12px}
+.ops-switch[data-on=true]{border-color:var(--accent)}
+.ops-switch button{align-self:flex-start;margin-top:6px}
+.ops-page select{background:var(--soft);border:1px solid var(--line);border-radius:8px;color:var(--fg);padding:9px 10px;font:13px "DM Sans",sans-serif;width:100%}

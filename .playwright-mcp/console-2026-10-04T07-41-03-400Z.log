@@ -1,0 +1,24 @@
+[      45ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-K4RMU5RS.js?v=22be0d2a:22164
+[     360ms] [LOG] %cℹ️ INFO%c Connecting to SpacetimeDB WS... color: #fff; background-color: #007bff; padding: 2px 5px; border-radius: 3px; color: #007bff; @ http://localhost:5173/node_modules/.vite/deps/spacetimedb.js?v=22be0d2a:5207
+[     364ms] [LOG] %cℹ️ INFO%c Connecting to SpacetimeDB WS... color: #fff; background-color: #007bff; padding: 2px 5px; border-radius: 3px; color: #007bff; @ http://localhost:5173/node_modules/.vite/deps/spacetimedb.js?v=22be0d2a:5207
+[     399ms] [WARNING] WebSocket connection to 'wss://maincloud.spacetimedb.com/v1/database/ripple-mhacks/subscribe?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJoZXhfaWRlbnRpdHkiOiJjMjAwNDNmOGYxZjI0YjQzZWYyYzA0MTg5ZTMwYWI0MTc5MzllN2UwMjM0ZGNjMDgyZTkyMjkzNWRkZTkwZWFlIiwic3ViIjoiZjdjNDkwZjQtZGE0Ni00ZDEwLWEzMTUtOTg0ZDdiNWEwNWU0IiwiaXNzIjoibG9jYWxob3N0IiwiYXVkIjpbInNwYWNldGltZWRiIl0sImlhdCI6MTc5MTA5OTY2MiwiZXhwIjoxNzkxMDk5NzIyfQ.wnV6sZuwS3-g9RPWvVnvCJvV4P-UEOhhh4cfkYe6D6Ux59BMhzFek9Hvzz0m8tcQRSBj2dWYuugOCgfH3QMjdw&compression=Gzip' failed: WebSocket is closed before the connection is established. @ http://localhost:5173/node_modules/.vite/deps/spacetimedb.js?v=22be0d2a:5888
+[   40207ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[   43109ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[   46258ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[   49396ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[   52559ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[   55694ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[   58844ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[   61996ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[   65205ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[   66065ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [[object Object], , [object Object],[object Object], raycast, 1] [true, Stay in creative flow
+
+Get Raycast, 53f9b715-20e2-4a14-84bf-10de53d9a492, raycast] @ http://localhost:5173/node_modules/.vite/deps/chunk-K4RMU5RS.js?v=22be0d2a:5891
+[   66169ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[   86111ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[  106109ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[  126110ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0
+[  146108ms] [ERROR] Failed to load resource: the server responded with a status of 530 () @ https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/call/request_campaign_video:0

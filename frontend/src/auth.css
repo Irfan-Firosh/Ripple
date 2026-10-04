@@ -34,3 +34,5 @@ html[data-theme="light"] .auth-image-index { color: var(--muted); }
   .auth-form-center { padding: 40px 24px; }
   .auth-back { padding: 16px 24px 24px; }
 }
+
+html:not([data-theme="light"]) .auth-landscape{filter:grayscale(1)}
