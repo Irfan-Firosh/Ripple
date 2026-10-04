@@ -1,5 +1,6 @@
 // Raw X API data only. Persona/AI-inferred data belongs in separate tables.
 import { schema, table, t, SenderError, type InferSchema, type ReducerCtx } from 'spacetimedb/server';
+import { ScheduleAt } from 'spacetimedb';
 
 const str = () => t.option(t.string());
 const u64 = () => t.option(t.u64());
@@ -296,6 +297,76 @@ const twinQuestion = table(
   }
 );
 
+// ---------- Simulation: graph edges, runs, per-person probabilities and results ----------
+const EdgeInput = t.object('EdgeInput', { a: t.string(), b: t.string(), kind: t.string() });
+const SimProbInput = t.object('SimProbInput', { userId: t.string(), pEngage: t.f64(), action: t.string(), reason: t.string() });
+
+const audienceEdge = table(
+  { name: 'audience_edge', public: true },
+  {
+    edgeId: t.string().primaryKey(), // `${brandUserId}:${a}:${b}`
+    brandUserId: t.string().index('btree'),
+    a: t.string(),
+    b: t.string(),
+    kind: t.string(), // niche_hub | niche_ring | reply | mention
+  }
+);
+
+const simRun = table(
+  { name: 'sim_run', public: true },
+  {
+    runId: t.string().primaryKey(),
+    brandUserId: t.string().index('btree'),
+    draft: t.string(),
+    status: t.string(), // scoring | replaying | done | failed
+    people: t.u32(),
+    trials: t.u32(),
+    reachP10: t.u32(),
+    reachP50: t.u32(),
+    reachP90: t.u32(),
+    seenP50: t.u32(),
+    replayTick: t.u32(),
+    replayMaxTick: t.u32(),
+    error: str(),
+    createdAt: t.timestamp(),
+    completedAt: t.option(t.timestamp()),
+  }
+);
+
+const simProb = table(
+  { name: 'sim_prob', public: true },
+  {
+    simProbId: t.string().primaryKey(), // `${runId}:${userId}`
+    runId: t.string().index('btree'),
+    userId: t.string(),
+    pEngage: t.f64(),
+    action: t.string(),
+    reason: t.string(),
+  }
+);
+
+const simNode = table(
+  { name: 'sim_node', public: true },
+  {
+    simNodeId: t.string().primaryKey(), // `${runId}:${userId}`
+    runId: t.string().index('btree'),
+    userId: t.string(),
+    engagedShare: t.f64(), // share of trials in which this person engaged
+    seenShare: t.f64(),
+    replaySeenTick: t.option(t.u32()), // trial 0, replayed live by cascade_tick
+    replayEngagedTick: t.option(t.u32()),
+  }
+);
+
+const cascadeReplay = table(
+  { name: 'cascade_replay' },
+  {
+    scheduledId: t.u64().primaryKey().autoInc(),
+    scheduledAt: t.scheduleAt(),
+    runId: t.string(),
+  }
+);
+
 const spacetimedb = schema({
   admin,
   xUser,
@@ -313,6 +384,11 @@ const spacetimedb = schema({
   twinAudience,
   niche,
   twinNiche,
+  audienceEdge,
+  simRun,
+  simProb,
+  simNode,
+  cascadeReplay,
 });
 export default spacetimedb;
 
@@ -628,5 +704,172 @@ export const failTwinQuestion = spacetimedb.reducer(
     requireAdmin(ctx);
     const q = questionIn(ctx, questionId, 'answering');
     ctx.db.twinQuestion.questionId.update({ ...q, status: 'failed', error, answeredAt: ctx.timestamp });
+  }
+);
+
+// ---------- Simulation reducers ----------
+const FEED_REACH = 0.35; // chance a follower sees the brand's post in their feed
+const SHARE_REACH = 0.6; // chance a neighbour sees it after someone they follow engages
+const REPLAY_STEP_MICROS = 700_000n;
+const MAX_TRIALS = 1000;
+const MAX_DRAFT_SIM = 2000;
+
+type Rng = () => number;
+
+// One independent-cascade trial. `record` captures the tick at which each person saw / engaged.
+function cascadeTrial(rand: Rng, ids: string[], p: Map<string, number>, adj: Map<string, string[]>,
+                      record?: { seen: Map<string, number>; engaged: Map<string, number> }) {
+  const seen = new Set<string>();
+  const engaged = new Set<string>();
+  let frontier: string[] = [];
+  for (const id of ids) {
+    if (rand() >= FEED_REACH) continue;
+    seen.add(id); record?.seen.set(id, 0);
+    if (rand() < (p.get(id) ?? 0)) { engaged.add(id); record?.engaged.set(id, 0); frontier.push(id); }
+  }
+  let tick = 0;
+  while (frontier.length) {
+    tick += 1;
+    const next: string[] = [];
+    for (const u of frontier) {
+      for (const v of adj.get(u) ?? []) {
+        if (seen.has(v) || rand() >= SHARE_REACH) continue;
+        seen.add(v); record?.seen.set(v, tick);
+        if (rand() < (p.get(v) ?? 0)) { engaged.add(v); record?.engaged.set(v, tick); next.push(v); }
+      }
+    }
+    frontier = next;
+  }
+  return { seen, engaged, lastTick: tick };
+}
+
+function percentile(sorted: number[], q: number): number {
+  if (!sorted.length) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.floor(q * (sorted.length - 1) + 0.5))];
+}
+
+function scheduleReplay(ctx: Ctx, runId: string) {
+  ctx.db.cascadeReplay.insert({
+    scheduledId: 0n,
+    scheduledAt: ScheduleAt.time(ctx.timestamp.microsSinceUnixEpoch + REPLAY_STEP_MICROS),
+    runId,
+  });
+}
+
+export const replaceAudienceEdges = spacetimedb.reducer(
+  { brandUserId: t.string(), edges: t.array(EdgeInput) },
+  (ctx, { brandUserId, edges }) => {
+    requireAdmin(ctx);
+    for (const old of [...ctx.db.audienceEdge.brandUserId.filter(brandUserId)]) ctx.db.audienceEdge.edgeId.delete(old.edgeId);
+    for (const e of edges) {
+      const edgeId = `${brandUserId}:${e.a}:${e.b}`;
+      if (e.a === e.b || ctx.db.audienceEdge.edgeId.find(edgeId)) continue;
+      ctx.db.audienceEdge.insert({ edgeId, brandUserId, a: e.a, b: e.b, kind: e.kind });
+    }
+  }
+);
+
+export const createSimRun = spacetimedb.reducer(
+  { runId: t.string(), brandUserId: t.string(), draft: t.string(), people: t.u32() },
+  (ctx, { runId, brandUserId, draft, people }) => {
+    requireAdmin(ctx);
+    if (ctx.db.simRun.runId.find(runId)) throw new SenderError(`sim run ${runId} already exists`);
+    if (!draft.trim() || draft.length > MAX_DRAFT_SIM) throw new SenderError(`draft must be 1..${MAX_DRAFT_SIM} chars`);
+    ctx.db.simRun.insert({
+      runId, brandUserId, draft, status: 'scoring', people, trials: 0,
+      reachP10: 0, reachP50: 0, reachP90: 0, seenP50: 0, replayTick: 0, replayMaxTick: 0,
+      error: undefined, createdAt: ctx.timestamp, completedAt: undefined,
+    } as Row<'simRun'>);
+  }
+);
+
+export const setSimProbs = spacetimedb.reducer(
+  { runId: t.string(), probs: t.array(SimProbInput) },
+  (ctx, { runId, probs }) => {
+    requireAdmin(ctx);
+    const run = ctx.db.simRun.runId.find(runId);
+    if (!run) throw new SenderError(`unknown sim run ${runId}`);
+    if (run.status !== 'scoring') throw new SenderError(`sim run ${runId} is ${run.status}`);
+    for (const pr of probs) {
+      if (!(pr.pEngage >= 0 && pr.pEngage <= 1)) throw new SenderError(`p_engage must be 0..1 for ${pr.userId}`);
+      const row = { simProbId: `${runId}:${pr.userId}`, runId, userId: pr.userId, pEngage: pr.pEngage, action: pr.action, reason: pr.reason };
+      if (ctx.db.simProb.simProbId.find(row.simProbId)) ctx.db.simProb.simProbId.update(row);
+      else ctx.db.simProb.insert(row);
+    }
+  }
+);
+
+export const startCascade = spacetimedb.reducer(
+  { runId: t.string(), trials: t.u32() },
+  (ctx, { runId, trials }) => {
+    requireAdmin(ctx);
+    const run = ctx.db.simRun.runId.find(runId);
+    if (!run) throw new SenderError(`unknown sim run ${runId}`);
+    if (run.status !== 'scoring') throw new SenderError(`sim run ${runId} already ${run.status}`);
+    const probs = [...ctx.db.simProb.runId.filter(runId)];
+    if (!probs.length) throw new SenderError('set_sim_probs before start_cascade');
+    const n = Math.max(1, Math.min(MAX_TRIALS, trials));
+    const ids = probs.map(pr => pr.userId);
+    const inRun = new Set(ids);
+    const p = new Map(probs.map(pr => [pr.userId, pr.pEngage]));
+    const adj = new Map<string, string[]>();
+    for (const e of ctx.db.audienceEdge.brandUserId.filter(run.brandUserId)) {
+      if (!inRun.has(e.a) || !inRun.has(e.b)) continue;
+      adj.set(e.a, [...(adj.get(e.a) ?? []), e.b]);
+      adj.set(e.b, [...(adj.get(e.b) ?? []), e.a]);
+    }
+    const rand: Rng = () => ctx.random();
+    const engagedCount = new Map<string, number>(), seenCount = new Map<string, number>();
+    const reach: number[] = [], seenTotals: number[] = [];
+    const replay = { seen: new Map<string, number>(), engaged: new Map<string, number>() };
+    let replayMaxTick = 0;
+    for (let trial = 0; trial < n; trial++) {
+      const record = trial === 0 ? replay : undefined; // trial 0 is the one replayed live
+      const r = cascadeTrial(rand, ids, p, adj, record);
+      reach.push(r.engaged.size); seenTotals.push(r.seen.size);
+      for (const id of r.engaged) engagedCount.set(id, (engagedCount.get(id) ?? 0) + 1);
+      for (const id of r.seen) seenCount.set(id, (seenCount.get(id) ?? 0) + 1);
+      if (trial === 0) replayMaxTick = r.lastTick;
+    }
+    reach.sort((a, b) => a - b); seenTotals.sort((a, b) => a - b);
+    for (const id of ids) {
+      ctx.db.simNode.insert({
+        simNodeId: `${runId}:${id}`, runId, userId: id,
+        engagedShare: (engagedCount.get(id) ?? 0) / n,
+        seenShare: (seenCount.get(id) ?? 0) / n,
+        replaySeenTick: replay.seen.get(id), replayEngagedTick: replay.engaged.get(id),
+      } as Row<'simNode'>);
+    }
+    ctx.db.simRun.runId.update({
+      ...run, status: 'replaying', trials: n,
+      reachP10: percentile(reach, 0.1), reachP50: percentile(reach, 0.5), reachP90: percentile(reach, 0.9),
+      seenP50: percentile(seenTotals, 0.5), replayTick: 0, replayMaxTick,
+    });
+    scheduleReplay(ctx, runId);
+  }
+);
+
+export const cascadeTick = spacetimedb.reducer(
+  { onSchedule: cascadeReplay },
+  { timer: cascadeReplay.rowType },
+  (ctx, { timer }) => {
+    const run = ctx.db.simRun.runId.find(timer.runId);
+    if (!run || run.status !== 'replaying') return;
+    if (run.replayTick >= run.replayMaxTick) {
+      ctx.db.simRun.runId.update({ ...run, status: 'done', completedAt: ctx.timestamp });
+      return;
+    }
+    ctx.db.simRun.runId.update({ ...run, replayTick: run.replayTick + 1 });
+    scheduleReplay(ctx, run.runId);
+  }
+);
+
+export const failSimRun = spacetimedb.reducer(
+  { runId: t.string(), error: t.string() },
+  (ctx, { runId, error }) => {
+    requireAdmin(ctx);
+    const run = ctx.db.simRun.runId.find(runId);
+    if (!run) throw new SenderError(`unknown sim run ${runId}`);
+    ctx.db.simRun.runId.update({ ...run, status: 'failed', error: error.slice(0, 300), completedAt: ctx.timestamp });
   }
 );

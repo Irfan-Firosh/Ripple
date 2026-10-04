@@ -23,6 +23,10 @@ Live database: `ripple-mhacks` on maincloud.
 | `twin_build_run` | `run_id` | live counters for a twin build (ready / failed / skipped) |
 | `twin_build_job` | `run_id:user_id` | per-account build status: queued → building → ready / failed / skipped |
 | `twin_question` | `question_id` | Ask-the-twin queue: anyone calls `ask_twin`; the backend worker claims and answers |
+| `audience_edge` | `brand:a:b` | who-can-reach-whom edges per brand (niche hub/ring, reply, mention), built by `backend/twins/graph.py` |
+| `sim_run` | `run_id` | one simulated draft: status, reach `reach_p_10`/`reach_p_50`/`reach_p_90`, live replay tick |
+| `sim_prob` | `run_id:user_id` | each twin's chance of engaging with the draft (Claude-scored) |
+| `sim_node` | `run_id:user_id` | per-person engaged/seen share across trials + replay ticks for the live animation |
 
 All upsert reducers are idempotent. Tables are publicly readable; only the publishing identity can write (add more with `add_admin`).
 
