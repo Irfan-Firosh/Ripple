@@ -44,3 +44,15 @@ def test_lab_worker_runs_bounded_loops():
     db = twin_db()
     db.tables["lab_experiment"] = []
     assert main(["lab-worker", "--poll", "0", "--max-loops", "2"], stdb=db, client=FakeClient([])) == 0
+
+
+def test_anchor_command_prints_calibration(monkeypatch, capsys):
+    seen = {}
+
+    def fake_anchor(stdb, client, brand, *, posts):
+        seen.update(brand=brand, posts=posts)
+        return {"like_scale": 0.1}
+
+    monkeypatch.setattr("twins.cli.anchor", fake_anchor)
+    assert main(["anchor", "--brand", "raycast.com", "--posts", "3"], stdb=twin_db(), client=FakeClient([])) == 0
+    assert seen == {"brand": "raycast.com", "posts": 3} and '"like_scale": 0.1' in capsys.readouterr().out
