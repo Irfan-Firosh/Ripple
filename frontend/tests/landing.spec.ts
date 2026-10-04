@@ -139,44 +139,18 @@ test("mobile navigation works without horizontal overflow", async ({
   ).toBe(true);
 });
 
-test("walkthrough reflects Ripple drafts, cascades, rankings, explanations and hook edit", async ({
-  page,
-}) => {
-  await page.goto("/?film=1&theme=light");
+test("walkthrough uses the actual live audience and Lab screens", async ({ page }) => {
+  test.setTimeout(90000);
+  await page.goto("/?film=1&theme=light&brand=spacetimedb");
   await page.waitForFunction(() => typeof window.__setDemoTime === "function");
-  await page.evaluate(() => window.__setDemoTime(3.9));
-  await expect(page.locator(".draft-input")).toHaveCount(3);
-  await expect(page.locator(".draft-input.focused")).toContainText(
-    "What if you could test a post",
-  );
-  await page.evaluate(() => window.__setDemoTime(5));
-  await expect(page.locator(".confirmation-card")).toContainText("200");
+  await expect(page.locator(".nt-stage>canvas")).toBeVisible({ timeout: 45000 });
+  await expect(page.getByLabel("Niche index")).toBeVisible();
+  expect(Number(await page.locator(".nt-stage>canvas").getAttribute("data-node-count"))).toBeGreaterThan(50);
   await page.evaluate(() => window.__setDemoTime(12));
-  await expect(
-    page.getByLabel(
-      "Four communities light up as draft B spreads across their connecting bridges",
-    ),
-  ).toBeVisible();
-  await expect(page.locator(".agent-job-list")).toContainText("Simulator");
-  await page.evaluate(() => window.__setDemoTime(18));
-  await expect(page.locator(".ranking-card")).toContainText("780–2,400");
-  await expect(page.locator(".result-cell.winner")).toContainText(
-    "80% interval",
-  );
-  await page.evaluate(() => window.__setDemoTime(21));
-  await expect(page.locator(".explanation-card")).toContainText(
-    "Topic overlap",
-  );
-  await page.evaluate(() => window.__setDemoTime(27));
-  await expect(page.locator(".counterfactual-card")).toContainText(
-    "New comparison queued",
-  );
-  await expect(page.locator(".new-hook")).toContainText(
-    "reach the people who actually need it?",
-  );
-  await expect(page.locator(".agent-disclaimer")).toContainText(
-    "No live prediction or measured accuracy",
-  );
+  await expect(page.locator(".lab-post-column, .lab-column")).toHaveCount(2, { timeout: 45000 });
+  await expect(page.locator(".lab-summary, .lab-verdict").first()).toContainText(/A wins|B wins|Too close to call/);
+  await expect(page.locator(".lab-post-column article, .lab-column>article")).toHaveCount(2);
+  await expect(page.locator("body")).not.toContainText(/Illustrative data|counterfactual|New comparison queued/);
 });
 
 test("public planning links resolve", async ({ request }) => {

@@ -1,5 +1,18 @@
 import type { CascadeNetwork } from './liveNetwork';
 
+export function createClusterBadge(name:string,count:number,color:string,theme:'dark'|'light'){
+  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d')!;
+  ctx.font='500 14px "DM Sans"';
+  const width=Math.min(250,Math.ceil(ctx.measureText(name).width+48)),height=56;
+  canvas.width=width*2;canvas.height=height*2;ctx.scale(2,2);
+  ctx.fillStyle=theme==='dark'?'#111b29f5':'#fcfbf6f5';ctx.strokeStyle=theme==='dark'?'#ffffff22':'#1d2d4028';ctx.lineWidth=1;
+  ctx.beginPath();ctx.roundRect(.5,.5,width-1,height-1,11);ctx.fill();ctx.stroke();
+  ctx.fillStyle=color;ctx.beginPath();ctx.arc(19,19,3.5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=theme==='dark'?'#f3f1ed':'#1d2d40';ctx.font='500 14px "DM Sans"';ctx.textBaseline='middle';ctx.fillText(name,31,19,width-43);
+  ctx.fillStyle=theme==='dark'?'#9da8b8':'#687487';ctx.font='12px "DM Sans"';ctx.fillText(`${count.toLocaleString()} people`,31,39);
+  return {canvas,width,height};
+}
+
 // Bake lighting, image clipping, portrait shading and the rim once; zoom only scales this bitmap.
 export function createNodeSprite(network:CascadeNetwork,id:number,theme:'dark'|'light',image?:CanvasImageSource):HTMLCanvasElement {
   const source=id===network.sourceId,node=network.nodes[id];

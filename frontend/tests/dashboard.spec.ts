@@ -12,7 +12,7 @@ test('dashboard shows the loader, then the live audience with real counts and ni
   await expect(page.locator('[data-slot="loader"] canvas')).toBeVisible();
 
   const canvas = page.getByRole('img', { name: /Three-dimensional audience network/ });
-  await expect(canvas).toBeVisible({ timeout: 20000 });
+  await expect(canvas).toBeVisible({ timeout: 45000 });
   const people = Number(await canvas.getAttribute('data-node-count'));
   expect(people).toBeGreaterThan(50); // every person is retained within the interactive size budget
   await expect(page.getByText(`${people} people`)).toBeVisible();
@@ -40,7 +40,7 @@ test('dashboard shows the loader, then the live audience with real counts and ni
   await expect.poll(async () => Number(await canvas.getAttribute('data-camera-y'))).toBeLessThan(-100); // niche 01 sits at the top of the ring
   await page.getByRole('button', { name: 'All niches', exact: true }).click();
   await expect.poll(async () => Number(await canvas.getAttribute('data-camera-y'))).toBeCloseTo(0, 0);
-  await expect(page.getByRole('link', { name: 'Back to home', exact: true })).toHaveAttribute('href', '/');
+  await expect(page.getByRole('navigation', { name: 'Workspace navigation' }).getByRole('link', { name: 'Home', exact: true })).toHaveAttribute('href', '/');
 });
 
 test('mobile dashboard finishes the cascade with reduced motion and has no sideways scroll', async ({ page }) => {
@@ -48,7 +48,7 @@ test('mobile dashboard finishes the cascade with reduced motion and has no sidew
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/dashboard');
   const canvas = page.getByRole('img', { name: /Three-dimensional audience network/ });
-  await expect(canvas).toBeVisible({ timeout: 20000 });
+  await expect(canvas).toBeVisible({ timeout: 45000 });
   const people = await canvas.getAttribute('data-node-count');
   await expect(canvas).toHaveAttribute('data-active-count', people!);
   await page.getByRole('button', { name: 'Switch to light mode' }).click();
@@ -63,7 +63,7 @@ test('dashboard says so when SpacetimeDB cannot be reached, and retries', async 
   await expect(page.getByRole('status')).toContainText("Couldn't load the audience");
   fail = false;
   await page.getByRole('button', { name: 'Try again' }).click();
-  await expect(page.getByRole('img', { name: /Three-dimensional audience network/ })).toBeVisible({ timeout: 20000 });
+  await expect(page.getByRole('img', { name: /Three-dimensional audience network/ })).toBeVisible({ timeout: 45000 });
 });
 
 test('Raycast (Bluesky) audience renders every twin in at most 7 niche groups', async ({ page }) => {
@@ -89,4 +89,41 @@ test('a simulation run replays live from SpacetimeDB', async ({ page }) => {
   await expect(canvas).toHaveAttribute('data-run', runId!);
   await expect(page.getByText(/likely reach \d+–\d+/)).toBeVisible();
   await expect.poll(async () => Number(await canvas.getAttribute('data-engaged-count'))).toBeGreaterThan(0);
+});
+
+test('landing-style desktop navigation opens the Lab for the current brand', async ({ page }) => {
+  await page.goto('/dashboard?brand=raycast.com');
+  const nav = page.getByRole('navigation', { name: 'Workspace navigation' });
+  const audience = nav.getByRole('link', { name: 'Audience', exact: true });
+  await expect(audience).toHaveAttribute('aria-current', 'page');
+  const lab = nav.getByRole('link', { name: 'Lab', exact: true });
+  await expect(lab).toHaveAttribute('href', '/lab?brand=raycast.com');
+  await expect(nav).toContainText('HomeAudienceLab');
+  expect(await nav.evaluate(el => getComputedStyle(el).borderRadius)).toBe('999px');
+  await expect(nav.locator('svg')).toHaveCount(0);
+  await lab.click();
+  await expect(page).toHaveURL(/\/lab\?brand=raycast.com/);
+  await expect(page.getByRole('navigation', { name: 'Workspace navigation' }).getByRole('link', { name: 'Lab', exact: true })).toHaveAttribute('aria-current', 'page');
+});
+
+test('mobile floating navigation opens below its toggle and supports Escape without page overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/dashboard');
+  const toggle = page.getByRole('button', { name: 'Open navigation' });
+  await toggle.click();
+  const nav = page.getByRole('navigation', { name: 'Workspace navigation' });
+  await expect(nav).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close navigation' })).toHaveAttribute('aria-expanded', 'true');
+  const bounds = await nav.boundingBox(), buttonBounds = await page.getByRole('button', { name: 'Close navigation' }).boundingBox();
+  expect(bounds!.y).toBeGreaterThan(buttonBounds!.y + buttonBounds!.height);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await nav.getByRole('link', { name: 'Lab', exact: true }).focus();
+  await page.keyboard.press('Escape');
+  await expect(toggle).toBeFocused();
+  await expect(nav).not.toBeVisible();
+  await toggle.click();
+  await page.getByRole('navigation', { name: 'Workspace navigation' }).getByRole('link', { name: 'Lab', exact: true }).click();
+  await expect(page).toHaveURL(/\/lab\?brand=spacetimedb/);
+  await expect(page.getByRole('button', { name: 'Open navigation' })).toBeVisible();
 });

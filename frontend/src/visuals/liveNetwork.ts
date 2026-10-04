@@ -1,6 +1,7 @@
 // Turns the audience read from SpacetimeDB into a renderable 3D cascade: every scraped person is a node
 // grouped by their primary niche, with the brand's post at the centre.
 import type { Audience, AudienceMember } from '../audience/liveAudience';
+import { buildAffinityLayout } from './affinityLayout';
 
 export type Vec3 = [number, number, number];
 export type CascadeNode = {
@@ -10,6 +11,7 @@ export type CascadeNode = {
 export type CascadeCommunity = { slug: string; name: string; color: string; center: Vec3; size: number; radius:number };
 export type CascadeEdge = { a: number; b: number; bridge: boolean; delay: number };
 export type Arrival = { id: number; at: number; from: number | null };
+export type NetworkLayout = {centers:Vec3[];positions:Vec3[];radii:number[];extent:number;halfWidth:number;halfHeight:number};
 export type CascadeNetwork = {
   sourceId: number;
   source: { name: string; handle: string; avatar: string };
@@ -21,6 +23,7 @@ export type CascadeNetwork = {
   duration: number;
   nodeRadius: number;
   extent: number;
+  planarLayout?:NetworkLayout;
 };
 
 const GOLDEN = 2.399963;
@@ -113,14 +116,14 @@ export function groupByNiche(members: AudienceMember[], maxGroups: number): [str
   return [...groups.entries()].filter(([, ms]) => ms.length).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
 }
 
-export function buildLiveNetwork(audience: Audience, { maxNicheGroups = MAX_NICHE_GROUPS }: { maxNicheGroups?: number } = {}): CascadeNetwork {
+export function buildLiveNetwork(audience: Audience, { maxNicheGroups = MAX_NICHE_GROUPS, prepareLayout=true }: { maxNicheGroups?: number;prepareLayout?:boolean } = {}): CascadeNetwork {
   // Guard before allocating geometry, images or shortest-path work. Never silently drop people.
   if(audience.members.length>MAX_GRAPH_NODES||audience.links.length+audience.members.length*3>MAX_GRAPH_LINKS)throw new NetworkSizeError();
   const labels = new Map(audience.niches.map(n => [n.slug, n.label]));
   const ordered = groupByNiche(audience.members, maxNicheGroups);
 
   // Compact globe of niche clusters, each sized by how many people it holds.
-  const radii = ordered.map(([, ms]) => 16 + Math.sqrt(ms.length) * 14);
+  const radii = ordered.map(([, ms]) => 12 + Math.sqrt(ms.length) * 10);
   let globeRadius = ordered.length < 2 ? 0 : Math.max(190, Math.max(...radii)*1.05);
   const slots = ringSlots(ordered.length);
   const communities: CascadeCommunity[] = ordered.map(([slug, ms], i) => {
@@ -189,7 +192,7 @@ export function buildLiveNetwork(audience: Audience, { maxNicheGroups = MAX_NICH
 
   const arrivals = earliestArrivals(nodes.length, sourceId, edges);
   const extent = globeRadius + Math.max(0, ...radii) + 30;
-  return {
+  const network:CascadeNetwork = {
     sourceId,
     source: { name: audience.brand.name, handle: audience.brand.username, avatar: audience.brand.avatar },
     nodes, communities, edges, arrivals,
@@ -198,4 +201,11 @@ export function buildLiveNetwork(audience: Audience, { maxNicheGroups = MAX_NICH
     nodeRadius: nodes.length > 400 ? 6 : nodes.length > 60 ? 13 : 18,
     extent: Math.max(extent, 200),
   };
+  if(prepareLayout){
+    const layout=buildAffinityLayout(network,3);
+    network.nodes.forEach(node=>{node.position=layout.positions[node.id];});
+    network.communities.forEach((community,i)=>{community.center=layout.centers[i];community.radius=layout.radii[i];});
+    network.extent=layout.extent;
+  }
+  return network;
 }

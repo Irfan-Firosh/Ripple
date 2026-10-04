@@ -22,6 +22,9 @@
 .nt-stage>canvas { display:block; width:100%; height:100%; touch-action:none; cursor:grab; }
 .nt-stage>canvas:active { cursor:grabbing; }
 .nt-stage[aria-busy="true"]>canvas { visibility:hidden; pointer-events:none; }
+.nt-view-switch { position:absolute; top:90px; right:32px; z-index:3; display:flex; gap:2px; padding:3px; border:1px solid var(--line); border-radius:9px; background:var(--bg); }
+.nt-view-switch button { padding:6px 10px; border:0; border-radius:6px; background:transparent; color:var(--muted); font:10px "Space Mono",monospace; }
+.nt-view-switch button[aria-pressed="true"] { background:color-mix(in srgb,var(--accent) 12%,transparent); color:var(--accent); }
 .nt-selection { position:absolute; z-index:4; right:32px; bottom:95px; width:220px; background:color-mix(in srgb,var(--bg) 94%,transparent); border:1px solid var(--line); border-radius:10px; backdrop-filter:blur(16px); padding:20px; }
 .nt-selection h2 { font:500 20px "Space Grotesk"; letter-spacing:-.5px; margin:10px 0; }
 .nt-selection>span:last-child { font-size:10px; }
@@ -41,6 +44,7 @@
  .nt-community-index button>span:last-child { font-size:10px; }
  .nt-all { margin-top:14px; font-size:9px; }
  .nt-stage { left:0; right:0; top:255px; bottom:90px; }
+ .nt-view-switch { top:252px; right:16px; }
  .nt-controls { right:16px; bottom:24px; gap:6px; }
  .nt-hint { left:16px; bottom:69px; font-size:8px; }
  .nt-selection { bottom:100px; right:16px; width:200px; padding:16px; }
@@ -78,3 +82,14 @@
 .nt-brands a span { font:8px "Space Mono",monospace; opacity:.6; }
 .nt-brands a[aria-current="page"] { color:var(--fg); background:color-mix(in srgb,var(--accent) 12%,transparent); }
 @media(max-width:650px) { .nt-brands a { padding:5px 7px; font-size:10px; } .nt-brands a span { display:none; } }
+
+/* Workspace navigation floats above the map, while audience controls stay in the header. */
+.nt-header--workspace { z-index: 6; }
+.nt-header--workspace .nt-page-name { position: absolute; top: 86px; left: 0; font-size: 9px; }
+.nt-header--workspace .ripple-workspace-nav { display: block; }
+@media (max-width: 900px) {
+  .nt-header--workspace { gap: 10px; }
+  .nt-header--workspace .nt-brands { order: 2; }
+  .nt-header--workspace .nt-header-actions { order: 3; }
+}
+@media (max-width: 650px) { .nt-header--workspace { gap: 8px; } }

@@ -9,12 +9,18 @@ import "./demo.css";
 const VisualsPage = lazy(() => import("./VisualsPage"));
 const AuthPage = lazy(() => import("./components/ui/auth-07"));
 const NetworkTestPage = lazy(() => import("./NetworkTestPage"));
+const LabPage = lazy(() => import("./lab/LabPage"));
+const LabGamePage = lazy(() => import("./lab-game/LabGamePage"));
 const path = location.pathname.replace(/\/$/, "");
 const params = new URLSearchParams(location.search);
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {path === "/test" ? (
       <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening the network…</div>}><NetworkTestPage /></Suspense>
+    ) : path === "/lab-game" ? (
+      <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening the islands…</div>}><LabGamePage /></Suspense>
+    ) : path === "/lab" ? (
+      <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening the Lab…</div>}><LabPage /></Suspense>
     ) : location.pathname.replace(/\/$/, "") === "/visuals" ? (
       <Suspense fallback={<div style={{padding:40}}>Opening the visual playground…</div>}><VisualsPage /></Suspense>
     ) : params.has("film") ? (

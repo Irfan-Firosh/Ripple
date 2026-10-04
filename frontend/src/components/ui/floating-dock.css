@@ -1,0 +1,23 @@
+.ripple-workspace-nav { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 8; }
+.fd-desktop { display: flex; }
+.workspace-nav { align-items: center; justify-content: center; height: 48px; padding: 5px 22px; gap: 24px; border: 1px solid #ffffff14; border-radius: 999px; background: #242424ed; color: #fff; backdrop-filter: blur(20px); box-shadow: 0 8px 32px #0002; font: 14px/18px "DM Sans", sans-serif; }
+.workspace-nav a { opacity: .9; transition: opacity .2s; }
+.workspace-nav a:hover { opacity: 1; }
+.workspace-nav a[aria-current="page"] { opacity: 1; text-decoration: underline; text-underline-offset: 5px; text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
+.workspace-nav a:focus-visible, .fd-mobile-toggle:focus-visible, .fd-mobile-menu a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.fd-mobile { display: none; position: relative; }
+.fd-mobile-toggle { width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: #ffffff12; color: var(--fg); }
+.fd-mobile-menu { position: absolute; top: calc(100% + 12px); right: 0; width: 180px; padding: 7px; border: 1px solid var(--line); border-radius: 13px; background: color-mix(in srgb, var(--bg) 95%, transparent); backdrop-filter: blur(16px); box-shadow: 0 12px 35px color-mix(in srgb, var(--bg) 80%, transparent); }
+.fd-mobile-menu a { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; font: 12px "DM Sans", sans-serif; color: var(--muted); }
+.fd-mobile-menu a span { display: flex; }
+.fd-mobile-menu svg { width: 18px; height: 18px; stroke-width: 1.6; }
+.fd-mobile-menu a[aria-current="page"] { background: var(--panel); color: var(--accent); }
+.fd-mobile-menu a:hover { background: var(--soft); color: var(--fg); }
+@media (max-width: 900px) {
+  .fd-desktop { display: none; }
+  .fd-mobile { display: block; }
+  .ripple-workspace-nav { position: relative; inset: auto; transform: none; order: 4; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .floating-dock *, .floating-dock *::before, .floating-dock *::after { transition: none !important; animation: none !important; }
+}

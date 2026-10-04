@@ -331,7 +331,7 @@ export function App() {
             <span>
               <span className="live-dot" /> A look inside Ripple
             </span>
-            <span>Prototype walkthrough · Illustrative data</span>
+            <span>Product walkthrough · Real audience and recorded Lab results</span>
           </div>
         </section>
         <section className="features container" id="how-it-works">

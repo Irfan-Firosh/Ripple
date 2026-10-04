@@ -9,7 +9,7 @@ export type AudienceNiche = { slug: string; label: string; affinity: number };
 export type Platform = 'x' | 'bluesky';
 // Brands whose audiences have been scraped and twinned. maxNiches caps the niche groups drawn on the dashboard.
 export const BRANDS = [
-  { handle: 'spacetimedb', label: '@spacetimedb', platform: 'x' as Platform, maxNiches: 10 },
+  { handle: 'spacetimedb', label: '@spacetimedb', platform: 'x' as Platform, maxNiches: 5 },
   { handle: 'raycast.com', label: 'Raycast', platform: 'bluesky' as Platform, maxNiches: 7 },
 ] as const;
 export type BrandHandle = (typeof BRANDS)[number]['handle'];
