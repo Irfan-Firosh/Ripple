@@ -1,6 +1,13 @@
 # Codex prompt: Ripple "Lab" card + experiment dock
 
-Paste everything below the line into Codex. Run it **after** Lab plan Tasks 1–7 (`docs/superpowers/plans/2026-10-04-lab-signals.md`): the data contract `frontend/src/lab/labData.ts` and the seeded experiments must exist. If the plan found different SQL column names (Task 1 Step 5), they are already handled inside `labData.ts`; nothing here changes.
+Paste everything below the line into Codex. Status (2026-10-04):
+- Lab plan Tasks 1–7 are built: `frontend/src/lab/labData.ts` exists, and its tests pass (`frontend/tests/lab-data.spec.ts`).
+- Live demo experiments:
+  - Raycast: experiment **3**, "Local AI launch". B wins, +12%; likes A 5 (2–8) vs B 6 (3–9).
+  - @spacetimedb: experiment **4**, "Multiplayer pitch".
+  - Experiments **1** and **2** failed during setup; they exercise the dock's failed state.
+- SQL columns, as already handled inside `labData.ts`: `sim_signal.p_10/p_50/p_90/mean`, `sim_run.replay_tick`.
+- To process new experiments from the composer, run the worker: `cd backend && uv run python -m twins lab-worker`.
 
 ---
 
