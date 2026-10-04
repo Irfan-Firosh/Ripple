@@ -7,7 +7,7 @@ from uagents_core.registration import RegistrationRequest
 async def connect_mailbox(agent: Agent, api_key: str, starter_prompts: list[str] | None = None) -> tuple[bool, str]:
     # uagents keeps these private; pinned to uagents 0.26 in pyproject.toml.
     profile = agent._build_registration_profile()
-    profile.starter_prompts = starter_prompts or []
+    profile.starter_prompts = (starter_prompts or [])[:5]  # Agentverse accepts at most five.
     details = RegistrationRequest(
         address=agent.address, name=agent.name, handle=agent._handle, profile=profile,
         endpoints=agent._endpoints, protocols=list(agent.protocols.keys()), metadata=agent.metadata)

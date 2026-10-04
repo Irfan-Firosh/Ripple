@@ -40,7 +40,7 @@ def test_plan_parses_fenced_json_retries_and_cleans_fields():
                      '"niches": ["game_dev", "made_up", "game_dev"]}\n```'])
     plan = asi1.plan_campaign("k", "test A and B on @raycast", session=s)
     assert (plan.action, plan.brand, plan.variants, plan.niches, plan.sample_size) == \
-        ("react", "Raycast", ["A post", "B post"], ["game_dev"], 20)
+        ("react", "Raycast", ["A post", "B post"], ["game_dev"], None)
     assert len(s.calls) == 2
 
 

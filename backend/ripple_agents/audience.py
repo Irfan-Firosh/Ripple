@@ -30,8 +30,11 @@ def find_brand(stdb, brand: str) -> dict:
 
 def brand_twins(stdb, brand: str) -> dict[str, str]:
     """user_id -> username for every twin built for this brand."""
-    rows = stdb.sql(f"SELECT user_id, username FROM twin WHERE brand_user_id = {sql_str(find_brand(stdb, brand)['user_id'])}")
-    return {r["user_id"]: r["username"] for r in rows}
+    brand_id = find_brand(stdb, brand)["user_id"]
+    members = {r["user_id"] for r in stdb.sql(
+        f"SELECT user_id FROM twin_audience WHERE brand_user_id = {sql_str(brand_id)}")}
+    rows = stdb.sql("SELECT user_id, username FROM twin")
+    return {r["user_id"]: r["username"] for r in rows if r["user_id"] in members}
 
 
 def _affinities(stdb, twin_ids) -> dict[str, dict[str, float]]:

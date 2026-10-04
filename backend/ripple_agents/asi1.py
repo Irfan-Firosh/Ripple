@@ -14,7 +14,7 @@ ASI1_MODEL = os.environ.get("ASI1_MODEL", "asi1-mini")
 ATTEMPTS = 2
 MAX_VARIANTS = 5
 MAX_SAMPLE = 100
-DEFAULT_BRAND = os.environ.get("RIPPLE_DEFAULT_BRAND", "raycast.com")
+DEFAULT_BRAND = ""  # Only an explicitly selected audience may be reused.
 
 
 class Asi1Error(RuntimeError):
@@ -25,11 +25,11 @@ ASPECT_CHOICES = ("1:1", "3:4", "4:3", "9:16", "16:9")
 
 
 class CampaignPlan(BaseModel):
-    action: Literal["react", "audience", "create", "help"]
+    action: Literal["react", "audience", "create", "onboard", "status", "retry", "help"]
     brand: str = DEFAULT_BRAND
     variants: list[str] = Field(default_factory=list, max_length=MAX_VARIANTS)
     niches: list[str] = Field(default_factory=list)
-    sample_size: int = Field(20, ge=1, le=MAX_SAMPLE)
+    sample_size: int | None = Field(None, ge=1, le=MAX_SAMPLE)
     question: str = ""
     goal: str = Field("", max_length=600)
     offer: str = Field("", max_length=300)
@@ -70,19 +70,29 @@ _CATALOG = "\n".join(f"- {n.slug}: {n.label} ({n.description})" for n in NICHES)
 PLANNER_SYSTEM = f"""You route requests for Ripple, which predicts how a brand's real social audience (simulated as
 personas built from their followers' public posts) would react to a draft post before it is published. Reply with ONE JSON object
 and nothing else:
-{{"action": "react" | "audience" | "create" | "help",
-  "brand": the brand's X or Bluesky handle without @ (e.g. "spacetimedb", "raycast.com"), or null if not named,
+{{"action": "react" | "audience" | "create" | "onboard" | "status" | "retry" | "help",
+  "brand": the brand's X or existing Bluesky handle without @, or null if not named,
   "variants": [exact text of each draft post to test, verbatim, at most {MAX_VARIANTS}],
   "niches": [1-3 slugs from the catalog that the drafts or the question are about],
-  "sample_size": how many personas to ask (default 20, max {MAX_SAMPLE}),
+  "sample_size": an explicitly requested number of interview personas (max {MAX_SAMPLE}), otherwise null for 50% of the built audience,
   "question": an extra question the user wants each persona to answer, or "",
   "goal": the campaign goal when action is create, otherwise "",
   "offer": a user-provided offer, otherwise "",
   "n": number of ads per segment for create (2-4, default 3),
   "aspect_ratio": "1:1" by default, or "3:4", "4:3", "9:16", "16:9" if requested}}
-"react": the user gives one or more drafts and wants to know how the audience would react, or which is better.
+"react": the user asks to simulate, predict reach/likes/reposts, test a post, or compare drafts.
+If they ask to simulate without supplying post copy, return react with an empty variants list so we can ask for it.
 "audience": the user asks who in the audience cares about a topic, or what the audience is like.
 "create": the user asks to make, generate or design new ads/creatives for an audience. Preserve their goal.
+"onboard": the user asks to build or scrape an X audience. "status": check its build progress. "retry": explicitly retry a failed build.
+Accept any valid X handle, not just the examples. Keep X handles distinct from Bluesky domain handles:
+An X handle and a Bluesky domain handle are different audiences. Do not infer a domain suffix.
+Card form submissions may arrive as prose with action, brand, draft_a and draft_b: use those draft fields verbatim.
+For audience requests, map the question/topic to niches from the catalog.
+Use the saved audience for follow-ups unless the user names another. If neither is supplied, return brand null.
+Never default to one of the example brands. A brief topic answer such as "AI" continues an audience analysis.
+@ripple and agent1... addresses refer to this chat agent, not the company audience. Never use them as brand.
+Selecting "Create campaign images" is create, not help. With no goal, return create with an empty goal to open its form.
 "help": anything else. Never invent drafts: copy them from the user's message.
 Niche catalog:
 {_CATALOG}"""

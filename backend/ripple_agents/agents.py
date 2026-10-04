@@ -1,5 +1,8 @@
 """The uAgents. Only the orchestrator faces ASI:One; specialists only take typed requests from it."""
 import asyncio
+import json
+import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -10,15 +13,17 @@ from uagents_core.contrib.protocols.chat import (
     ChatMessage,
     EndSessionContent,
     TextContent,
+    MetadataContent,
     chat_protocol_spec,
 )
 
 from twins.config import STDB_DATABASE, STDB_URL, load_api_key, load_stdb_token
 from twins.llm import make_client
-from twins.stdb import StdbClient
+from twins.stdb import StdbClient, sql_str
 
-from . import asi1
-from .audience import audience_profile, render_audience
+from . import asi1, cards
+from .loading import Loading
+from .audience import audience_profile, brand_twins, render_audience
 from .config import (APP_URL, AUDIENCE, AVATAR_URL, CREATIVE_DIRECTOR, HANDLE, IMAGE_GEN, ORCHESTRATOR, SIMULATOR_ADDRESS,
                      asi1_api_key, dashboard_url, lab_url)
 from .messages import (
@@ -35,7 +40,7 @@ from .messages import (
     SimulateRequest,
     SimulateResult,
 )
-from .onboard import needs_onboarding, onboarding_reply
+from .onboard import needs_onboarding, onboarding_state, render_onboarding
 from .reactions import react, render_report
 
 README = Path(__file__).with_name("README.md")
@@ -44,21 +49,39 @@ AUDIENCE_TIMEOUT_S = 60
 SIMULATE_TIMEOUT_S = 300
 LAB_TIMEOUT_S = 600
 
-HELP = (
-    "I'm Ripple: I predict how a brand's real social audience would react to a post before you publish it, using "
-    "synthetic personas built from their followers' public posts.\n\n"
-    "Try:\n"
-    "- *How would @raycast.com's audience react to: \"Raycast AI now runs your extensions for you. Just ask.\"*\n"
-    "- *Which is better for @raycast.com? A: \"…\" B: \"…\"*\n"
-    "- *Who in @raycast.com's audience cares about developer tools?*"
-    "\n- *Make 3 ads for @raycast.com's developer-tools audience about Raycast AI.*"
-)
+HELP = "Choose an audience, explore its followers, create campaign content, or simulate a post before publishing."
 STARTER_PROMPTS = [
-    "How would @raycast.com's audience react to: \"Raycast AI now runs your extensions for you. Just ask.\"",
-    "Who in @raycast.com's audience cares about developer tools?",
-    "Which post is better for @raycast.com? A: \"Raycast for Windows is here.\" B: \"Stop alt-tabbing. Raycast now on Windows.\"",
-    "Make 3 ads for @raycast.com's developer-tools audience about Raycast AI.",
+    "Open the Ripple menu",
+    "Build an audience from an X handle",
+    "I want to simulate a post",
+    "I want to compare two posts",
+    "Create campaign images",
 ]
+
+
+def _named_brand(text):
+    # Mentions inside quoted post copy are not the audience handle.
+    header = re.split(r'["“]', text, maxsplit=1)[0]
+    for match in re.finditer(r"(?<!\w)@([A-Za-z0-9_][A-Za-z0-9_.-]*)", header):
+        handle = match.group(1).rstrip(".")
+        if _audience_handle(handle):
+            return handle
+    return ""
+
+
+def _audience_handle(value):
+    handle = value.strip().lstrip("@").rstrip(".") if isinstance(value, str) else ""
+    if handle.lower() in {"ripple", (HANDLE or "ripple").lower()} or re.match(r"(?:test-)?agent1|fetch1", handle, re.I):
+        return ""
+    return handle if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,252}", handle) and ("." in handle or len(handle) <= 15) else ""
+
+
+def _help(brand):
+    if brand:
+        return (f"Current audience: **@{brand}**.\n\nTo simulate, send:\n"
+                f"Simulate @{brand} on X: \"paste your post here\"\n\n"
+                "Or choose Test a post / compare two below.")
+    return HELP + "\n\nEnter an X handle to get started."
 
 
 def _stdb() -> StdbClient:
@@ -69,11 +92,50 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _text(text: str, end_session: bool = False) -> ChatMessage:
+def _text(text: str, end_session: bool = False, card: MetadataContent | None = None) -> ChatMessage:
     content = [TextContent(type="text", text=text)]
-    if end_session:
+    if card:
+        content.append(card)
+    if end_session and not card:
         content.append(EndSessionContent(type="end-session"))
     return ChatMessage(timestamp=_now(), msg_id=uuid4(), content=content)
+
+
+def _state(ctx, sender):
+    key = f"ripple-chat:{sender}:{getattr(ctx, 'session', 'local')}"
+    storage = getattr(ctx, "storage", None)
+    state = (storage.get(key) if storage else getattr(ctx, "_ripple_state", None)) or {}
+    state["brand"] = _audience_handle(state.get("brand")) or _audience_handle(state.get("last_valid_brand"))
+    if not state.get("brand") and storage:
+        recent = storage.get(f"ripple-last-audience:{sender}") or {}
+        if time.time() - recent.get("updated", 0) < 86400:
+            state.update({k: recent[k] for k in ("brand", "last_action") if k in recent})
+            state["brand"] = _audience_handle(state.get("brand"))
+    return key, state
+
+
+def _save_state(ctx, key, state):
+    state["brand"] = _audience_handle(state.get("brand"))
+    if state["brand"]:
+        state["last_valid_brand"] = state["brand"]
+    storage = getattr(ctx, "storage", None)
+    if storage:
+        storage.set(key, state)
+        if state.get("brand"):
+            sender = key.split(":", 2)[1]
+            storage.set(f"ripple-last-audience:{sender}", {"brand": state["brand"],
+                        "last_action": state.get("last_action"), "updated": time.time()})
+    else:
+        ctx._ripple_state = state
+
+
+async def _onboarding(ctx, sender, brand, *, start=False, retry=False):
+    row = await asyncio.to_thread(onboarding_state, _stdb(), brand, start=start, retry=retry)
+    _, state = _state(ctx, sender)
+    pending = state.get("pending") or {}
+    await ctx.send(sender, _text(render_onboarding(row), card=cards.onboarding(
+        row, can_resume=pending.get("brand", "").lower() == brand.lower())))
+    return row
 
 
 def build_audience_agent() -> Agent:
@@ -94,10 +156,13 @@ def build_audience_agent() -> Agent:
     async def on_react(ctx: Context, sender: str, req: ReactRequest):
         if sender != ORCHESTRATOR.address:
             return
-        ctx.logger.info(f"asking {req.sample_size} @{req.brand} twins about {len(req.drafts)} draft(s)")
         try:
-            out = await asyncio.to_thread(react, _stdb(), make_client(load_api_key()), req.brand, req.drafts,
-                                          req.niches, req.sample_size, req.question)
+            db = _stdb()
+            total = await asyncio.to_thread(lambda: len(brand_twins(db, req.brand)))
+            sample = min(total, req.sample_size) if req.sample_size > 0 else min(100, max(1, (total + 1) // 2))
+            ctx.logger.info(f"interviewing {sample}/{total} @{req.brand} personas; cascade simulation uses all built personas")
+            out = await asyncio.to_thread(react, db, make_client(load_api_key()), req.brand, req.drafts,
+                                          req.niches, sample, req.question)
         except Exception as exc:
             out = ReactResult(brand=req.brand, error=f"{type(exc).__name__}: {exc}")
         await ctx.send(sender, out)
@@ -139,26 +204,118 @@ async def _reach_lines(ctx: Context, brand: str, drafts: list[str]) -> list[str]
 
 
 async def _handle_request(ctx: Context, sender: str, text: str) -> None:
+    state_key, state = _state(ctx, sender)
+    selection = cards.selection(text)
+    action = selection.get("action") if isinstance(selection, dict) else None
+    if not isinstance(action, str):
+        action = None
+    named = _audience_handle(selection.get("brand")) if isinstance(selection, dict) else _named_brand(text)
+    if named:
+        state["brand"] = named.strip().lstrip("@")
+        _save_state(ctx, state_key, state)
+    command = re.sub(r"@(?:ripple|(?:test-)?agent1[a-z0-9]+)\b", "", text, flags=re.I).strip()
+    short = command.lower().strip(" .!\n")
+    labels = {"build an x audience": "onboard_form", "test a post / compare two": "test_form",
+              "test another post": "test_form", "test a post": "test_form", "simulate": "test_form",
+              "simulate it": "test_form", "run simulation": "test_form", "i want to simulate a post": "test_form",
+              "i want to compare two posts": "test_form", "explore an audience": "audience_form",
+              "create campaign images": "campaign_form"}
+    action = action or labels.get(short)
+    if not action:
+        # ASI may deliver a button click as prose rather than its JSON selection.
+        for label in ("create campaign images", "test a post / compare two", "explore an audience", "build an x audience"):
+            if label in short and (re.search(r"\b(?:selected|clicked|selection|campaign_form|test_form)\b", short)
+                                   or short.strip('"\'') == label):
+                action = labels[label]
+                break
+    if action == "menu" or text.strip().lower() in {"menu", "help", "hi", "hello", "start", "open the ripple menu"}:
+        await ctx.send(sender, _text(_help(state.get("brand")), card=cards.menu(state.get("brand"))))
+        return
+    forms = {"onboard_form": "onboard", "test_form": "react", "audience_form": "audience", "campaign_form": "create"}
+    if action in forms:
+        state["awaiting"] = forms[action]
+        _save_state(ctx, state_key, state)
+        brand = state.get("brand", "")
+        ctx.logger.info(f"form: {forms[action]} @{brand or '(unset)'}")
+        body = (f"Using **@{brand}**. " if brand else "Enter your audience handle. ")
+        body += "Paste Post A (and optionally Post B) to simulate." if forms[action] == "react" else "Complete the form below."
+        await ctx.send(sender, _text(body, card=cards.form(forms[action], brand)))
+        return
+    if action == "resume":
+        pending = state.get("pending")
+        if not pending or pending["brand"].lower() != str(selection.get("brand", "")).lower():
+            await ctx.send(sender, _text("No saved request for this audience. Choose what to do next.", card=cards.menu()))
+            return
+        row = await asyncio.to_thread(onboarding_state, _stdb(), pending["brand"])
+        if row["status"] != "ready":
+            await _onboarding(ctx, sender, pending["brand"])
+            return
+        plan = asi1.CampaignPlan.model_validate(state.pop("pending"))
+        _save_state(ctx, state_key, state)
+    else:
+        plan = cards.submission(text)
     key = asi1_api_key()
     try:
-        plan = await asyncio.to_thread(asi1.plan_campaign, key, text)
+        if plan is None:
+            request = text + (f"\nSaved audience handle for follow-ups: {state['brand']}" if state.get("brand") else "")
+            if (state.get("awaiting") == "react" and state.get("brand") and not named
+                    and not re.match(r"(?:how|help|menu|create|generate|make|build|status|retry|check)\b", short)):
+                plan = asi1.CampaignPlan(action="react", brand=state["brand"], variants=[text])
+            elif (state.get("last_action") == "audience" and state.get("brand") and len(text.split()) <= 6
+                  and not named and not re.match(r"(?:simulate|test|compare|create|generate|make|build|onboard|status|retry|menu|help|check|analy[sz]e|explore)\b", short)):
+                request = f"Explore @{state['brand']}'s audience interested in {text}."
+            if plan is None:
+                plan = await asyncio.to_thread(asi1.plan_campaign, key, request)
     except asi1.Asi1Error as exc:
         await ctx.send(sender, _text(f"Sorry, I couldn't parse that ({exc}).\n\n{HELP}", end_session=True))
         return
+    plan.brand = _audience_handle(plan.brand)
+    if named:
+        plan.brand = state["brand"]
+    elif state.get("brand") and (not plan.brand or not re.search(r"(?<!\w)" + re.escape(plan.brand) + r"(?!\w)", text, re.I)):
+        plan.brand = state["brand"]
+    elif plan.brand and not re.search(r"(?<!\w)" + re.escape(plan.brand) + r"(?!\w)", text, re.I):
+        plan.brand = ""
+    if plan.action == "help":
+        await ctx.send(sender, _text(_help(state.get("brand")), card=cards.menu(state.get("brand"))))
+        return
+    if not plan.brand:
+        next_action = plan.action if plan.action in {"react", "audience", "create", "onboard"} else "onboard"
+        await ctx.send(sender, _text("Which X audience should I use? Enter its handle below.", card=cards.form(next_action)))
+        return
     ctx.logger.info(f"plan: {plan.action} @{plan.brand} niches={plan.niches} drafts={len(plan.variants)}")
+    state.update(brand=plan.brand, last_action=plan.action)
+    state.pop("awaiting", None)
+    _save_state(ctx, state_key, state)
+    if plan.action in {"onboard", "status", "retry"}:
+        await _onboarding(ctx, sender, plan.brand, start=plan.action == "onboard", retry=plan.action == "retry")
+        return
+
+    async def onboard_if_needed(error):
+        if not needs_onboarding(error):
+            return False
+        state["pending"] = plan.model_dump()
+        _save_state(ctx, state_key, state)
+        await _onboarding(ctx, sender, plan.brand, start=True)
+        return True
 
     if plan.action == "audience":
         result, error = await _ask(ctx, AUDIENCE.address, AudienceRequest(brand=plan.brand, niches=plan.niches),
                                    AudienceResult, AUDIENCE_TIMEOUT_S)
-        if error and needs_onboarding(error):
-            reply = await asyncio.to_thread(onboarding_reply, _stdb(), plan.brand)
-        else:
-            reply = f"Couldn't read @{plan.brand}'s audience: {error}" if error else render_audience(result, plan.niches)
-        await ctx.send(sender, _text(reply, end_session=True))
+        if error and await onboard_if_needed(error):
+            return
+        reply = f"Couldn't read @{plan.brand}'s audience: {error}" if error else render_audience(result, plan.niches)
+        await ctx.send(sender, _text(reply, card=cards.next_steps(plan.brand)))
         return
     if plan.action == "create":
         if not plan.goal.strip():
-            await ctx.send(sender, _text("Add a goal for the campaign, such as introducing Raycast AI to tool builders.", end_session=True))
+            await ctx.send(sender, _text(f"What would you like to promote for @{plan.brand}?", card=cards.form("create", plan.brand)))
+            return
+        _, error = await _ask(ctx, AUDIENCE.address, AudienceRequest(brand=plan.brand), AudienceResult, AUDIENCE_TIMEOUT_S)
+        if error:
+            if await onboard_if_needed(error):
+                return
+            await ctx.send(sender, _text(f"Couldn't read this audience: {error}", card=cards.menu()))
             return
         campaign_id = str(uuid4())
         await ctx.send(sender, _text(f"The creative director is briefing @{plan.brand}'s audience. Then Grok Imagine will create {plan.n} distinct ads per segment…"))
@@ -167,9 +324,9 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
                                                segments=plan.niches, offer=plan.offer, n=plan.n, aspect_ratio=plan.aspect_ratio),
                                   BriefResult, REACT_TIMEOUT_S)
         if error:
-            reply = (await asyncio.to_thread(onboarding_reply, _stdb(), plan.brand) if needs_onboarding(error)
-                     else f"Couldn't create campaign briefs: {error}")
-            await ctx.send(sender, _text(reply, end_session=True))
+            if await onboard_if_needed(error):
+                return
+            await ctx.send(sender, _text(f"Couldn't create campaign briefs: {error}", card=cards.menu()))
             return
         links = []
         errors = []
@@ -185,34 +342,56 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
                 errors.extend(variants.warnings)
         reply = f"**Campaign for @{plan.brand}** · {len(links)} AI-generated creatives\n\n" + "\n".join(
             f"- [Take {index + 1}]({url})" for index, url in enumerate(links))
-        reply += "\n\nSynthetic audience personas. These image links are for review. Use the campaign studio to create, refine and approve a campaign in your browser before simulation."
+        reply += "\n\nChoose a concept to test its generated post copy. Images stay attached for review; predictions model the post copy."
         if errors:
             reply += "\n\nSome segments could not finish: " + "; ".join(errors)
         reply += f"\n\n[Open campaign studio]({APP_URL}/campaigns)"
-        await ctx.send(sender, _text(reply, end_session=True))
+        result_card = cards.next_steps(plan.brand)
+        if links:
+            try:
+                rows = await asyncio.to_thread(lambda: _stdb().sql(
+                    f"SELECT variant_id, headline, cta, image_url FROM ad_variant WHERE campaign_id = {sql_str(campaign_id)}"))
+                rows = [r for r in rows if r.get("image_url") in links]
+                if rows:
+                    result_card = cards.creatives(plan.brand, rows)
+            except Exception as exc:
+                ctx.logger.warning(f"creative cards skipped: {type(exc).__name__}")
+        await ctx.send(sender, _text(reply, card=result_card))
         return
     if plan.action != "react" or not plan.variants:
-        await ctx.send(sender, _text(HELP, end_session=True))
+        await ctx.send(sender, _text("Paste a post or two to compare." if plan.action == "react" else HELP,
+                                     card=cards.form("react", plan.brand) if plan.action == "react" else cards.menu(plan.brand)))
+        if plan.action == "react":
+            state["awaiting"] = "react"
+            _save_state(ctx, state_key, state)
         return
 
-    await ctx.send(sender, _text(f"Asking the {plan.sample_size} most relevant personas in @{plan.brand}'s audience "
-                                 f"about {len(plan.variants)} draft(s). This takes about a minute…"))
-    result, error = await _ask(ctx, AUDIENCE.address,
-                               ReactRequest(brand=plan.brand, drafts=plan.variants, niches=plan.niches,
-                                            sample_size=plan.sample_size, question=plan.question),
-                               ReactResult, REACT_TIMEOUT_S)
-    if error:
-        reply = (await asyncio.to_thread(onboarding_reply, _stdb(), plan.brand) if needs_onboarding(error)
-                 else f"Couldn't get reactions from @{plan.brand}'s audience: {error}")
-        await ctx.send(sender, _text(reply, end_session=True))
-        return
-    report = render_report(result) + "\n".join(await _reach_lines(ctx, plan.brand, plan.variants))
+    progress = Loading(ctx, sender, plan.brand)
+    await progress.update(0, "Interviewing half the modeled audience (up to 100 personas)…" if not plan.sample_size
+                          else f"Interviewing up to {plan.sample_size} personas…")
     try:
-        report += "\n\n**Takeaway:** " + await asyncio.to_thread(asi1.takeaway, key, report)
-    except asi1.Asi1Error as exc:
-        ctx.logger.warning(f"takeaway skipped: {exc}")
+        result, error = await _ask(ctx, AUDIENCE.address,
+                                   ReactRequest(brand=plan.brand, drafts=plan.variants, niches=plan.niches,
+                                                sample_size=plan.sample_size or 0, question=plan.question),
+                                   ReactResult, REACT_TIMEOUT_S)
+        if error:
+            if await onboard_if_needed(error):
+                return
+            await ctx.send(sender, _text(f"Couldn't get reactions from @{plan.brand}'s audience: {error}", card=cards.menu(plan.brand)))
+            return
+        await progress.update(1, f"Interviewed {result.personas} personas. Simulating the full built audience…")
+        report = render_report(result) + "\n".join(await _reach_lines(ctx, plan.brand, plan.variants))
+        await progress.update(2, "Preparing your results…")
+        try:
+            report += "\n\n**Takeaway:** " + await asyncio.to_thread(asi1.takeaway, key, report)
+        except asi1.Asi1Error as exc:
+            ctx.logger.warning(f"takeaway skipped: {exc}")
+        await progress.update(3, "Finished")
+    finally:
+        await progress.finish()
     report += f"\n\n[See @{plan.brand}'s audience]({dashboard_url(plan.brand)})"
-    await ctx.send(sender, _text(report, end_session=True))
+    await ctx.send(sender, _text(report, card=cards.next_steps(plan.brand)))
+    ctx.logger.info(f"analysis finished @{plan.brand}")
 
 
 def build_orchestrator() -> Agent:
@@ -225,7 +404,19 @@ def build_orchestrator() -> Agent:
     async def on_chat(ctx: Context, sender: str, msg: ChatMessage):
         ctx.logger.info(f"chat message from {sender}")
         await ctx.send(sender, ChatAcknowledgement(timestamp=_now(), acknowledged_msg_id=msg.msg_id))
+        seen_key = f"ripple-seen:{sender}:{ctx.session}"
+        seen = ctx.storage.get(seen_key) or []
+        if str(msg.msg_id) in seen:
+            return
+        ctx.storage.set(seen_key, (seen + [str(msg.msg_id)])[-100:])
         text = " ".join(c.text for c in msg.content if isinstance(c, TextContent)).strip()
+        if not text:
+            for c in msg.content:
+                if isinstance(c, MetadataContent):
+                    raw = c.metadata.get("selection") or c.metadata.get("card_selection")
+                    if raw:
+                        text = raw
+                        break
         if not text:
             return
         try:

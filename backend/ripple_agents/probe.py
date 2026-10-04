@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from uagents import Agent, Context, Protocol
-from uagents_core.contrib.protocols.chat import ChatAcknowledgement, ChatMessage, TextContent, chat_protocol_spec
+from uagents_core.contrib.protocols.chat import ChatAcknowledgement, ChatMessage, TextContent, MetadataContent, chat_protocol_spec
 
 from .config import ORCHESTRATOR
 
@@ -30,6 +30,9 @@ def main(text: str) -> None:
             print(c.text if isinstance(c, TextContent) else f"[{c.type}]", flush=True)
             if c.type == "end-session":
                 os._exit(0)  # uagents swallows SystemExit inside handlers
+        if any(isinstance(c, MetadataContent) and c.metadata.get("card_kind")
+               and c.metadata.get("requires_card_interaction") != "false" for c in msg.content):
+            os._exit(0)
 
     probe.include(chat)
 

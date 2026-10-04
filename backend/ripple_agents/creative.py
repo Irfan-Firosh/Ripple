@@ -5,6 +5,8 @@ import time
 from uagents import Agent, Context
 
 from creative.grok import GrokClient
+from creative.guardrails import clean_text
+from creative.models import BrandKit
 from creative.segments import aggregate_segments
 from creative.worker import process_pending
 from twins.stdb import opt, sql_str
@@ -12,6 +14,22 @@ from twins.stdb import opt, sql_str
 from .audience import find_brand
 from .config import AVATAR_URL, CREATIVE_DIRECTOR, IMAGE_GEN, ORCHESTRATOR
 from .messages import BriefRequest, BriefResult, EditRequest, GenerateRequest, VariantsResult
+
+
+def ensure_brand_kit(stdb, brand, goal):
+    """Keep saved branding; initialize new brands from their own public profile."""
+    if stdb.sql(f"SELECT brand_user_id FROM brand_kit WHERE brand_user_id = {sql_str(brand['user_id'])}"):
+        return
+    profile = stdb.sql(f"SELECT name, description FROM x_user WHERE user_id = {sql_str(brand['user_id'])}")[0]
+    name = clean_text(profile.get("name") or brand["username"], limit=100) or brand["username"]
+    description = clean_text(profile.get("description") or "", limit=1000) or clean_text(goal, limit=1000)
+    kit = BrandKit(brand_user_id=brand["user_id"], display_name=name,
+                   product_description=description or f"Campaign for {name}",
+                   value_props=[description] if description else [], palette=[],
+                   visual_style="Clear, minimal composition; use the supplied campaign goal and brand description.",
+                   banned_claims=["guaranteed", "fastest", "free forever"])
+    stdb.call("upsert_brand_kit", kit.brand_user_id, kit.display_name, kit.product_description, kit.value_props,
+              kit.palette, kit.visual_style, kit.banned_claims, kit.reference_image_urls)
 
 
 def _complete(stdb, campaign_id, job_ids=None, *, timeout=600, poll_seconds=0.5):
@@ -37,7 +55,9 @@ def create_briefs(stdb, request: BriefRequest) -> BriefResult:
     brand = find_brand(stdb, request.brand)
     segments = aggregate_segments(stdb, brand["user_id"], request.segments or None, limit=3)
     if not segments:
-        raise ValueError("No eligible audience segments with at least 15 personas")
+        raise ValueError(f"@{request.brand} needs at least 15 modeled followers in one interest group for campaign images. "
+                         "Its audience can still be explored and simulated while more followers are built.")
+    ensure_brand_kit(stdb, brand, request.goal)
     stdb.call("create_campaign", request.campaign_id, brand["user_id"], request.goal[:100], request.goal,
               opt(request.offer or None), "bluesky" if "." in brand["username"] else "x",
               request.aspect_ratio, [segment.slug for segment in segments], request.n)

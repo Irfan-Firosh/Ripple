@@ -20,7 +20,7 @@ class ReactRequest(Model):
     brand: str
     drafts: list[str]
     niches: list[str] = []
-    sample_size: int = 20
+    sample_size: int = 0  # 0 = half of the built audience, capped at 100 interview personas
     question: str = ""
 
 

@@ -1,5 +1,6 @@
 """Ripple Simulation agent: scores a draft against a brand's twins and runs the cascade in SpacetimeDB."""
 from pathlib import Path
+from dataclasses import replace
 
 from uagents import Agent, Context, Protocol
 
@@ -17,6 +18,9 @@ agent = Agent(name="ripple-simulation", seed=seed("simulation"), **network_kwarg
               description="Simulates how a real scraped audience (95 X / 1,000 Bluesky twins) reacts to a draft post.")
 proto = Protocol(name="ripple-simulation", version="1.0.0")
 DEPS = default_deps()
+if DEPS.allowed_senders is None:
+    from ripple_agents.config import ORCHESTRATOR
+    DEPS = replace(DEPS, allowed_senders=frozenset({ORCHESTRATOR.address}))
 
 
 @proto.on_message(model=SimulateRequest, replies=SimulateResult)

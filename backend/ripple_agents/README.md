@@ -6,6 +6,10 @@
 Ripple predicts how a brand's real social audience (X or Bluesky) would react to a draft post before it is published. Each follower
 is simulated by a behavioural persona built from their public posts. Ripple asks the most relevant personas
 whether they would reply, quote, repost, like or ignore the draft, and why. Paste one draft, or several to compare.
+Say "Open the Ripple menu" for cards to build any valid X handle's audience, check scraping progress,
+explore it, create campaign images, and test one post or compare two. Unknown audiences start onboarding;
+your request is saved so you can continue it when the build is ready. Scraping depends on the onboarding
+worker and valid X sessions. The cards work inside chat; website links are optional.
 
 Personas are synthetic and inferred only from public social signals. Ripple does not infer sensitive traits
 (race, religion, health, sexual orientation, politics or income).

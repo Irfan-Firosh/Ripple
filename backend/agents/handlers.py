@@ -19,7 +19,8 @@ from ripple_agents.messages import SimulateRequest as OrchSimulateRequest
 from ripple_agents.messages import SimulateResult as OrchSimulateResult
 
 from .settings import allowed_senders
-from .contracts import (BRANDS, AudienceRequest, AudienceResult, CompareRequest, CompareResult, NicheReach,
+from twins.source import USERNAME_RE
+from .contracts import (AudienceRequest, AudienceResult, CompareRequest, CompareResult, NicheReach,
                         SimulateRequest, SimulateResult, WhyRequest, WhyResult)
 
 
@@ -40,7 +41,7 @@ class Deps:
 def _request_error(deps: Deps, sender: str, brand: str) -> str | None:
     if deps.allowed_senders is not None and sender not in deps.allowed_senders:
         return "This agent only serves the Ripple Orchestrator; sender not allowed."
-    return None if brand in BRANDS else f"Unknown brand '{brand}'. Available: {', '.join(BRANDS)}"
+    return None if USERNAME_RE.fullmatch(brand.strip().lstrip("@")) else "Enter a valid X or Bluesky handle."
 
 
 def _to_result(request_id: str, summary) -> SimulateResult:
