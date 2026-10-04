@@ -43,7 +43,8 @@ export function Tweet({ label, brand, draft, run, tick, finished, winner }: Prop
   const final = run && finished && median ? finalCounts(run) : null;
   const counts = final ? { like: final.like, repost: final.repost, reply: final.reply, quote: final.quote } : live;
   const views = final && run?.views ? final.views : run ? viewsAt(run, tick) : 0;
-  const people = (run?.events ?? []).filter(e => e.tick <= tick);
+  // Twins first, then the real followers a linear projection adds, so likes/reposts show many people, not a few.
+  const people = [...(run?.events ?? []), ...(run?.projected ?? [])].filter(e => e.tick <= tick).sort((x, y) => x.tick - y.tick);
   const likers = people.filter(e => e.signal === 'like');
   const reposters = people.filter(e => e.signal === 'repost' || e.signal === 'quote');
   const latest = [...people].reverse().slice(0, 4);
@@ -55,7 +56,7 @@ export function Tweet({ label, brand, draft, run, tick, finished, winner }: Prop
   return <section className="lab-column">
     <div className="lab-column-head"><span className={`lab-draft-tag lab-draft-${label}`}>Draft {label}</span>{winner && <span className="lab-winner-tag"><Trophy size={13} aria-hidden="true" />Winner</span>}
       <a className="lab-share" href={shipIntent(draft)} target="_blank" rel="noopener noreferrer" aria-label={`Share draft ${label} on X`}><Send size={12} />Share on X</a></div>
-    <ClientTweetCard className="lab-tweet" label={`Draft ${label}`} busy={scoring} draft={{ author: { name: brand.name, handle: brand.handle, avatar: brand.avatar }, text: draft, verified: brand.verified }} footer={
+    <ClientTweetCard className="lab-tweet" label={`Draft ${label}`} scrollable busy={scoring} draft={{ author: { name: brand.name, handle: brand.handle, avatar: brand.avatar }, text: draft, verified: brand.verified }} footer={
         <footer className="lab-metrics" aria-live="polite">
           {metric('replies', <MessageCircle size={17} />, counts.reply, median ? `Likely ${median.reply.p10}–${median.reply.p90}` : 'Replies')}
           {metric('reposts', <Repeat2 size={17} />, counts.repost + counts.quote, median ? `Reposts ${median.repost.p10}–${median.repost.p90}, quotes ${median.quote.p10}–${median.quote.p90}` : 'Reposts and quotes')}

@@ -110,6 +110,13 @@ test('live build lights the stages and hands the new X brand to its audience gra
   const label = await stages.nth(0).locator('>span').nth(1).boundingBox();
   expect(orb!.x).toBeGreaterThan(label!.x + label!.width);
   await expect(page.locator('.on-avatars img')).toHaveCount(24);
+  const build = page.locator('.on-build'), progress = page.getByRole('progressbar', { name: 'Build progress', exact: true });
+  await expect(progress).toHaveCSS('position', 'static');
+  const cardBox = (await build.boundingBox())!, progressBox = (await progress.boundingBox())!;
+  expect(progressBox.y).toBeGreaterThan(cardBox.y);
+  expect(progressBox.y + progressBox.height).toBeLessThan(cardBox.y + cardBox.height);
+  expect(progressBox.x).toBeGreaterThanOrEqual(cardBox.x);
+  await page.screenshot({ path: '/tmp/ripple-onboarding-inline-build.png', fullPage: true });
   state.status = 'twins'; state.ready = 34;
   await expect(stages.nth(0)).toHaveAttribute('data-complete', 'true');
   await expect(stages.nth(0).getByRole('img')).toHaveCount(0);

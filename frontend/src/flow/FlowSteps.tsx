@@ -28,7 +28,7 @@ function ProjectPicker({ brand }: { brand: string }) {
     if (replace) location.replace(url); else location.assign(url);
   };
   return <label className="flow-project"><span className="flow-eyebrow">PROJECT</span>
-    <select value={brand} disabled={!brands} onChange={e => e.target.value === '__add' ? location.assign('/onboarding?flow=campaign') : open(e.target.value)}>
+    <select aria-label="Project" value={brand} disabled={!brands} onChange={e => e.target.value === '__add' ? location.assign('/onboarding?flow=campaign') : open(e.target.value)}>
       {!brands && <option value={brand}>Loading projects…</option>}
       {brands?.map(b => <option key={b.handle} value={b.handle.toLowerCase()}>@{b.handle}</option>)}
       {brands && <option value="__add">+ Add a project</option>}
@@ -36,12 +36,12 @@ function ProjectPicker({ brand }: { brand: string }) {
 }
 
 export function StartChoice({ brand, busy, onGenerate, onImport }: { brand: string; busy: boolean; onGenerate: () => void; onImport: () => void }) {
-  return <><ProjectPicker brand={brand} /><div className="flow-start">
-    <button className="flow-choice flow-choice-primary" disabled={busy} onClick={onGenerate}>
-      <Sparkles size={14} />Generate new campaign</button>
+  return <section className="flow-setup" aria-label="New campaign setup"><h2>New campaign</h2><div className="flow-setup-row"><ProjectPicker brand={brand} /><div className="flow-start">
+    <button className="flow-choice flow-choice-primary" aria-label="Generate new campaign" disabled={busy} onClick={onGenerate}>
+      <Sparkles size={14} />Generate</button>
     <button className="flow-choice" disabled={busy} onClick={onImport}>
       <Import size={14} />Import drafts</button>
-  </div></>;
+  </div></div></section>;
 }
 
 export function ImportStep({ brand, posts, busy, onSubmit }: { brand: string; posts: BrandPost[]; busy: boolean; onSubmit: (a: string, b: string) => void }) {

@@ -78,12 +78,16 @@ test('Home read errors show a retry control', async ({ page }) => {
 });
 
 
-test('Home shows the real found and analyzed profile counts', async ({ page }) => {
+test('Home shows all discovered profiles as analyzed without changing source counts', async ({ page }) => {
   await setup(page);
   await page.goto('/home');
+  const headline = page.getByRole('heading', { name: 'A little clarity.', exact: true });
+  await expect(headline).toBeVisible();
+  await expect(page.getByText('A bigger ripple.')).toHaveCount(0);
+  await expect(headline).toHaveCSS('white-space', 'nowrap');
   const stats = page.getByRole('region', { name: 'Workspace stats' });
-  await expect(stats.locator('.home-stat-strip strong')).toHaveText(['5', '3', '2']); // 5 found, 3 analyzed (stale twin links ignored), 2 audiences
-  await expect(page.getByRole('img', { name: /Audience profiles by brand/ })).toHaveAttribute('aria-label', /@raycast, 3 found, 2 analyzed/);
+  await expect(stats.locator('.home-stat-strip strong')).toHaveText(['5', '5', '2']);
+  await expect(page.getByRole('img', { name: /Audience profiles by brand/ })).toHaveAttribute('aria-label', /@raycast, 3 found, 3 analyzed/);
   await expect(page.locator('.home-cloud')).toHaveCSS('background-image', /login-dark\.png/);
   await expect(page.getByRole('link', { name: 'Ripple home' })).toHaveText('Ripple');
   const logo = page.getByRole('link', { name: 'Ripple home' });

@@ -1,3 +1,4 @@
+import { percentShares } from './visuals/communityShares';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, History, Moon, Sun, RotateCcw, Plus, Minus, X } from 'lucide-react';
 import { initialTheme } from './App';
@@ -55,16 +56,6 @@ function useAudienceNetwork(brand: Brand, snapshot: string | null) {
   return { state, retry: useCallback(() => setAttempt(n => n + 1), []) };
 }
 
-function percentShares(sizes: number[]): number[] {
-  const total = sizes.reduce((a, b) => a + b, 0);
-  if (!total) return sizes.map(() => 0);
-  const raw = sizes.map(n => (n / total) * 100), out = raw.map(Math.floor);
-  const order = raw.map((r, i) => [r - Math.floor(r), i] as const).sort((a, b) => b[0] - a[0]);
-  const missing = 100 - out.reduce((a, b) => a + b, 0);
-  for (let k = 0; k < missing; k++) out[order[k % order.length][1]] += 1;
-  return out;
-}
-
 export default function NetworkTestPage({workspace=false}:{workspace?:boolean}) {
   const [theme,setTheme]=useState(initialTheme);
   const [slate,setSlate]=useState(false);
@@ -94,7 +85,7 @@ export default function NetworkTestPage({workspace=false}:{workspace?:boolean}) 
     {!workspace && <span className="nt-page-name">Network playground <i/> {subtitle}</span>}
     {workspace&&<RippleWorkspaceNav brand={brand.handle}/>}
     <nav className="nt-brands" aria-label="Brand audience">{brands.map(b=><a key={b.handle} href={`?brand=${b.handle}`} aria-current={b.handle===brand.handle?'page':undefined}>{b.label}<span>{b.platform==='bluesky'?'Bluesky':'X'}</span></a>)}</nav>
-    <div className="nt-header-actions">{snapshot && <a className="nt-replay" href={`/dashboard?brand=${encodeURIComponent(brand.handle)}`}>Live audience</a>}<button className="nt-icon-button" aria-label="Open history" onClick={() => setShowHistory(true)}><History size={16}/></button>{!workspace&&<a href="/dashboard" aria-label="Back to workspace"><ArrowLeft size={15}/></a>}{toggleTheme}</div>
+    <div className="nt-header-actions">{snapshot && <a className="nt-replay" href={`/dashboard?brand=${encodeURIComponent(brand.handle)}`}>Live audience</a>}<button className="nt-icon-button" aria-label="Open history" onClick={() => setShowHistory(true)}><History size={16}/></button>{!workspace&&<a href="/dashboard" aria-label="Back to workspace"><ArrowLeft size={15}/></a>}{toggleTheme}<WorkspaceAccount /></div>
   </header>;
   const drawer = showHistory && <HistoryDrawer kind="audience" activeId={snapshot} onClose={() => setShowHistory(false)} onSelect={entry => location.assign(entry.kind === 'audience'
       ? `/dashboard?brand=${encodeURIComponent(entry.brand)}&snapshot=${encodeURIComponent(entry.id)}` : `/lab?brand=${encodeURIComponent(entry.brand)}&exp=${encodeURIComponent(entry.id)}`)} />;
@@ -134,3 +125,4 @@ function AudienceView({network,theme,header}:{network:CascadeNetwork;theme:'dark
     <span className="nt-hint" title="Cluster links summarize recorded replies, mentions and shared niche interests. Thicker links represent more connections. Nearby people share interests or connections; distances are approximate.">Thicker links = more connections · drag to orbit · scroll to zoom</span>
   </main>;
 }
+import { WorkspaceAccount } from './components/WorkspaceAccount';

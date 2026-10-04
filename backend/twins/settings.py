@@ -8,6 +8,7 @@ class SimSettings:
     followers_scraped: int = 300  # followers the onboarding scrapes
     sim_twins: int = 0  # at most this many twins per simulation (0 = all)
     scale_mode: str = "anchored"  # linear | anchored (applied by start_cascade)
+    fill_replies: int = 0  # extra Claude-written replies from real non-twin followers per run
 
 
 DEFAULTS = SimSettings()
@@ -19,7 +20,7 @@ def load_settings(stdb) -> SimSettings:
         return DEFAULTS
     r = rows[0]
     return SimSettings(twins_per_brand=r["twins_per_brand"], followers_scraped=r["followers_scraped"],
-                       sim_twins=r["sim_twins"], scale_mode=r["scale_mode"])
+                       sim_twins=r["sim_twins"], scale_mode=r["scale_mode"], fill_replies=r["fill_replies"])
 
 
 def cap_twins(twins: list, limit: int) -> list:

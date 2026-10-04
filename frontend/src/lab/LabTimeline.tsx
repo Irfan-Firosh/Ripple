@@ -7,6 +7,9 @@ type Point = Record<Signal | 'views', number> & { t: number };
 type Key = Signal | 'views';
 const KEYS: Key[] = [...SIGNALS, 'views'];
 const STEPS = 120;
+const SPREAD = 50; // a wave of engagement keeps arriving over this many steps
+const DECAY = 12; // ...mostly early, with a long tail
+const MAX_CHUNKS = 14; // a wave lands as up to this many separate bursts
 const CHECKPOINTS = [0.25, 0.5, 0.75, 1];
 const COLOR: Record<Key, string> = {
   like: 'var(--accent)', repost: '#6fbf9f', reply: '#7f9fe0', quote: '#c08ad8', views: 'var(--muted)',
@@ -15,15 +18,37 @@ const NAME: Record<Key, string> = { ...SIGNAL_LABEL, views: 'Impressions' };
 const fmt = (n: number) => Math.round(n).toLocaleString();
 const pct = (t: number) => `${Math.round(t * 100)}%`;
 
-// The recorded run's cumulative counts over time, rescaled so the last point equals the numbers the Lab card shows
-// (finalCounts): the recorded trial supplies the timing, the forecast supplies the totals.
+// Seeded so a run always draws the same staircase.
+function rng(seed: string): () => number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  return () => { h += 0x6d2b79f5; let t = h; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+
+// The simulation moves in a few big waves; real engagement arrives in bursts. Each wave is split into uneven chunks that
+// land at random later steps (mostly soon after the wave, some much later), drawn as a staircase. Totals stay exact.
 function series(run: LabRun): Point[] {
   const max = Math.max(1, run.replayMaxTick);
-  const out = Array.from({ length: STEPS + 1 }, (_, i) => {
+  const raw = Array.from({ length: STEPS + 1 }, (_, i) => {
     const tick = Math.round((i / STEPS) * max);
     return { ...countsAt(run, undefined, tick), views: viewsAt(run, tick) } as Record<Key, number>;
   });
-  const target = finalCounts(run), last = { ...out[STEPS] };
+  const out = raw.map(() => Object.fromEntries(KEYS.map(k => [k, 0])) as Record<Key, number>);
+  for (const k of KEYS) {
+    const rand = rng(`${run.runId}:${k}`), inc = new Array(STEPS + 1).fill(0);
+    raw.forEach((r, i) => {
+      const d = r[k] - (i ? raw[i - 1][k] : 0);
+      if (d <= 0) return;
+      const n = Math.max(1, Math.min(MAX_CHUNKS, Math.round(d)));
+      const w = Array.from({ length: n }, () => rand() ** 2 + 0.05); // a few big bursts, many small ones
+      const sum = w.reduce((a, b) => a + b, 0);
+      w.forEach(x => { inc[Math.min(STEPS, i + Math.min(SPREAD, Math.floor(-DECAY * Math.log(1 - rand() * 0.98))))] += d * x / sum; });
+    });
+    let total = 0;
+    inc.forEach((d, i) => { total += d; out[i][k] = total; });
+  }
+  // End exactly on the numbers the Lab card shows (finalCounts); the recorded run only supplies the shape over time.
+  const target = finalCounts(run), last = out[STEPS];
   for (const k of KEYS) {
     const shape = last[k] > 0 ? k : last.views > 0 ? 'views' : null;
     out.forEach(row => { row[k] = shape ? Math.round((row[shape] / last[shape]) * target[k]) : 0; });

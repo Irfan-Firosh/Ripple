@@ -15,14 +15,14 @@ export const SIGNAL_LABEL: Record<Signal, string> = { like: 'Likes', repost: 'Re
 export type SignalRange = { p10: number; p50: number; p90: number; mean: number };
 export type LabComment = { userId: string; handle: string; name: string; avatar: string; kind: 'reply' | 'quote'; text: string; tick: number };
 export type OutsideTick = { tick: number; views: number; like: number; repost: number; reply: number; quote: number };
-export type LabEvent = { userId: string; handle: string; name: string; avatar: string; signal: Signal; tick: number; draft: 'A' | 'B' };
+export type LabEvent = { userId: string; handle: string; name: string; avatar: string; signal: Signal; tick: number; draft: 'A' | 'B'; projected?: boolean };
 // How a run's counts were projected onto the real audience ('linear' = x audience / simulated).
 export type LabProjection = { mode: 'linear' | 'anchored' | 'none'; audience: number; simulated: number; factor: number };
 export type LabRun = {
   runId: string; status: 'scoring' | 'replaying' | 'done' | 'failed'; replayTick: number; replayMaxTick: number; people: number;
   signals: Record<Signal, SignalRange> | null; events: LabEvent[]; shares: Map<string, Record<Signal, number>>;
   views: SignalRange | null; outside: OutsideTick[]; comments: LabComment[]; outsideShare: number;
-  projection: LabProjection | null;
+  projection: LabProjection | null; projected: LabEvent[];
 };
 export type LabExperimentSummary = {
   id: string; brand: string; title: string; status: 'queued' | 'running' | 'done' | 'failed';
@@ -83,7 +83,16 @@ async function loadRun(runId: string, draft: 'A' | 'B', signal?: AbortSignal): P
   const view = sigs.find(r => r.signal === 'view');
   const p = projections[0];
   const projection: LabProjection | null = p ? { mode: p.mode, audience: Number(p.audience), simulated: p.simulated, factor: p.factor } : null;
+  const twinIds = new Set(shares.map(r => r.user_id as string));
   const signals = counted.length ? Object.fromEntries(counted.map(r => [r.signal, range(r)])) as Record<Signal, SignalRange> : null;
+  // Every reply written (twins + projected followers) is counted: the reply total never shows fewer than the comments.
+  const writtenReplies = comments.filter(c => c.kind === 'reply').length;
+  if (signals?.reply && signals.reply.p50 < writtenReplies) {
+    signals.reply = { ...signals.reply, p50: writtenReplies, mean: Math.max(signals.reply.mean, writtenReplies), p90: Math.max(signals.reply.p90, writtenReplies) };
+  }
+  const projected = projection?.mode === 'linear'
+    ? await projectedPeople(runId, run.brand_user_id, draft, new Set([...twinIds, ...comments.map(c => c.user_id as string)]), counted, events, run.replay_max_tick, signal)
+    : [];
   return {
     runId, status: run.status, replayTick: run.replay_tick, replayMaxTick: run.replay_max_tick, people: run.people,
     signals,
@@ -93,8 +102,35 @@ async function loadRun(runId: string, draft: 'A' | 'B', signal?: AbortSignal): P
     outside: outside.map(o => ({ tick: o.tick, views: o.views, like: o.likes, repost: o.reposts, reply: o.replies, quote: o.quotes })).sort((x, y) => x.tick - y.tick),
     comments: comments.map(c => ({ userId: c.user_id, ...person(c.user_id), kind: c.kind, text: c.text, tick: c.tick })).sort((x, y) => x.tick - y.tick),
     outsideShare: total ? engaged.filter(r => r.source === 'outside').reduce((a, r) => a + r.mean, 0) / total : 0,
-    projection,
+    projection, projected,
   };
+}
+
+const MAX_PROJECTED = 40;
+const order = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; };
+
+// Linear projection scales likes / reposts far past the twins who acted. The lists show the twins first, then real
+// followers of the brand who are not twins (scraped profiles), up to the projected median and MAX_PROJECTED.
+async function projectedPeople(runId: string, brandUserId: string, draft: 'A' | 'B', twinIds: Set<string>,
+                               counted: Record<string, any>[], events: Record<string, any>[], maxTick: number,
+                               signal?: AbortSignal): Promise<LabEvent[]> {
+  const members = await sql(`SELECT follower_user_id FROM audience_membership WHERE brand_user_id = ${q(brandUserId)}`, signal);
+  const byId = await users([], signal);
+  const pool = members.map(m => m.follower_user_id as string).filter(id => !twinIds.has(id) && byId.has(id))
+    .sort((a, b) => order(`${runId}:${a}`) - order(`${runId}:${b}`));
+  const out: LabEvent[] = [];
+  let next = 0;
+  for (const s of ['like', 'repost'] as const) {
+    const median = counted.find(r => r.signal === s)?.p_50 ?? 0;
+    const twins = events.filter(e => e.signal === s).length;
+    const n = Math.min(MAX_PROJECTED, Math.max(0, median - twins), pool.length - next);
+    for (let i = 0; i < n; i++, next++) {
+      const u = byId.get(pool[next])!;
+      out.push({ userId: u.user_id, handle: u.username, name: u.name ?? '', avatar: bigger(u.profile_image_url), signal: s,
+                 tick: Math.round(((i + 1) * maxTick) / (n + 1)), draft, projected: true });
+    }
+  }
+  return out.sort((x, y) => x.tick - y.tick);
 }
 
 export async function loadBrand(brand: string, signal?: AbortSignal): Promise<LabBrand> {
@@ -200,10 +236,12 @@ export function useLabExperiment(id: string | null): { experiment: LabExperiment
   return { experiment, error };
 }
 
-// The finished numbers the Lab shows for a run: the expected (mean) outcome over all simulated trials. The tweet
-// card, the side-by-side graph and its table all read this, so they always agree.
+// The finished numbers the Lab shows for a run: the expected (mean) outcome over all simulated trials, which is
+// continuous, so two drafts do not collide on the same few medians a small twin sample produces. Replies never show
+// fewer than the comments listed. The tweet card, the side-by-side graph and its table all read this.
 export function finalCounts(run: LabRun): Record<Signal | 'views', number> {
   const m = run.signals, mean = (r?: SignalRange) => Math.round(r?.mean ?? 0);
-  return { like: mean(m?.like), repost: mean(m?.repost), reply: mean(m?.reply), quote: mean(m?.quote),
+  const replies = run.comments.filter(c => c.kind === 'reply').length;
+  return { like: mean(m?.like), repost: mean(m?.repost), reply: Math.max(mean(m?.reply), replies), quote: mean(m?.quote),
            views: mean(run.views ?? undefined) };
 }

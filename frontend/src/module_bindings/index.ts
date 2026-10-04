@@ -49,6 +49,7 @@ import ClaimLabExperimentReducer from "./claim_lab_experiment_reducer";
 import ClaimOnboardingReducer from "./claim_onboarding_reducer";
 import ClaimTwinQuestionReducer from "./claim_twin_question_reducer";
 import ClearBrandBaselineReducer from "./clear_brand_baseline_reducer";
+import ClearVideoExpectationReducer from "./clear_video_expectation_reducer";
 import CompleteIngestionRunReducer from "./complete_ingestion_run_reducer";
 import CompleteTwinBuildRunReducer from "./complete_twin_build_run_reducer";
 import CreateCampaignReducer from "./create_campaign_reducer";
@@ -97,6 +98,7 @@ import SetSimSignalProbsReducer from "./set_sim_signal_probs_reducer";
 import SetTwinJobStatusReducer from "./set_twin_job_status_reducer";
 import SetTwinTopupReducer from "./set_twin_topup_reducer";
 import SetVariantCopyReducer from "./set_variant_copy_reducer";
+import SetVideoExpectationReducer from "./set_video_expectation_reducer";
 import SetVideoModeReducer from "./set_video_mode_reducer";
 import SetVideoSettingsReducer from "./set_video_settings_reducer";
 import SetXUserProfileImageReducer from "./set_x_user_profile_image_reducer";
@@ -937,6 +939,7 @@ const reducersSchema = __reducers(
   __reducerSchema("claim_onboarding", ClaimOnboardingReducer),
   __reducerSchema("claim_twin_question", ClaimTwinQuestionReducer),
   __reducerSchema("clear_brand_baseline", ClearBrandBaselineReducer),
+  __reducerSchema("clear_video_expectation", ClearVideoExpectationReducer),
   __reducerSchema("complete_ingestion_run", CompleteIngestionRunReducer),
   __reducerSchema("complete_twin_build_run", CompleteTwinBuildRunReducer),
   __reducerSchema("create_campaign", CreateCampaignReducer),
@@ -985,6 +988,7 @@ const reducersSchema = __reducers(
   __reducerSchema("set_twin_job_status", SetTwinJobStatusReducer),
   __reducerSchema("set_twin_topup", SetTwinTopupReducer),
   __reducerSchema("set_variant_copy", SetVariantCopyReducer),
+  __reducerSchema("set_video_expectation", SetVideoExpectationReducer),
   __reducerSchema("set_video_mode", SetVideoModeReducer),
   __reducerSchema("set_video_settings", SetVideoSettingsReducer),
   __reducerSchema("set_x_user_profile_image", SetXUserProfileImageReducer),

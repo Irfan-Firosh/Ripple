@@ -135,7 +135,7 @@ export default function LabPage() {
         <button className="lab-icon" aria-label="Open history" onClick={() => setShowHistory(true)}><History size={16} /></button>
         <a className="lab-icon" href="/dashboard" aria-label="Back to dashboard"><ArrowLeft size={15} /></a>
         <button className="lab-icon" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
-      </div>
+      <WorkspaceAccount /></div>
     </header>
 
     {listError || error ? <div className="lab-state" role="alert">{listError ?? error}<button className="lab-secondary" onClick={() => setRefresh(n => n + 1)}><RotateCcw size={14} /> Try again</button></div>
@@ -168,3 +168,4 @@ export default function LabPage() {
     {choosingCampaign && <LabCampaignPicker campaigns={campaigns} error={campaignError} createHref={createCampaignHref} onRetry={retryCampaigns} onClose={closeCampaignPicker} onSelect={selectCampaign} />}
   </main>;
 }
+import { WorkspaceAccount } from '../components/WorkspaceAccount';

@@ -1,4 +1,5 @@
-// Hidden operator page (/ops, no nav link): simulation settings, switches, video settings, twin top-ups.
+import { WorkspaceAccount } from '../components/WorkspaceAccount';
+// Hidden operator page (/ops, no nav link): simulation settings, per-video expected ranges, twin top-ups.
 // Open to anyone with the site (no auth by design).
 import { useCallback, useEffect, useState } from 'react';
 import { sqlUnfiltered as sql } from '../audience/liveAudience';
@@ -6,15 +7,16 @@ import { initialTheme } from '../App';
 import { call } from '../flow/flowApi';
 import './ops.css';
 
-type Settings = { twins_per_brand: number; followers_scraped: number; sim_twins: number; scale_mode: 'linear' | 'anchored' };
+type Settings = { twins_per_brand: number; followers_scraped: number; sim_twins: number; scale_mode: 'linear' | 'anchored'; fill_replies: number };
 type Video = { video_id: string; title: string; status: string; thumbnail_url: string; created_at: number };
+type Expectation = { video_id: string; like_min: number; like_max: number; repost_min: number; repost_max: number };
 type Topup = { topup_id: number; brand: string; count: number; status: string; error: string | null };
 type VideoMode = { mode: 'generate' | 'off' | 'reuse'; reuse_a: string; reuse_b: string };
 type VideoSettings = { max_seconds: number; voice_id: string };
 type OpsState = { paused: boolean; hidden: boolean };
 type Brand = { handle: string; followers: number; twins: number };
 
-const DEFAULTS: Settings = { twins_per_brand: 60, followers_scraped: 300, sim_twins: 0, scale_mode: 'anchored' };
+const DEFAULTS: Settings = { twins_per_brand: 60, followers_scraped: 300, sim_twins: 0, scale_mode: 'anchored', fill_replies: 0 };
 const RECENT_VIDEOS = 12;
 
 // Free typing while focused (clamping each keystroke made "300" impossible: "3" jumped to the minimum); clamp on blur.
@@ -36,6 +38,7 @@ export default function OpsPage() {
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [expect, setExpect] = useState<Record<string, Expectation>>({});
   const [topups, setTopups] = useState<Topup[]>([]);
   const [topup, setTopup] = useState({ brand: '', count: 20 });
   const [note, setNote] = useState('');
@@ -46,9 +49,10 @@ export default function OpsPage() {
   useEffect(() => { document.documentElement.dataset.theme = initialTheme(); }, []);
 
   const load = useCallback(async () => {
-    const [rows, vids, tops, twinRows, users, state, videoRow, modeRow] = await Promise.all([
+    const [rows, vids, exps, tops, twinRows, users, state, videoRow, modeRow] = await Promise.all([
       sql<Settings>("SELECT * FROM sim_settings WHERE key = 'global'"),
       sql<Video>('SELECT video_id, title, status, thumbnail_url, created_at FROM campaign_video'),
+      sql<Expectation>('SELECT * FROM video_expectation'),
       sql<Topup>('SELECT * FROM twin_topup'),
       sql<{ brand_user_id: string }>('SELECT brand_user_id FROM twin_audience'),
       sql<{ user_id: string; username: string; followers_count: number }>('SELECT user_id, username, followers_count FROM x_user'),
@@ -64,6 +68,7 @@ export default function OpsPage() {
     for (const r of twinRows) twins.set(r.brand_user_id, (twins.get(r.brand_user_id) ?? 0) + 1);
     setBrands(users.filter(u => twins.has(u.user_id)).map(u => ({ handle: u.username, followers: Number(u.followers_count), twins: twins.get(u.user_id) ?? 0 })));
     setVideos(vids.filter(v => v.status === 'done').sort((a, b) => Number(b.created_at) - Number(a.created_at)).slice(0, RECENT_VIDEOS));
+    setExpect(Object.fromEntries(exps.map(e => [e.video_id, e])));
     setTopups(tops.sort((a, b) => b.topup_id - a.topup_id).slice(0, 5));
   }, []);
 
@@ -73,9 +78,11 @@ export default function OpsPage() {
     setNote('');
     try { await call(reducer, args); setNote(`${what} saved.`); await load(); } catch (e) { setNote(e instanceof Error ? e.message : String(e)); }
   };
+  const editExpect = (id: string, patch: Partial<Expectation>) =>
+    setExpect(prev => ({ ...prev, [id]: { ...(prev[id] ?? { video_id: id, like_min: 0, like_max: 0, repost_min: 0, repost_max: 0 }), ...patch } }));
 
   return <main className="ops-page">
-    <header><h1>Ops</h1><p>Simulation controls. Not linked from the app.</p></header>
+    <header><h1>Ops</h1><p>Simulation controls. Not linked from the app.</p><WorkspaceAccount /></header>
 
     <section className="ops-card" aria-labelledby="ops-switches">
       <h2 id="ops-switches">Switches</h2>
@@ -95,12 +102,13 @@ export default function OpsPage() {
         <Num label="Twins per brand" hint="Cloned audience size for new brands" value={settings.twins_per_brand} min={5} max={500} onChange={v => setSettings({ ...settings, twins_per_brand: v })} />
         <Num label="Followers scraped" hint="Profiles read from X per brand" value={settings.followers_scraped} min={20} max={5000} onChange={v => setSettings({ ...settings, followers_scraped: v })} />
         <Num label="Twins per simulation" hint="0 = every twin" value={settings.sim_twins} max={500} onChange={v => setSettings({ ...settings, sim_twins: v })} />
+        <Num label="Extra replies per run" hint="Claude-written, real non-twin followers" value={settings.fill_replies} max={30} onChange={v => setSettings({ ...settings, fill_replies: v })} />
       </div>
       <fieldset className="ops-mode"><legend>Scaling</legend>
         <label><input type="radio" checked={settings.scale_mode === 'linear'} onChange={() => setSettings({ ...settings, scale_mode: 'linear' })} />Linear: results × (followers ÷ people simulated)</label>
         <label><input type="radio" checked={settings.scale_mode === 'anchored'} onChange={() => setSettings({ ...settings, scale_mode: 'anchored' })} />Anchored: match the brand's real median engagement</label>
       </fieldset>
-      <button onClick={() => run('Settings', 'set_sim_settings', [settings.twins_per_brand, settings.followers_scraped, settings.sim_twins, settings.scale_mode])}>Save settings</button>
+      <button onClick={() => run('Settings', 'set_sim_settings', [settings.twins_per_brand, settings.followers_scraped, settings.sim_twins, settings.scale_mode, settings.fill_replies])}>Save settings</button>
     </section>
 
     <section className="ops-card" aria-labelledby="ops-video">
@@ -141,6 +149,29 @@ export default function OpsPage() {
       <p className="ops-hint">Top-ups run on the onboarding worker.</p>
     </section>
 
+    <section className="ops-card" aria-labelledby="ops-videos">
+      <h2 id="ops-videos">Expected results per video</h2>
+      <p className="ops-hint">Applies to the next Lab test of a draft carrying this video. 0–0 means no override.</p>
+      {videos.map(v => {
+        const e = expect[v.video_id] ?? { video_id: v.video_id, like_min: 0, like_max: 0, repost_min: 0, repost_max: 0 };
+        return <div key={v.video_id} className="ops-video">
+          {v.thumbnail_url ? <img src={v.thumbnail_url} alt="" /> : <span className="ops-thumb" />}
+          <div className="ops-video-body"><b>{v.title || v.video_id}</b>
+            <div className="ops-ranges">
+              <Num label="Likes min" value={e.like_min} max={10_000_000} onChange={x => editExpect(v.video_id, { like_min: x })} />
+              <Num label="Likes max" value={e.like_max} max={10_000_000} onChange={x => editExpect(v.video_id, { like_max: x })} />
+              <Num label="Reposts min" value={e.repost_min} max={10_000_000} onChange={x => editExpect(v.video_id, { repost_min: x })} />
+              <Num label="Reposts max" value={e.repost_max} max={10_000_000} onChange={x => editExpect(v.video_id, { repost_max: x })} />
+            </div>
+            <div className="ops-row">
+              <button onClick={() => run('Range', 'set_video_expectation', [v.video_id, e.like_min, e.like_max, e.repost_min, e.repost_max])}>Save range</button>
+              <button className="ops-ghost" onClick={() => run('Range cleared', 'clear_video_expectation', [v.video_id])}>Clear</button>
+            </div>
+          </div>
+        </div>;
+      })}
+      {!videos.length && <p className="ops-hint">No finished videos yet.</p>}
+    </section>
     <p className="ops-note" role="status" aria-live="polite">{note}</p>
   </main>;
 }

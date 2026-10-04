@@ -53,15 +53,15 @@ test('audience is fully visible in 3D without a source node, post edges, or casc
   await expect(canvas).toHaveAttribute('data-source-node-count', '0');
   await expect(canvas).toHaveAttribute('data-sprite-count', '3');
   await expect(canvas).toHaveAttribute('data-post-edge-count', '0');
-  await expect(canvas).toHaveAttribute('data-bridge-edge-count', '1');
+  await expect(canvas).toHaveAttribute('data-bridge-edge-count', '0'); // unanalysed followers join the one real niche
   await expect(page.getByText('Thicker links = more connections · drag to orbit · scroll to zoom')).toBeVisible();
   await page.screenshot({ path: '/tmp/ripple-audience-connectivity-dark.png' });
   await page.getByRole('button', { name: 'Switch to light mode' }).click();
-  await expect(canvas).toHaveAttribute('data-bridge-edge-count', '1');
+  await expect(canvas).toHaveAttribute('data-bridge-edge-count', '0'); // unanalysed followers join the one real niche
   await page.screenshot({ path: '/tmp/ripple-audience-connectivity-light.png' });
   await expect(page.getByRole('group', { name: 'Network dimension' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Replay|Pause cascade|Play cascade/ })).toHaveCount(0);
-  await expect(page.getByLabel('Niche index')).toContainText('Building profiles');
+  await expect(page.getByLabel('Niche index')).not.toContainText('Building profiles'); // unanalysed followers join real niches
   await page.getByRole('button', { name: 'Zoom in' }).click();
   await expect.poll(async () => Number(await canvas.getAttribute('data-camera-zoom'))).toBeGreaterThan(1);
 });

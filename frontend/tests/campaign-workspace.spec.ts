@@ -38,10 +38,10 @@ test('Campaign offers generation and import under themed cloud artwork without c
   await expect(page.getByRole('heading', { name: 'Make your next move.' })).toBeVisible();
   await expect(page.locator('.flow-cloud')).toHaveCSS('background-image', /login-dark\.png/);
   await expect(page.getByRole('button', { name: /Generate new campaign/ })).toBeVisible();
-  await expect(page.getByLabel('Campaign workflow')).toContainText('Test before posting');
+  await expect(page.getByLabel('Campaign workflow')).toContainText('Test');
   expect(state.calls).toEqual([]); expect(state.created).toBeNull();
   await page.screenshot({ path: '/tmp/ripple-campaign-dark.png', fullPage: true });
-  await page.getByRole('button', { name: /Use your own drafts/ }).click();
+  await page.getByRole('button', { name: 'Import drafts' }).click();
   await expect(page.getByLabel('Draft A')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Use these drafts' })).toBeDisabled();
   await page.getByLabel('Draft A').fill('First idea.'); await page.getByLabel('Draft B').fill('Second idea.');
@@ -51,7 +51,7 @@ test('Campaign offers generation and import under themed cloud artwork without c
   await page.getByRole('button', { name: 'New campaign', exact: true }).click();
   await page.getByRole('button', { name: /Generate new campaign/ }).click();
   await expect.poll(() => state.created?.segments).toEqual(['dev_tools']);
-  await expect(page.getByRole('status')).toContainText('Reading your audience');
+  await expect(page.locator('.flow-drafts-step .flow-waiting')).toContainText('Reading your audience');
   expect(state.calls.filter(call => call.reducer === 'start_campaign_flow').at(-1)?.args.slice(1)).toEqual(['raycast', 'generate', '', '']);
 });
 
@@ -64,7 +64,7 @@ test('Campaign mobile is polished in light mode and workspace nav is white', asy
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('button', { name: 'Close navigation' }).click();
   await expect(page.locator('.fd-mobile-menu')).toHaveCount(0);
-  await page.getByRole('button', { name: /Use your own drafts/ }).click();
+  await page.getByRole('button', { name: 'Import drafts' }).click();
   await expect(page.getByLabel('Draft B')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: '/tmp/ripple-campaign-import-light-mobile.png', fullPage: true });

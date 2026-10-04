@@ -90,7 +90,7 @@ export default function LabV2() {
         aria-current={b.handle === brand ? 'page' : undefined} onClick={() => reset(b.handle)}>{b.label}</button>)}</nav>
       <button className="lab-icon" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
         onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
-    </header>
+    <WorkspaceAccount /></header>
     <div className="campaign-main">
       <div className="campaign-toolbar"><div><h1>{creative?.campaign.name ?? 'Compare drafts'}</h1>
         {creative?.recordedRehearsal && <span className="campaign-recorded">Recorded demo</span>}</div>
@@ -144,3 +144,4 @@ export default function LabV2() {
     </nav>
   </main>;
 }
+import { WorkspaceAccount } from './components/WorkspaceAccount';

@@ -673,11 +673,11 @@ const simSettings = table({ name: 'sim_settings', public: true }, {
   followersScraped: t.u32(), // followers the onboarding scrapes
   simTwins: t.u32(), // at most this many twins per simulation (0 = all)
   scaleMode: t.string(),
-  fillReplies: t.u32(), // unused (kept so the live database keeps its schema); always 0
+  fillReplies: t.u32(), // extra Claude-written replies from real non-twin followers per run (0 = off)
   updatedAt: t.timestamp(),
 });
 
-// Unused (kept so the live database keeps its schema): nothing reads or writes it.
+// Expected range for one video's post: each trial's likes / reposts land inside it (max 0 = no override).
 const videoExpectation = table({ name: 'video_expectation', public: true }, {
   videoId: t.string().primaryKey(),
   likeMin: t.u32(), likeMax: t.u32(),
@@ -1352,12 +1352,75 @@ export const setSimProbs = spacetimedb.reducer(
   }
 );
 
-type Projection = { scale: Record<Signal | 'view', number>; seeRate: number };
+type Range = { min: number; max: number } | null;
+type Floors = { likeRate: number; ratio: Record<Signal, number> };
+type Projection = { scale: Record<Signal | 'view', number>; expected: Record<Signal, Range>; seeRate: number;
+                    floors: Floors | null };
+// Linear mode keeps real-world ratios. Likes are a share of views (the brand's real likes/views, else
+// DEFAULT_LIKE_RATE); reposts / replies / quotes are shares of likes (the brand's real ratios, else DEFAULT_RATIO).
+// Defaults: Metricool's 2025 X study (avg post: 2,711 impressions, 32.9 likes, 6.7 reposts, 2.6 replies; quotes ~1/3
+// of replies in its 2024 study). Each draft sits in a band around those rates, moved by how strongly the twins
+// responded to it (quality), so drafts differ but no ratio drifts more than ~2x from real life.
+const DEFAULT_LIKE_RATE = 0.012;
+const DEFAULT_RATIO: Record<Signal, number> = { like: 1, repost: 0.2, reply: 0.08, quote: 0.03 };
+const BAND_HI = 1.4; // a strong trial may reach 1.4x the expected rate, never more
+const QUALITY_POWER = 0.5; // likes move with the square root of the draft's pull, keeping like/view near real rates
+const LIKE_RATE_CEILING = 1.6; // no draft's likes exceed 1.6x the brand's real likes-per-view
+const REL_MIN = 0.5, REL_MAX = 1.25; // reposts / replies / quotes stay within 0.5-1.25x their real share of likes
+const VIRAL_CAP = 3; // views stay within 3x the brand's typical reach
+// What twins give an ordinary post (observed mean probabilities across Lab runs, Oct 2026): quality 1 = typical.
+const TYPICAL_P: Record<Signal, number> = { like: 0.02, repost: 0.005, reply: 0.004, quote: 0.0015 };
+const QUALITY_MIN = 0.4, QUALITY_MAX = 2.5;
+
+type Quality = Record<Signal, number> & { total: number };
+// Per signal: the twins' mean probability vs a typical post. total: the draft's exact expected engagement (every
+// probability, plus the outside wave each repost/quote brings from the reposter's own followers) vs the same for a
+// typical post - the quantity that decides the Lab winner (expected_engagements_exact in simulate.py).
+function expectedEngagement(p: Map<string, SignalP>, followers: Map<string, number>, median: number,
+                            probe: (x: SignalP) => SignalP): number {
+  let inside = 0, spread = 0;
+  for (const [id, raw] of p) {
+    const x = probe(raw);
+    inside += SIGNALS.reduce((a, s) => a + x[s], 0);
+    spread += (x.repost + x.quote) * (followers.get(id) ?? median);
+  }
+  return inside + spread * REPOST_VIEW_RATE * OUT_OF_NETWORK * (inside / Math.max(1, p.size));
+}
+
+function draftQuality(p: Map<string, SignalP>, followers: Map<string, number>, median: number): Quality {
+  const out: Quality = { like: 1, repost: 1, reply: 1, quote: 1, total: 1 };
+  if (!p.size) return out;
+  for (const s of SIGNALS) {
+    const mean = [...p.values()].reduce((a, x) => a + x[s], 0) / p.size;
+    out[s] = Math.min(QUALITY_MAX, Math.max(QUALITY_MIN, mean / TYPICAL_P[s]));
+  }
+  const draft = expectedEngagement(p, followers, median, x => x);
+  const typical = expectedEngagement(p, followers, median, () => TYPICAL_P);
+  out.total = Math.min(QUALITY_MAX, Math.max(QUALITY_MIN, draft / Math.max(1e-9, typical)));
+  return out;
+}
+
+// One trial's counts in linear mode: the twins' projection when it is plausible, otherwise the expected rate with noise
+// (mean 1x); never above BAND_HI x expected. Likes come from views, the rest from those likes.
+function ratioBound(rand: Rng, views: number, projected: Record<Signal, number>, f: Floors, q: Quality): Record<Signal, number> {
+  const pick = (expected: number, proj: number, min: number, ceiling = Infinity) => {
+    const hi = Math.max(min, Math.round(Math.min(expected * BAND_HI, ceiling)));
+    const typical = Math.max(min, Math.round(expected * (0.6 + 0.8 * rand())));
+    return Math.min(hi, proj >= typical ? proj : typical);
+  };
+  // The draft's overall pull sets its level (amplified so the winner visibly out-earns the other draft); each other
+  // signal's own pull is square-rooted against likes, so ratios move with the draft but stay near real life.
+  const like = pick(views * f.likeRate * q.total ** QUALITY_POWER, projected.like, 1, views * f.likeRate * LIKE_RATE_CEILING);
+  const rel = (s: Signal) => like * f.ratio[s] * Math.min(REL_MAX, Math.max(REL_MIN, Math.sqrt(q[s] / q.like)));
+  return { like, repost: pick(rel('repost'), projected.repost, 1), reply: pick(rel('reply'), projected.reply, 1),
+           quote: pick(rel('quote'), projected.quote, 0) };
+}
 // Linear views: a follower sees the post at the brand's real reach rate (median views / followers, else DEFAULT_SEE_RATE);
 // reposts and quotes add the outside reach the cascade simulates.
 const DEFAULT_SEE_RATE = 0.3;
 
 // Linear: counts x (brand followers / people simulated). Anchored: the brand's real median engagement (brand_baseline).
+// A video attached to this run's Lab draft may pin its likes / reposts to an expected range.
 function projectionFor(ctx: Ctx, run: Row<'simRun'>, runId: string, simulated: number): Projection {
   const settings = ctx.db.simSettings.key.find('global');
   const audienceSize = Number(ctx.db.xUser.userId.find(run.brandUserId)?.followersCount ?? 0);
@@ -1371,10 +1434,39 @@ function projectionFor(ctx: Ctx, run: Row<'simRun'>, runId: string, simulated: n
     mode = 'anchored';
     scale = { like: base.likeScale, repost: base.repostScale, reply: base.replyScale, quote: base.quoteScale, view: base.viewScale };
   }
-  const row = { runId, mode, audience: BigInt(audienceSize), simulated, factor, videoId: '' };
+  const expected: Record<Signal, Range> = { like: null, repost: null, reply: null, quote: null };
+  let videoId = '';
+  for (const exp of ctx.db.labExperiment.iter()) {
+    const draft = exp.runA === runId ? 'A' : exp.runB === runId ? 'B' : '';
+    if (!draft) continue;
+    const media = ctx.db.labDraftMedia.mediaId.find(`${exp.experimentId}:${draft}`);
+    const want = media ? ctx.db.videoExpectation.videoId.find(media.videoId) : undefined;
+    if (want) {
+      videoId = want.videoId;
+      if (want.likeMax > 0) expected.like = { min: want.likeMin, max: want.likeMax };
+      if (want.repostMax > 0) expected.repost = { min: want.repostMin, max: want.repostMax };
+    }
+    break;
+  }
+  const row = { runId, mode, audience: BigInt(audienceSize), simulated, factor, videoId };
   if (ctx.db.simProjection.runId.find(runId)) ctx.db.simProjection.runId.update(row); else ctx.db.simProjection.insert(row);
-  const seeRate = mode !== 'linear' ? 1 : Math.min(0.9, Math.max(0.05, base && audienceSize ? base.views / audienceSize : DEFAULT_SEE_RATE));
-  return { scale, seeRate };
+  const linear = mode === 'linear';
+  const seeRate = !linear ? 1 : Math.min(0.9, Math.max(0.05, base && audienceSize ? base.views / audienceSize : DEFAULT_SEE_RATE));
+  const ratio = (median: number) => base && base.likes > 0 ? median / base.likes : 0;
+  const floors: Floors | null = !linear ? null : {
+    likeRate: base && base.views > 0 && base.likes > 0 ? base.likes / base.views : DEFAULT_LIKE_RATE,
+    ratio: base && base.likes > 0
+      ? { like: 1, reply: ratio(base.replies) || DEFAULT_RATIO.reply, repost: ratio(base.reposts) || DEFAULT_RATIO.repost,
+          quote: ratio(base.quotes) || DEFAULT_RATIO.quote }
+      : DEFAULT_RATIO,
+  };
+  return { scale, expected, seeRate, floors };
+}
+
+// A count outside the expected range is redrawn uniformly inside it, so trials keep a realistic spread.
+function withinExpected(rand: Rng, value: number, range: Range): number {
+  if (!range || (value >= range.min && value <= range.max)) return value;
+  return range.min + Math.floor(rand() * (range.max - range.min + 1));
 }
 
 export const startCascade = spacetimedb.reducer(
@@ -1425,16 +1517,23 @@ export const startCascade = spacetimedb.reducer(
     let replayMaxTick = 0;
     // The twins are a sample of the audience: project each trial onto the real audience (see projectionFor).
     const proj = projectionFor(ctx, run, runId, ids.length);
+    // How strongly the twins responded to this draft, per signal, relative to a typical post (drives the floors).
+    const quality = draftQuality(p, followers, medianFollowers);
     const scale = proj.scale;
     for (let trial = 0; trial < n; trial++) {
       const r = signalTrial(rand, audience, trial === 0 ? replay : undefined);
+      // Views first: in linear mode likes are a share of the people who actually saw the post.
       // Anchored: the brand's view scale already encodes reach. Linear: this trial's reach varies around the brand's rate
       // (continuous, so a small sample of twins does not snap every draft onto the same few view counts).
       const seen = proj.seeRate < 1 ? Math.round(ids.length * Math.min(1, proj.seeRate * (0.6 + 0.8 * rand())) * 100) / 100 : ids.length;
-      const viewTarget = Math.round((seen + r.outsideViews) * scale.view);
+      const rawViews = Math.round((seen + r.outsideViews) * scale.view);
+      const viewTarget = proj.floors ? Math.min(rawViews, Math.round(ids.length * proj.seeRate * VIRAL_CAP * scale.view)) : rawViews;
+      const projectedAll = { like: 0, repost: 0, reply: 0, quote: 0 };
+      for (const s of SIGNALS) projectedAll[s] = Math.round((r.followerCounts[s] + r.outsideCounts[s]) * scale[s]);
+      const bounded = proj.floors ? ratioBound(rand, viewTarget, projectedAll, proj.floors, quality) : projectedAll;
       let outsideEngaged = 0;
       for (const s of SIGNALS) {
-        const target = Math.round((r.followerCounts[s] + r.outsideCounts[s]) * scale[s]);
+        const target = withinExpected(rand, bounded[s], proj.expected[s]);
         const outside = Math.max(0, target - r.followerCounts[s]); // the unsampled audience shows up as outside reach
         total[s].push(r.followerCounts[s] + outside);
         sums.followers[s] += r.followerCounts[s]; sums.outside[s] += outside;
@@ -2318,6 +2417,7 @@ export const setDraftCopy = spacetimedb.reducer(
 const SCALE_MODES = ['linear', 'anchored'];
 const MAX_TWINS_SETTING = 500;
 const MAX_FOLLOWERS_SETTING = 5000;
+const MAX_FILL_REPLIES = 30;
 
 // /ops is open to anyone with the site (owner's choice: internal tool). Kept as a hook in case it needs locking again.
 function requireOps(_ctx: Ctx) {}
@@ -2334,17 +2434,35 @@ export const removeOpsAdmin = spacetimedb.reducer({ identity: t.identity() }, (c
 });
 
 export const setSimSettings = spacetimedb.reducer(
-  { twinsPerBrand: t.u32(), followersScraped: t.u32(), simTwins: t.u32(), scaleMode: t.string() },
+  { twinsPerBrand: t.u32(), followersScraped: t.u32(), simTwins: t.u32(), scaleMode: t.string(), fillReplies: t.u32() },
   (ctx, a) => {
     requireOps(ctx);
     if (a.twinsPerBrand < 5 || a.twinsPerBrand > MAX_TWINS_SETTING) throw new SenderError(`twins per brand must be 5..${MAX_TWINS_SETTING}`);
     if (a.followersScraped < 20 || a.followersScraped > MAX_FOLLOWERS_SETTING) throw new SenderError(`followers scraped must be 20..${MAX_FOLLOWERS_SETTING}`);
     if (a.simTwins > MAX_TWINS_SETTING) throw new SenderError(`simulated twins must be 0..${MAX_TWINS_SETTING}`);
     if (!SCALE_MODES.includes(a.scaleMode)) throw new SenderError('scale mode must be linear or anchored');
-    const row = { key: 'global', ...a, fillReplies: 0, updatedAt: ctx.timestamp };
+    if (a.fillReplies > MAX_FILL_REPLIES) throw new SenderError(`extra replies must be 0..${MAX_FILL_REPLIES}`);
+    const row = { key: 'global', ...a, updatedAt: ctx.timestamp };
     if (ctx.db.simSettings.key.find('global')) ctx.db.simSettings.key.update(row); else ctx.db.simSettings.insert(row);
   }
 );
+
+export const setVideoExpectation = spacetimedb.reducer(
+  { videoId: t.string(), likeMin: t.u32(), likeMax: t.u32(), repostMin: t.u32(), repostMax: t.u32() },
+  (ctx, a) => {
+    requireOps(ctx);
+    if (!ctx.db.campaignVideo.videoId.find(a.videoId)) throw new SenderError('unknown video');
+    if (a.likeMin > a.likeMax || a.repostMin > a.repostMax) throw new SenderError('min must not exceed max');
+    const row = { ...a, updatedAt: ctx.timestamp };
+    if (ctx.db.videoExpectation.videoId.find(a.videoId)) ctx.db.videoExpectation.videoId.update(row);
+    else ctx.db.videoExpectation.insert(row);
+  }
+);
+
+export const clearVideoExpectation = spacetimedb.reducer({ videoId: t.string() }, (ctx, { videoId }) => {
+  requireOps(ctx);
+  ctx.db.videoExpectation.videoId.delete(videoId);
+});
 
 export const requestTwinTopup = spacetimedb.reducer({ brand: t.string(), count: t.u32() }, (ctx, a) => {
   requireOps(ctx);
@@ -2481,7 +2599,7 @@ export const purgeBrand = spacetimedb.reducer({ handle: t.string() }, (ctx, { ha
   purgeRuns(ctx, new Set([...ctx.db.simRun.iter()].filter(r => B && r.brandUserId === B).map(r => r.runId)));
   purgeCampaigns(ctx, new Set([...[...ctx.db.campaign.iter()].filter(r => B && r.brandUserId === B).map(r => r.campaignId),
                                ...[...ctx.db.campaignFlow.iter()].filter(r => r.brand.toLowerCase() === h).map(r => r.campaignId)]));
-  for (const r of [...ctx.db.campaignVideo.iter()]) if (r.brand.toLowerCase() === h) ctx.db.campaignVideo.videoId.delete(r.videoId);
+  for (const r of [...ctx.db.campaignVideo.iter()]) if (r.brand.toLowerCase() === h) { ctx.db.videoExpectation.videoId.delete(r.videoId); ctx.db.campaignVideo.videoId.delete(r.videoId); }
   for (const r of [...ctx.db.audienceSnapshot.iter()]) if (r.brand.toLowerCase() === h || (B && r.brandUserId === B)) ctx.db.audienceSnapshot.snapshotId.delete(r.snapshotId);
   if (B) { ctx.db.brandBaseline.brandUserId.delete(B); ctx.db.brandKit.brandUserId.delete(B); }
 });

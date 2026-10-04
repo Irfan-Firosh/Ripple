@@ -1,3 +1,4 @@
+import { WorkspaceAccount } from './components/WorkspaceAccount';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { initialTheme } from "./App";
 import "./logs.css";
@@ -82,7 +83,7 @@ export function LogsPage() {
             {refreshing ? "Refreshing…" : error ? "Retry" : "Refresh"}
           </button>
         </div>
-      </header>
+      <WorkspaceAccount /></header>
       {error && <p className="logs-error" role="alert">{error}{logs && " Showing the last received logs."}</p>}
       {!logs && !error && <p className="logs-meta" role="status">Loading server logs…</p>}
       {logs && (

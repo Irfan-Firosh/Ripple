@@ -1,4 +1,5 @@
 import { RippleLogo } from '../components/RippleLogo';
+import { WorkspaceAccount } from '../components/WorkspaceAccount';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ArrowRight, Check, ChevronDown, ChevronUp, Moon, Sun } from 'lucide-react';
@@ -95,6 +96,7 @@ export default function OnboardingPage() {
     <div className="on-progress" role="progressbar" aria-label="Onboarding progress" aria-valuemin={0} aria-valuemax={campaignFlow ? 2 : 5} aria-valuenow={campaignFlow ? (step === 5 ? 2 : 1) : step}><span style={{ width: `${campaignFlow ? (step === 5 ? 100 : 50) : step / 5 * 100}%` }} /></div>
     <section className="on-sheet" aria-label="Brand onboarding">
       <RippleLogo className="on-logo" href={campaignFlow ? "/home" : "/"} />
+      <WorkspaceAccount className="on-account" />
       <button className="on-theme" type="button" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
       <header className="on-heading">{step < 5 && <OnboardingAvatar theme={theme} working={busy || Boolean(row && !['ready', 'failed'].includes(row.status))} />}<h1 id="on-title">{title}</h1></header>
       <AnimatePresence mode="wait"><motion.div key={step} className="on-group" initial={reduced ? false : { y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -24, opacity: 0 }} transition={{ duration: reduced ? 0 : .25 }}>

@@ -11,9 +11,5 @@ import {
 } from "spacetimedb";
 
 export default {
-  twinsPerBrand: __t.u32(),
-  followersScraped: __t.u32(),
-  simTwins: __t.u32(),
-  scaleMode: __t.string(),
-  fillReplies: __t.u32(),
+  videoId: __t.string(),
 };

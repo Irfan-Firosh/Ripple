@@ -65,5 +65,22 @@
 .flow-intelligence .research-source-list>a{padding:12px}
 .flow-intelligence .research-source-list h4{font-size:12px}
 .flow-intelligence .research-source-list p{font-size:11px;margin:8px 0;-webkit-line-clamp:2}
-@media(max-width:800px){.flow-workspace>.flow-intelligence{position:static;display:grid;grid-template-columns:1fr 1fr;gap:16px}.flow-intelligence .research-campaign-list{max-height:230px}.flow-intelligence .research-rationale,.flow-intelligence .research-sources{display:none}}
+@media(max-width:800px){.flow-workspace>.flow-intelligence{position:static;display:grid;grid-template-columns:1fr 1fr;gap:16px}.flow-intelligence .research-campaign-list{max-height:230px}}
 @media(max-width:500px){.flow-workspace>.flow-intelligence{grid-template-columns:1fr;gap:12px}.flow-intelligence .research-campaign-list{max-height:90px;flex-direction:row;overflow-x:auto}.flow-intelligence .research-campaign-list button{min-width:170px;max-width:190px}.flow-intelligence .research-log ol{max-height:100px}}
+.flow-intelligence .research-heading{padding:20px 22px}
+.flow-intelligence .research-heading h2{font-size:16px}
+.flow-intelligence .research-campaign-list{padding:0 10px;max-height:156px}
+.flow-intelligence .research-campaign-list button{border:0;border-radius:0;padding:14px 12px;font-size:13px}
+.flow-intelligence .research-campaign-list button+button{border-top:1px solid var(--line)}
+.flow-intelligence .research-campaign-list button[aria-current=true]{background:color-mix(in srgb,var(--accent) 5%,transparent);border-radius:6px}
+.flow-intelligence .research-log{padding:18px 22px}
+.flow-intelligence .research-log p{font-size:12px}
+.flow-intelligence .research-log small{font-size:10px}
+.flow-intelligence .research-source-list>a{padding:14px 0;border:0;border-radius:0}
+.flow-intelligence .research-source-list>a+a{border-top:1px solid var(--line)}
+.flow-intelligence .research-source-list h4{font-size:13px}
+.flow-intelligence .research-source-list p{font-size:12px}
+.flow-intelligence .research-source-list{gap:0}
+.flow-intelligence .research-rationale,.flow-intelligence .research-sources{padding:22px}
+.flow-intelligence .research-rationale p{font-size:13px}
+@media(max-width:500px){.flow-intelligence .research-heading{padding:16px 18px}.flow-intelligence .research-campaign-list{max-height:88px}.flow-intelligence .research-campaign-list button+button{border-top:0;border-left:1px solid var(--line)}.flow-intelligence .research-rationale,.flow-intelligence .research-sources{padding:18px}.flow-intelligence .research-log{padding:16px 18px}}

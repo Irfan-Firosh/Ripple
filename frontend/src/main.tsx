@@ -22,6 +22,7 @@ const path = location.pathname.replace(/\/$/, "");
 const params = new URLSearchParams(location.search);
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
+    <ClerkProvider afterSignOutUrl="/" signInUrl="/auth/sign-in" signUpUrl="/auth" signInForceRedirectUrl="/onboarding" signUpForceRedirectUrl="/onboarding" appearance={{ theme: shadcn }}>
     {path === "/onboarding" ? (
       <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening onboarding…</div>}><OnboardingPage /></Suspense>
     ) : path === "/test" ? (
@@ -45,8 +46,7 @@ createRoot(document.getElementById("root")!).render(
     ) : params.has("film") ? (
       <DemoFilm theme={params.get("theme") === "light" ? "light" : "dark"} />
     ) : (
-      <ClerkProvider afterSignOutUrl="/" signInUrl="/auth/sign-in" signUpUrl="/auth" signInForceRedirectUrl="/onboarding" signUpForceRedirectUrl="/onboarding" appearance={{ theme: shadcn }}>
-        {path === "/auth" || path === "/auth/sign-in" ? (
+        path === "/auth" || path === "/auth/sign-in" ? (
           <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening your account…</div>}>
             <AuthPage signIn={path === "/auth/sign-in"} />
           </Suspense>
@@ -56,8 +56,8 @@ createRoot(document.getElementById("root")!).render(
           <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening your workspace…</div>}>
             <NetworkTestPage workspace />
           </Suspense>
-        ) : <App />}
-      </ClerkProvider>
+        ) : <App />
     )}
+    </ClerkProvider>
   </React.StrictMode>,
 );

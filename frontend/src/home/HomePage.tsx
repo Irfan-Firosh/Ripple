@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Show, UserButton } from '@clerk/react';
+import { WorkspaceAccount } from '../components/WorkspaceAccount';
 import { ArrowRight, Moon, Plus, Sun } from 'lucide-react';
 import { useReducedMotion } from 'motion/react';
 import { ThinkingOrb } from 'thinking-orbs';
@@ -51,12 +51,13 @@ export default function HomePage() {
 
   const readyHandle = campaigns.find(c => c.status === 'ready')?.handle;
   // Requested Home presentation override; actual processing counts stay in homeData.
-  const displayStats = stats;
+  const displayStats = stats ? { ...stats, analyzed: stats.profiles,
+    audiences: stats.audiences.map(row => ({ ...row, analyzed: row.profiles })) } : null;
   const campaignHref = readyHandle ? `/campaign?brand=${encodeURIComponent(readyHandle)}` : '/onboarding?flow=campaign';
   const entries = [...flows.map(flow => ({ key: flow.campaign_id, handle: flow.brand, title: flow.source === 'import' ? 'Imported drafts' : 'Audience campaign', date: Number(flow.created_at), status: ({ concepts: 'Creating concepts', testing: 'In the Lab', approved: 'Ready to launch', shipped: 'Launched' })[flow.stage], href: `/campaign?${new URLSearchParams({ brand: flow.brand, id: flow.campaign_id })}` })),
     ...campaigns.map(row => ({ key: `build-${row.onboarding_id}`, handle: row.handle, title: row.campaign_name || 'Audience build', date: Number(row.created_at), status: liveStatus(row), href: campaignDestination(row) }))].sort((a, b) => b.date - a.date);
   return <main className="home-page">
-    <header className="home-header workspace-header"><RippleLogo /><RippleWorkspaceNav brand={readyHandle ?? campaigns[0]?.handle ?? 'raycast'} /><div className="home-controls"><button className="home-theme" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button><Show when="signed-in"><UserButton /></Show></div></header>
+    <header className="home-header workspace-header"><RippleLogo /><RippleWorkspaceNav brand={readyHandle ?? campaigns[0]?.handle ?? 'raycast'} /><div className="home-controls"><button className="home-theme" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button><WorkspaceAccount /></div></header>
     <div className="home-content">
       <section className="home-hero" aria-labelledby="home-title"><div className="home-cloud" aria-hidden="true" /><div className="home-hero-content"><span className="home-eyebrow">YOUR WORKSPACE</span><h1 id="home-title">A little clarity.</h1><div className="home-actions"><a className="home-new" href={campaignHref}><Plus size={15} />New campaign</a><a className="home-add" href="/onboarding?flow=campaign">Add a brand <ArrowRight size={14} /></a></div></div></section>
       {loading ? <div className="home-state" role="status"><ThinkingOrb state="breathing" size={32} theme={theme} paused={Boolean(reduced)} />Opening your workspace…</div>

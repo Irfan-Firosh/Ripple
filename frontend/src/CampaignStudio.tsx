@@ -242,7 +242,7 @@ export default function CampaignStudio() {
           {b.handle === 'spacetimedb' ? '@spacetimedb' : b.name}
         </button>)}</nav>
       <button className="lab-icon" aria-label={'Switch to ' + (theme === 'dark' ? 'light' : 'dark') + ' mode'}
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
+        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button><WorkspaceAccount />
     </header>
     <div className="campaign-main">
       <div className="campaign-toolbar">
@@ -355,3 +355,4 @@ export default function CampaignStudio() {
     </Modal>}
   </main>;
 }
+import { WorkspaceAccount } from './components/WorkspaceAccount';

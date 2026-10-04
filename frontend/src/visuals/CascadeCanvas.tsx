@@ -4,6 +4,7 @@ import type { CascadeNetwork, Vec3 } from './liveNetwork';
 import { createNodeSprite, createClusterBadge, loadPortraits } from './nodeSprites';
 import { buildPlanarLayout } from './networkLayout2D';
 import { buildClusterEdges } from './clusterEdges';
+import { percentShares } from './communityShares';
 const GOLDEN_ANGLE=2.399963;
 
 type Props={audienceOnly?:boolean;network:CascadeNetwork;view:'2d'|'3d';elapsed:number;theme:'dark'|'light';selected:number|null;focus:number|null;zoomStep:number;reset:number;onSelect:(id:number)=>void;onPrepared:(ready:boolean)=>void;replay?:{run:SimRunState;tick:number}|null};
@@ -54,7 +55,8 @@ export function CascadeCanvas(props:Props) {
   },[network]);
   useEffect(()=>{
     let cancelled=false;props.onPrepared(false);sprites.current=new Map();revision.current++;
-    badges.current=network.communities.map(c=>createClusterBadge(c.name,c.size,c.color,props.theme));
+    const shares=percentShares(network.communities.map(community=>community.size));
+    badges.current=network.communities.map((community,index)=>createClusterBadge(community.name,shares[index],community.color,props.theme));
     glows.current=network.communities.map(community=>{
       const tile=document.createElement('canvas');tile.width=128;tile.height=128;
       const ctx=tile.getContext('2d')!,gradient=ctx.createRadialGradient(64,64,0,64,64,64);

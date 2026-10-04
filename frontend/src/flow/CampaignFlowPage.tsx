@@ -1,4 +1,5 @@
 import { RippleLogo } from '../components/RippleLogo';
+import { WorkspaceAccount } from '../components/WorkspaceAccount';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, Moon, Plus, Sun } from 'lucide-react';
 import { initialTheme } from '../App';
@@ -171,8 +172,8 @@ export default function CampaignFlowPage() {
     <header className="flow-header workspace-header">
       <RippleLogo />
       <RippleWorkspaceNav brand={brand} />
-      <button className="flow-theme" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button>
+      <div className="workspace-header-controls"><button className="flow-theme" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button><WorkspaceAccount /></div>
     </header>
     <section className="flow-content">
       <section className="flow-hero" aria-labelledby="campaign-title">
@@ -191,9 +192,7 @@ export default function CampaignFlowPage() {
         {i < step ? <Check size={13} /> : <span>{i + 1}</span>}{label}</li>)}</ol>
       {error && <p className="flow-error" role="alert">{error}</p>}
       {!campaignId && (busy || waitingAudience) && <><h1>Starting your campaign…</h1><p className="flow-waiting" role="status">Reading @{brand}'s audience.</p></>}
-      {!campaignId && !busy && !waitingAudience && (mode === 'choose'
-        ? <div className="flow-start-note"><h2>Your next campaign starts here.</h2><p>Generate from your audience or bring two drafts.</p></div>
-        : <><div className="flow-section-heading"><h2>Bring your drafts.</h2><button className="flow-text-button" onClick={() => setMode('choose')}><ArrowLeft size={14} />Back</button></div><ImportStep brand={brand} posts={posts} busy={busy} onSubmit={importDrafts} /></>)}
+      {!campaignId && !busy && !waitingAudience && mode === 'import' && <><div className="flow-section-heading"><h2>Bring your drafts.</h2><button className="flow-text-button" onClick={() => setMode('choose')}><ArrowLeft size={14} />Back</button></div><ImportStep brand={brand} posts={posts} busy={busy} onSubmit={importDrafts} /></>}
       {campaignId && step === 1 && <><h1>Your two drafts.</h1>
         <DraftsStep brand={brand} brandId={brandId} campaignId={campaignId} a={copyA} b={copyB} videos={drafts} busy={busy} waiting={waiting} onTest={() => void test()} onSaved={() => setRevision(r => r + 1)} /></>}
       {campaignId && step === 2 && <><h1>{experiment?.status === 'done' ? 'Results are in.' : 'Testing on your audience.'}</h1>
