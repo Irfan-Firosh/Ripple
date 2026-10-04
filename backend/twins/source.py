@@ -5,7 +5,7 @@ from collections import defaultdict
 from .models import Account, XPost, XUser
 from .stdb import sql_str
 
-USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{1,15}$")
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_](?:[A-Za-z0-9_.-]{0,252})$")  # X handles and Bluesky domain handles
 
 
 def _brand(users: dict[str, XUser], brand_username: str) -> XUser:

@@ -41,3 +41,13 @@ def test_x_user_is_read_once():
     stdb = db()
     load_audience(stdb, "spacetimedb")
     assert sum("FROM x_user" in q for q in stdb.queries) == 1
+
+
+def test_bluesky_domain_handles_are_valid_brands():
+    stdb = FakeStdb({
+        "x_user": [user_row("did:plc:brand", "raycast.com"), user_row("did:plc:a", "alice.bsky.social")],
+        "audience_membership": [{"brand_user_id": "did:plc:brand", "follower_user_id": "did:plc:a"}],
+        "x_post": [post_row("at://a/1", "did:plc:a")], "x_post_entity": [], "x_context_annotation": [],
+    })
+    brand, accounts = load_audience(stdb, "@raycast.com")
+    assert brand.username == "raycast.com" and [a.user.username for a in accounts] == ["alice.bsky.social"]

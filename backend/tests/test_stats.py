@@ -34,10 +34,21 @@ def test_stats_basic():
 
 
 def test_stats_all_null_metrics():
-    s = compute_stats(account([post_row("a", "1", like_count=None, impression_count=None)]))
+    s = compute_stats(account([post_row("a", "1", like_count=None, impression_count=None, reply_count=None,
+                                        quote_count=None, repost_count=None)]))
     assert s.avg_likes == 0.0 and s.avg_impressions == 0.0 and s.engagement_rate == 0.0
 
 
 def test_stats_no_posts_are_all_zero():
     s = compute_stats(account([]))
     assert s.post_count == 0 and s.reply_share == 0.0 and s.engagement_rate == 0.0 and s.active_hours_utc == []
+
+
+def test_engagement_falls_back_to_interactions_per_post_over_followers_without_impressions():
+    # Bluesky has no impression counts: use average interactions per post relative to follower count.
+    acc = Account(user=XUser.model_validate(user_row("1", "alice.bsky.social", followers_count=200)),
+                  posts=[XPost.model_validate(post_row("a", "1", impression_count=None, like_count=6, reply_count=2,
+                                                       quote_count=0, repost_count=2)),
+                         XPost.model_validate(post_row("b", "1", impression_count=None, like_count=0, reply_count=0,
+                                                       quote_count=0, repost_count=0))])
+    assert compute_stats(acc).engagement_rate == 0.025  # (10 / 2 posts) / 200 followers

@@ -20,6 +20,15 @@ def _mean(values: list[int | None]) -> float:
     return round(sum(present) / len(present), 2) if present else 0.0
 
 
+def _engagement_rate(account: Account, interactions_seen: int, impressions: int) -> float:
+    if impressions:
+        return round(interactions_seen / impressions, 4)
+    # No impression counts (Bluesky): average interactions per post, relative to follower count.
+    total = sum((p.like_count or 0) + (p.reply_count or 0) + (p.quote_count or 0) + (p.repost_count or 0)
+                for p in account.posts)
+    return round(total / len(account.posts) / max(account.user.followers_count or 0, 1), 4)
+
+
 def compute_stats(account: Account) -> AccountStats:
     posts = account.posts
     n = len(posts)
@@ -39,7 +48,7 @@ def compute_stats(account: Account) -> AccountStats:
         mention_rate=round(sum(1 for p in posts if account.mentions.get(p.post_id)) / n, 3),
         avg_likes=_mean([p.like_count for p in posts]),
         avg_impressions=_mean([p.impression_count for p in posts]),
-        engagement_rate=round(interactions / impressions, 4) if impressions else 0.0,
+        engagement_rate=_engagement_rate(account, interactions, impressions),
         active_hours_utc=sorted({h for p in posts if (h := _hour_utc(p.created_at)) is not None}),
         top_mentions=[m for m, _ in mention_counts.most_common(TOP_MENTIONS)],
         x_topics=[t for t, _ in topic_counts.most_common(TOP_TOPICS)],
