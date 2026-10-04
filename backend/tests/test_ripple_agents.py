@@ -126,3 +126,15 @@ def test_bluesky_brand_is_not_onboarded():
     assert needs_onboarding("@x.com has no personas yet") and not needs_onboarding("timeout")
     assert needs_onboarding("LookupError: @linear has not been ingested yet")
     assert "X" in onboarding_reply(db, "bsky.app") and db.reducers("request_onboarding") == []
+
+
+def test_plan_tolerates_create_fields_left_empty_for_other_actions():
+    # ASI:One fills unused create fields with 0 / "" / null; that must not sink an audience or react request.
+    plan = asi1.CampaignPlan.model_validate({"action": "audience", "brand": "raycast.com", "goal": None, "offer": None,
+                                             "n": 0, "aspect_ratio": "", "sample_size": 20, "question": ""})
+    assert (plan.n, plan.aspect_ratio, plan.goal, plan.offer) == (3, "1:1", "", "")
+
+
+def test_plan_clamps_ad_count_and_keeps_valid_aspect():
+    plan = asi1.CampaignPlan.model_validate({"action": "create", "goal": "launch", "n": 9, "aspect_ratio": "9:16"})
+    assert (plan.n, plan.aspect_ratio) == (4, "9:16")
