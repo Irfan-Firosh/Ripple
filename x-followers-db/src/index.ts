@@ -367,6 +367,99 @@ const cascadeReplay = table(
   }
 );
 
+// ---------- Lab: per-signal simulation, calibration, experiments ----------
+const SignalProbInput = t.object('SignalProbInput', {
+  userId: t.string(), pLike: t.f64(), pRepost: t.f64(), pReply: t.f64(), pQuote: t.f64(),
+});
+
+const simSignalProb = table(
+  { name: 'sim_signal_prob', public: true },
+  {
+    simSignalProbId: t.string().primaryKey(), // `${runId}:${userId}`
+    runId: t.string().index('btree'),
+    userId: t.string(),
+    pLike: t.f64(), pRepost: t.f64(), pReply: t.f64(), pQuote: t.f64(),
+  }
+);
+
+const simSignal = table(
+  { name: 'sim_signal', public: true },
+  {
+    simSignalId: t.string().primaryKey(), // `${runId}:${signal}`
+    runId: t.string().index('btree'),
+    signal: t.string(), // like | repost | reply | quote
+    p10: t.u32(), p50: t.u32(), p90: t.u32(),
+    mean: t.f64(),
+  }
+);
+
+const simNodeSignal = table(
+  { name: 'sim_node_signal', public: true },
+  {
+    simNodeSignalId: t.string().primaryKey(), // `${runId}:${userId}`
+    runId: t.string().index('btree'),
+    userId: t.string(),
+    likeShare: t.f64(), repostShare: t.f64(), replyShare: t.f64(), quoteShare: t.f64(),
+  }
+);
+
+const simEvent = table(
+  { name: 'sim_event', public: true },
+  {
+    simEventId: t.string().primaryKey(), // `${runId}:${userId}:${signal}` — trial 0 only, replayed live
+    runId: t.string().index('btree'),
+    userId: t.string(),
+    signal: t.string(),
+    tick: t.u32(),
+  }
+);
+
+const simCalibration = table(
+  { name: 'sim_calibration', public: true },
+  {
+    scope: t.string().primaryKey(), // brand user id, or 'default'
+    feedReach: t.f64(), shareReach: t.f64(),
+    likeScale: t.f64(), repostScale: t.f64(), replyScale: t.f64(), quoteScale: t.f64(),
+    source: t.string(), // default | anchor | backtest | test
+    note: t.string(),
+    updatedAt: t.timestamp(),
+  }
+);
+
+const labExperiment = table(
+  { name: 'lab_experiment', public: true },
+  {
+    experimentId: t.u64().primaryKey().autoInc(),
+    brandUserId: t.string().index('btree'),
+    brand: t.string(),
+    title: t.string(),
+    draftA: t.string(),
+    draftB: t.string(),
+    status: t.string().index('btree'), // queued | running | done | failed
+    runA: t.string(),
+    runB: t.string(),
+    winner: t.string(), // '' | A | B | tie
+    lift: t.f64(),
+    error: str(),
+    requestedBy: t.identity(),
+    createdAt: t.timestamp(),
+  }
+);
+
+const backtestResult = table(
+  { name: 'backtest_result', public: true },
+  {
+    backtestResultId: t.string().primaryKey(), // `${scope}:${metric}`
+    scope: t.string(),
+    metric: t.string(),
+    value: t.f64(),
+    baseline: t.f64(),
+    n: t.u32(),
+    note: t.string(),
+    updatedAt: t.timestamp(),
+  }
+);
+
 const spacetimedb = schema({
   admin,
   xUser,
@@ -389,6 +482,13 @@ const spacetimedb = schema({
   simProb,
   simNode,
   cascadeReplay,
+  simSignalProb,
+  simSignal,
+  simNodeSignal,
+  simEvent,
+  simCalibration,
+  labExperiment,
+  backtestResult,
 });
 export default spacetimedb;
 
@@ -716,31 +816,52 @@ const MAX_DRAFT_SIM = 2000;
 
 type Rng = () => number;
 
-// One independent-cascade trial. `record` captures the tick at which each person saw / engaged.
-function cascadeTrial(rand: Rng, ids: string[], p: Map<string, number>, adj: Map<string, string[]>,
-                      record?: { seen: Map<string, number>; engaged: Map<string, number> }) {
+const SIGNALS = ['like', 'repost', 'reply', 'quote'] as const;
+type Signal = (typeof SIGNALS)[number];
+type SignalP = Record<Signal, number>;
+type Calib = { feedReach: number; shareReach: number; scale: SignalP };
+type TrialEvent = { userId: string; signal: Signal; tick: number };
+
+function calibrationFor(ctx: Ctx, brandUserId: string): Calib {
+  const row = ctx.db.simCalibration.scope.find(brandUserId) ?? ctx.db.simCalibration.scope.find('default');
+  if (!row) return { feedReach: FEED_REACH, shareReach: SHARE_REACH, scale: { like: 1, repost: 1, reply: 1, quote: 1 } };
+  return { feedReach: row.feedReach, shareReach: row.shareReach,
+           scale: { like: row.likeScale, repost: row.repostScale, reply: row.replyScale, quote: row.quoteScale } };
+}
+
+// One independent-cascade trial. Seeing the post = a chance to act on each signal independently;
+// only reposts and quotes put the post in front of the actor's neighbours (Bluesky: likes don't spread).
+function signalTrial(rand: Rng, ids: string[], p: Map<string, SignalP>, adj: Map<string, string[]>, cal: Calib,
+                     record?: { seen: Map<string, number>; events: TrialEvent[] }) {
   const seen = new Set<string>();
-  const engaged = new Set<string>();
-  let frontier: string[] = [];
-  for (const id of ids) {
-    if (rand() >= FEED_REACH) continue;
-    seen.add(id); record?.seen.set(id, 0);
-    if (rand() < (p.get(id) ?? 0)) { engaged.add(id); record?.engaged.set(id, 0); frontier.push(id); }
-  }
+  const acted = new Map<string, Set<Signal>>();
+  const counts: SignalP = { like: 0, repost: 0, reply: 0, quote: 0 };
   let tick = 0;
+  const expose = (id: string, chance: number, next: string[]) => {
+    if (seen.has(id) || rand() >= chance) return;
+    seen.add(id); record?.seen.set(id, tick);
+    const pr = p.get(id);
+    if (!pr) return;
+    let spreads = false;
+    for (const s of SIGNALS) {
+      if (rand() >= pr[s]) continue;
+      counts[s] += 1;
+      const mine = acted.get(id) ?? new Set<Signal>();
+      mine.add(s); acted.set(id, mine);
+      record?.events.push({ userId: id, signal: s, tick });
+      if (s === 'repost' || s === 'quote') spreads = true;
+    }
+    if (spreads) next.push(id);
+  };
+  let frontier: string[] = [];
+  for (const id of ids) expose(id, cal.feedReach, frontier);
   while (frontier.length) {
     tick += 1;
     const next: string[] = [];
-    for (const u of frontier) {
-      for (const v of adj.get(u) ?? []) {
-        if (seen.has(v) || rand() >= SHARE_REACH) continue;
-        seen.add(v); record?.seen.set(v, tick);
-        if (rand() < (p.get(v) ?? 0)) { engaged.add(v); record?.engaged.set(v, tick); next.push(v); }
-      }
-    }
+    for (const u of frontier) for (const v of adj.get(u) ?? []) expose(v, cal.shareReach, next);
     frontier = next;
   }
-  return { seen, engaged, lastTick: tick };
+  return { seen, acted, counts, lastTick: tick };
 }
 
 function percentile(sorted: number[], q: number): number {
@@ -811,34 +932,69 @@ export const startCascade = spacetimedb.reducer(
     const n = Math.max(1, Math.min(MAX_TRIALS, trials));
     const ids = probs.map(pr => pr.userId);
     const inRun = new Set(ids);
-    const p = new Map(probs.map(pr => [pr.userId, pr.pEngage]));
     const adj = new Map<string, string[]>();
+    const link = (a: string, b: string) => { const l = adj.get(a); if (l) l.push(b); else adj.set(a, [b]); };
     for (const e of ctx.db.audienceEdge.brandUserId.filter(run.brandUserId)) {
       if (!inRun.has(e.a) || !inRun.has(e.b)) continue;
-      adj.set(e.a, [...(adj.get(e.a) ?? []), e.b]);
-      adj.set(e.b, [...(adj.get(e.b) ?? []), e.a]);
+      link(e.a, e.b); link(e.b, e.a);
+    }
+    const cal = calibrationFor(ctx, run.brandUserId);
+    // Per-signal probabilities when the policy sent them; otherwise the legacy single p_engage spreads like a repost.
+    const p = new Map<string, SignalP>();
+    for (const pr of probs) {
+      const sp = ctx.db.simSignalProb.simSignalProbId.find(`${runId}:${pr.userId}`);
+      const raw: SignalP = sp ? { like: sp.pLike, repost: sp.pRepost, reply: sp.pReply, quote: sp.pQuote }
+                              : { like: 0, repost: pr.pEngage, reply: 0, quote: 0 };
+      p.set(pr.userId, sp ? {
+        like: Math.min(1, raw.like * cal.scale.like), repost: Math.min(1, raw.repost * cal.scale.repost),
+        reply: Math.min(1, raw.reply * cal.scale.reply), quote: Math.min(1, raw.quote * cal.scale.quote),
+      } : raw);
     }
     const rand: Rng = () => ctx.random();
     const engagedCount = new Map<string, number>(), seenCount = new Map<string, number>();
+    const signalCount = new Map<string, SignalP>();
     const reach: number[] = [], seenTotals: number[] = [];
-    const replay = { seen: new Map<string, number>(), engaged: new Map<string, number>() };
+    const perSignal: Record<Signal, number[]> = { like: [], repost: [], reply: [], quote: [] };
+    const replay = { seen: new Map<string, number>(), events: [] as TrialEvent[] };
     let replayMaxTick = 0;
     for (let trial = 0; trial < n; trial++) {
-      const record = trial === 0 ? replay : undefined; // trial 0 is the one replayed live
-      const r = cascadeTrial(rand, ids, p, adj, record);
-      reach.push(r.engaged.size); seenTotals.push(r.seen.size);
-      for (const id of r.engaged) engagedCount.set(id, (engagedCount.get(id) ?? 0) + 1);
+      const r = signalTrial(rand, ids, p, adj, cal, trial === 0 ? replay : undefined);
+      reach.push(r.acted.size); seenTotals.push(r.seen.size);
+      for (const s of SIGNALS) perSignal[s].push(r.counts[s]);
       for (const id of r.seen) seenCount.set(id, (seenCount.get(id) ?? 0) + 1);
+      for (const [id, acts] of r.acted) {
+        engagedCount.set(id, (engagedCount.get(id) ?? 0) + 1);
+        const c = signalCount.get(id) ?? { like: 0, repost: 0, reply: 0, quote: 0 };
+        for (const s of acts) c[s] += 1;
+        signalCount.set(id, c);
+      }
       if (trial === 0) replayMaxTick = r.lastTick;
     }
     reach.sort((a, b) => a - b); seenTotals.sort((a, b) => a - b);
+    const firstAct = new Map<string, number>();
+    for (const e of replay.events) if (!firstAct.has(e.userId)) firstAct.set(e.userId, e.tick);
     for (const id of ids) {
+      const c = signalCount.get(id) ?? { like: 0, repost: 0, reply: 0, quote: 0 };
       ctx.db.simNode.insert({
         simNodeId: `${runId}:${id}`, runId, userId: id,
-        engagedShare: (engagedCount.get(id) ?? 0) / n,
-        seenShare: (seenCount.get(id) ?? 0) / n,
-        replaySeenTick: replay.seen.get(id), replayEngagedTick: replay.engaged.get(id),
+        engagedShare: (engagedCount.get(id) ?? 0) / n, seenShare: (seenCount.get(id) ?? 0) / n,
+        replaySeenTick: replay.seen.get(id), replayEngagedTick: firstAct.get(id),
       } as Row<'simNode'>);
+      ctx.db.simNodeSignal.insert({
+        simNodeSignalId: `${runId}:${id}`, runId, userId: id,
+        likeShare: c.like / n, repostShare: c.repost / n, replyShare: c.reply / n, quoteShare: c.quote / n,
+      });
+    }
+    for (const s of SIGNALS) {
+      const xs = perSignal[s].sort((a, b) => a - b);
+      ctx.db.simSignal.insert({
+        simSignalId: `${runId}:${s}`, runId, signal: s,
+        p10: percentile(xs, 0.1), p50: percentile(xs, 0.5), p90: percentile(xs, 0.9),
+        mean: xs.reduce((a, b) => a + b, 0) / n,
+      });
+    }
+    for (const e of replay.events) {
+      ctx.db.simEvent.insert({ simEventId: `${runId}:${e.userId}:${e.signal}`, runId, userId: e.userId, signal: e.signal, tick: e.tick });
     }
     ctx.db.simRun.runId.update({
       ...run, status: 'replaying', trials: n,
@@ -871,5 +1027,119 @@ export const failSimRun = spacetimedb.reducer(
     const run = ctx.db.simRun.runId.find(runId);
     if (!run) throw new SenderError(`unknown sim run ${runId}`);
     ctx.db.simRun.runId.update({ ...run, status: 'failed', error: error.slice(0, 300), completedAt: ctx.timestamp });
+  }
+);
+
+// ---------- Lab reducers ----------
+const MAX_LAB_DRAFT = 1000;
+const MAX_LAB_TITLE = 80;
+const MAX_OPEN_LABS_PER_SENDER = 2;
+const MAX_SCALE = 10;
+
+export const setSimSignalProbs = spacetimedb.reducer(
+  { runId: t.string(), probs: t.array(SignalProbInput) },
+  (ctx, { runId, probs }) => {
+    requireAdmin(ctx);
+    const run = ctx.db.simRun.runId.find(runId);
+    if (!run) throw new SenderError(`unknown sim run ${runId}`);
+    if (run.status !== 'scoring') throw new SenderError(`sim run ${runId} is ${run.status}`);
+    for (const pr of probs) {
+      for (const v of [pr.pLike, pr.pRepost, pr.pReply, pr.pQuote]) {
+        if (!(v >= 0 && v <= 1)) throw new SenderError(`signal probabilities must be 0..1 for ${pr.userId}`);
+      }
+      const row = { simSignalProbId: `${runId}:${pr.userId}`, runId, userId: pr.userId,
+                    pLike: pr.pLike, pRepost: pr.pRepost, pReply: pr.pReply, pQuote: pr.pQuote };
+      if (ctx.db.simSignalProb.simSignalProbId.find(row.simSignalProbId)) ctx.db.simSignalProb.simSignalProbId.update(row);
+      else ctx.db.simSignalProb.insert(row);
+    }
+  }
+);
+
+export const setSimCalibration = spacetimedb.reducer(
+  { scope: t.string(), feedReach: t.f64(), shareReach: t.f64(), likeScale: t.f64(), repostScale: t.f64(),
+    replyScale: t.f64(), quoteScale: t.f64(), source: t.string(), note: t.string() },
+  (ctx, a) => {
+    requireAdmin(ctx);
+    for (const v of [a.feedReach, a.shareReach]) if (!(v > 0 && v <= 1)) throw new SenderError('reach must be in (0, 1]');
+    for (const v of [a.likeScale, a.repostScale, a.replyScale, a.quoteScale]) {
+      if (!(v >= 0 && v <= MAX_SCALE)) throw new SenderError(`scales must be in [0, ${MAX_SCALE}]`);
+    }
+    const row = { ...a, note: a.note.slice(0, 300), updatedAt: ctx.timestamp };
+    if (ctx.db.simCalibration.scope.find(a.scope)) ctx.db.simCalibration.scope.update(row);
+    else ctx.db.simCalibration.insert(row);
+  }
+);
+
+export const requestLabExperiment = spacetimedb.reducer(
+  { brand: t.string(), title: t.string(), draftA: t.string(), draftB: t.string() },
+  (ctx, { brand, title, draftA, draftB }) => {
+    const handle = brand.trim().replace(/^@/, '').toLowerCase();
+    const brandUser = [...ctx.db.xUser.username.filter(handle)][0]
+      ?? [...ctx.db.xUser.iter()].find(u => u.username.toLowerCase() === handle);
+    if (!brandUser) throw new SenderError(`unknown brand @${handle}`);
+    if (![...ctx.db.twinAudience.iter()].some(l => l.brandUserId === brandUser.userId)) {
+      throw new SenderError(`@${handle} has no twins yet`);
+    }
+    for (const d of [draftA, draftB]) {
+      if (!d.trim() || d.length > MAX_LAB_DRAFT) throw new SenderError(`drafts must be 1..${MAX_LAB_DRAFT} characters`);
+    }
+    if (title.length > MAX_LAB_TITLE) throw new SenderError(`title must be at most ${MAX_LAB_TITLE} characters`);
+    const open = [...ctx.db.labExperiment.status.filter('queued'), ...ctx.db.labExperiment.status.filter('running')];
+    if (open.filter(e => e.requestedBy.equals(ctx.sender)).length >= MAX_OPEN_LABS_PER_SENDER) {
+      throw new SenderError(`at most ${MAX_OPEN_LABS_PER_SENDER} experiments can run at once`);
+    }
+    ctx.db.labExperiment.insert({
+      experimentId: 0n, brandUserId: brandUser.userId, brand: brandUser.username,
+      title: (title.trim() || draftA.trim().slice(0, 60)), draftA, draftB, status: 'queued',
+      runA: '', runB: '', winner: '', lift: 0, error: undefined, requestedBy: ctx.sender, createdAt: ctx.timestamp,
+    } as Row<'labExperiment'>);
+  }
+);
+
+function labRow(ctx: Ctx, experimentId: bigint) {
+  const row = ctx.db.labExperiment.experimentId.find(experimentId);
+  if (!row) throw new SenderError(`unknown experiment ${experimentId}`);
+  return row;
+}
+
+export const claimLabExperiment = spacetimedb.reducer({ experimentId: t.u64() }, (ctx, { experimentId }) => {
+  requireAdmin(ctx);
+  const row = labRow(ctx, experimentId);
+  if (row.status !== 'queued') throw new SenderError(`experiment ${experimentId} already claimed`);
+  ctx.db.labExperiment.experimentId.update({ ...row, status: 'running' });
+});
+
+export const attachLabRuns = spacetimedb.reducer(
+  { experimentId: t.u64(), runA: t.string(), runB: t.string() },
+  (ctx, { experimentId, runA, runB }) => {
+    requireAdmin(ctx);
+    ctx.db.labExperiment.experimentId.update({ ...labRow(ctx, experimentId), runA, runB });
+  }
+);
+
+export const finishLabExperiment = spacetimedb.reducer(
+  { experimentId: t.u64(), winner: t.string(), lift: t.f64() },
+  (ctx, { experimentId, winner, lift }) => {
+    requireAdmin(ctx);
+    if (!['A', 'B', 'tie'].includes(winner)) throw new SenderError('winner must be A, B or tie');
+    ctx.db.labExperiment.experimentId.update({ ...labRow(ctx, experimentId), status: 'done', winner, lift });
+  }
+);
+
+export const failLabExperiment = spacetimedb.reducer(
+  { experimentId: t.u64(), error: t.string() },
+  (ctx, { experimentId, error }) => {
+    requireAdmin(ctx);
+    ctx.db.labExperiment.experimentId.update({ ...labRow(ctx, experimentId), status: 'failed', error: error.slice(0, 300) });
+  }
+);
+
+export const setBacktestResult = spacetimedb.reducer(
+  { scope: t.string(), metric: t.string(), value: t.f64(), baseline: t.f64(), n: t.u32(), note: t.string() },
+  (ctx, a) => {
+    requireAdmin(ctx);
+    const row = { backtestResultId: `${a.scope}:${a.metric}`, ...a, note: a.note.slice(0, 300), updatedAt: ctx.timestamp };
+    if (ctx.db.backtestResult.backtestResultId.find(row.backtestResultId)) ctx.db.backtestResult.backtestResultId.update(row);
+    else ctx.db.backtestResult.insert(row);
   }
 );

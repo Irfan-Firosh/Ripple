@@ -27,6 +27,12 @@ Live database: `ripple-mhacks` on maincloud.
 | `sim_run` | `run_id` | one simulated draft: status, reach `reach_p_10`/`reach_p_50`/`reach_p_90`, live replay tick |
 | `sim_prob` | `run_id:user_id` | each twin's chance of engaging with the draft (Claude-scored) |
 | `sim_node` | `run_id:user_id` | per-person engaged/seen share across trials + replay ticks for the live animation |
+| `sim_signal` | `run_id:signal` | per-signal (like/repost/reply/quote) `p_10`/`p_50`/`p_90` + mean across trials |
+| `sim_node_signal` | `run_id:user_id` | each person's per-signal share across trials (niche views sum these) |
+| `sim_event` | `run_id:user_id:signal` | the replayed trial's actions with their tick (the Lab's live feed) |
+| `sim_calibration` | `scope` | feed/share reach + per-signal scales (`default` or a brand user id); source = anchor/backtest |
+| `lab_experiment` | `experiment_id` | A/B draft experiments requested from the browser; worker fills runs, winner, lift |
+| `backtest_result` | `scope:metric` | headline backtest metrics shown on the Lab card |
 
 All upsert reducers are idempotent. Tables are publicly readable; only the publishing identity can write (add more with `add_admin`).
 
