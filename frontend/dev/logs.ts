@@ -6,6 +6,15 @@ import type { Plugin } from 'vite';
 
 const exec = promisify(execFile);
 const directory = fileURLToPath(new URL('../../data/logs/', import.meta.url));
+// Background workers started from the repo write here (lab / onboarding / video workers).
+const workerDirectory = fileURLToPath(new URL('../../.superpowers/logs/', import.meta.url));
+const WORKER_LOGS: [string, string][] = [
+  ['Lab worker', 'labworker.log'],
+  ['Onboarding worker', 'onboarding-worker.log'],
+  ['Video worker', 'video-worker.log'],
+  ['Video worker 2', 'video-worker-2.log'],
+  ['Tweet writer', 'copy-worker.log'],
+];
 const redact = (text: string) => text
   .replace(/\u001b\[[0-9;]*m/g, '')
   .replace(/(Bearer\s+)[^\s"']+/gi, '$1[redacted]')
@@ -36,6 +45,10 @@ export function logsPlugin(env: Record<string, string>): Plugin {
         try { return { name: 'Creative worker', lines: lines(await readFile(`${directory}/creative-${name}.log`, 'utf8')) }; }
         catch { return { name: 'Creative worker', lines: [], error: 'No worker log yet. Start the creative worker to capture live output.' }; }
       })(),
+      ...WORKER_LOGS.map(async ([label, file]): Promise<Source> => {
+        try { return { name: label, lines: lines(await readFile(`${workerDirectory}/${file}`, 'utf8')) }; }
+        catch { return { name: label, lines: [], error: `No ${label.toLowerCase()} log yet. Start it to capture live output.` }; }
+      }),
     ]);
     let worker: Snapshot['worker'] = { state: 'offline' };
     try {

@@ -11,7 +11,7 @@ from pathlib import Path
 from twins.stdb import StdbError, opt, sql_str
 
 from .brand_kits import load_brand_kit
-from .brief import sanitize_brief, synthesize_brief
+from .brief import brand_context, sanitize_brief, synthesize_brief
 from .config import IMAGE_QUALITY, MAX_IMAGE_WORKERS
 from .grok import GENERATED_DIR, GrokError
 from .models import CreativeBrief, IMAGE_MODEL, TEXT_MODEL
@@ -24,6 +24,8 @@ VARIANT_FIELDS = ("job_id", "variant_id", "campaign_id", "brief_id", "parent_var
                   "operation", "instruction", "image_prompt", "headline", "cta", "aspect_ratio", "model", "quality",
                   "status", "image_url", "xai_file_id", "cost_usd_ticks", "error")
 OPTION_FIELDS = {"parent_variant_id", "instruction", "image_url", "xai_file_id", "error"}
+
+WORKER_VERSION = 2  # the database refuses claims from older workers (claim_creative_job)
 
 
 @dataclass
@@ -163,7 +165,9 @@ def process_job(stdb, client, job):
         if any(b["segment"] == segment.slug for b in existing_briefs):
             return 0, []
         LOG.info("Job %s: requesting Grok brief for %s (%s personas)", job["job_id"], segment.slug, segment.twin_count)
-        brief = synthesize_brief(client, segment, kit, goal=campaign["goal"], offer=campaign.get("offer"))
+        context = brand_context(stdb, campaign["brand_user_id"], kit)
+        LOG.info("Job %s: grounding the brief in %s recent items", job["job_id"], len((context or {}).get("news", [])) + len((context or {}).get("best_posts", [])))
+        brief = synthesize_brief(client, segment, kit, goal=campaign["goal"], offer=campaign.get("offer"), context=context)
         _publish_brief(stdb, job, campaign, segment, brief, 1)
         LOG.info("Job %s: brief published", job["job_id"])
         return 0, []
@@ -267,7 +271,7 @@ def process_pending(stdb, client, *, campaign_id=None, reset_stale=False):
         if campaign_id and job["campaign_id"] != campaign_id:
             continue
         try:
-            stdb.call("claim_creative_job", job["job_id"])
+            stdb.call("claim_creative_job", job["job_id"], WORKER_VERSION)
         except StdbError:
             continue  # atomic claim lost to another worker; never process it
         stats.claimed += 1
@@ -304,16 +308,21 @@ def run_worker(stdb, client, *, once=False, poll_seconds=2.0, max_loops=None, ca
         raise ValueError("poll interval cannot be negative")
     total = WorkerStats()
     stdb.call("reset_stale_creative_jobs")
-    loops = 0
-    while True:
+    from twins.ops_pause import PauseWatch, guarded, nap
+    watch = PauseWatch(stdb) if once or max_loops is not None else PauseWatch(stdb).start()
+
+    def step() -> None:
         stats = process_pending(stdb, client, campaign_id=campaign_id)
         for key in ("claimed", "done", "failed", "cost_usd_ticks"):
             setattr(total, key, getattr(total, key) + getattr(stats, key))
         total.errors.extend(stats.errors)
+    loops = 0
+    while True:
+        guarded(watch, step)
         loops += 1
         if once or (max_loops is not None and loops >= max_loops):
             return total
-        time.sleep(poll_seconds)
+        nap(watch, time.sleep, poll_seconds)
 
 
 answer_pending = process_pending

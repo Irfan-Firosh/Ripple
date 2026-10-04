@@ -1,0 +1,42 @@
+- main [ref=f3e4]:
+  - generic [ref=f3e5]:
+    - link "Ripple home" [ref=f3e6] [cursor=pointer]:
+      - /url: /home
+      - generic [ref=f3e9]: ripple
+    - navigation "Workspace navigation" [ref=f3e11]:
+      - link "Home" [ref=f3e12] [cursor=pointer]:
+        - /url: /home
+      - link "Audience" [ref=f3e13] [cursor=pointer]:
+        - /url: /dashboard?brand=raycast
+      - link "Campaign" [ref=f3e14] [cursor=pointer]:
+        - /url: /campaign?brand=raycast
+      - link "Lab" [ref=f3e15] [cursor=pointer]:
+        - /url: /lab?brand=raycast
+    - button "Switch to light mode" [ref=f3e16] [cursor=pointer]
+  - generic [ref=f3e23]:
+    - generic [ref=f3e24]: "@RAYCAST · CAMPAIGN"
+    - list [ref=f3e25]:
+      - listitem [ref=f3e26]: Audience
+      - listitem [ref=f3e29]:
+        - generic [ref=f3e30]: "2"
+        - text: Concepts
+      - listitem [ref=f3e31]:
+        - generic [ref=f3e32]: "3"
+        - text: Test
+      - listitem [ref=f3e33]:
+        - generic [ref=f3e34]: "4"
+        - text: Launch
+    - heading "Pick two to test." [level=1] [ref=f3e49]
+    - generic [ref=f3e50]:
+      - generic [ref=f3e51]:
+        - button "A Raycast v2 is out of beta. Same shortcut, new everything." [ref=f3e52] [cursor=pointer]:
+          - generic [ref=f3e53]: A
+          - paragraph [ref=f3e54]: Raycast v2 is out of beta. Same shortcut, new everything.
+        - button "B Stop digging through folders. Raycast v2 finds files, runs AI and types what you say, all from one shortcut. Out of beta today." [ref=f3e55] [cursor=pointer]:
+          - generic [ref=f3e56]: B
+          - paragraph [ref=f3e57]: Stop digging through folders. Raycast v2 finds files, runs AI and types what you say, all from one shortcut. Out of beta today.
+      - generic [ref=f3e58]:
+        - generic [ref=f3e59]: VIDEO · 16:9
+        - status [ref=f3e60]:
+          - generic [ref=f3e61]: Researching the brand
+        - button "Test A vs B in the Lab" [ref=f3e63] [cursor=pointer]

@@ -1,0 +1,31 @@
+- main [ref=f3e66]:
+  - generic [ref=f3e67]:
+    - link "Ripple home" [ref=f3e68] [cursor=pointer]:
+      - /url: /home
+      - generic [ref=f3e71]: ripple
+    - navigation "Workspace navigation" [ref=f3e73]:
+      - link "Home" [ref=f3e74] [cursor=pointer]:
+        - /url: /home
+      - link "Audience" [ref=f3e75] [cursor=pointer]:
+        - /url: /dashboard?brand=raycast
+      - link "Campaign" [ref=f3e76] [cursor=pointer]:
+        - /url: /campaign?brand=raycast
+      - link "Lab" [ref=f3e77] [cursor=pointer]:
+        - /url: /lab?brand=raycast
+    - button "Switch to light mode" [ref=f3e78] [cursor=pointer]
+  - generic [ref=f3e85]:
+    - generic [ref=f3e86]: "@RAYCAST · CAMPAIGN"
+    - list [ref=f3e87]:
+      - listitem [ref=f3e88]: Audience
+      - listitem [ref=f3e91]: Concepts
+      - listitem [ref=f3e94]:
+        - generic [ref=f3e95]: "3"
+        - text: Test
+      - listitem [ref=f3e96]:
+        - generic [ref=f3e97]: "4"
+        - text: Launch
+    - heading "Testing on your audience." [level=1] [ref=f3e98]
+    - generic [ref=f3e99]:
+      - status [ref=f3e100]: Every follower twin is seeing both drafts…
+      - link "Watch it play out in the Lab" [ref=f3e101] [cursor=pointer]:
+        - /url: /lab?brand=raycast&exp=11

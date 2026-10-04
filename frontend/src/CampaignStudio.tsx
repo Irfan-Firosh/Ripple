@@ -1,6 +1,7 @@
+import { RippleLogo } from './components/RippleLogo';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowRight, Check, Image, LoaderCircle, Moon, MoreHorizontal, Pencil, Plus, RotateCcw, Sun, X } from 'lucide-react';
-import { RippleMark, initialTheme } from './App';
+import { initialTheme } from './App';
 import { RippleWorkspaceNav } from './components/ui/floating-dock';
 import { Loader } from './components/ui/loader';
 import { useCreative } from './creative/useCreative';
@@ -254,8 +255,8 @@ export default function CampaignStudio() {
   });
 
   return <main className="lab-page campaign-page">
-    <header className="lab-header">
-      <a className="brand" href="/" aria-label="Ripple home"><RippleMark size={26} /><span>Ripple</span></a>
+    <header className="lab-header workspace-header">
+      <RippleLogo />
       <span className="lab-crumb">Campaigns</span>
       <RippleWorkspaceNav brand={brand.handle} />
       <nav className="lab-brands" aria-label="Audience">{[...brands].reverse().map(b =>

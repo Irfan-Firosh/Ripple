@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import type { LabExperimentSummary } from './labData';
 
@@ -6,13 +6,15 @@ interface LabDockProps {
   experiments: LabExperimentSummary[];
   activeId: string | null;
   onSelect: (id: string) => void;
-  onNew: () => void;
+  onCampaigns: () => void;
+  campaignAction: 'Select campaign' | 'Create new campaign';
+  loadingCampaigns: boolean;
 }
 
 const BADGE = { A: 'A', B: 'B', tie: '=', '': '' } as const;
 
 // Bottom dock of experiments (newest first). Arrow keys move between tiles; Enter opens one.
-export function LabDock({ experiments, activeId, onSelect, onNew }: LabDockProps) {
+export function LabDock({ experiments, activeId, onSelect, onCampaigns, campaignAction, loadingCampaigns }: LabDockProps) {
   const nav = useRef<HTMLElement>(null);
   useEffect(() => {
     nav.current?.querySelector<HTMLElement>('[aria-current="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
@@ -25,7 +27,7 @@ export function LabDock({ experiments, activeId, onSelect, onNew }: LabDockProps
     e.preventDefault();
   };
   return <nav ref={nav} className="lab-dock" aria-label="Experiments" onKeyDown={move}>
-    <button className="lab-dock-new" aria-label="New experiment" onClick={onNew}><Plus size={16} /> New</button>
+    <button className="lab-dock-new" aria-label={campaignAction} aria-haspopup={campaignAction === 'Select campaign' ? 'dialog' : undefined} disabled={loadingCampaigns} onClick={onCampaigns}>{campaignAction === 'Select campaign' ? <ChevronDown size={15} /> : <Plus size={15} />}{campaignAction}</button>
     {experiments.map(x => <button key={x.id} className={`lab-dock-tile lab-dock-${x.status}`} aria-current={x.id === activeId ? 'true' : undefined}
       title={`${x.title} · ${new Date(x.createdAt / 1000).toLocaleString()}`} onClick={() => onSelect(x.id)}>
       <i className="lab-dock-dot" aria-hidden="true" />

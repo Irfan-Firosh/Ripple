@@ -208,7 +208,7 @@ export function App() {
     document.documentElement.dataset.theme = theme;
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", theme === "dark" ? "#091322" : "#f8f7f3");
+      ?.setAttribute("content", theme === "dark" ? "#080808" : "#f8f7f3");
     try {
       localStorage.setItem("ripple-theme", theme);
     } catch {
@@ -273,7 +273,7 @@ export function App() {
             <a className="nav-cta" href="/auth">Get started</a>
           </Show>
           <Show when="signed-in">
-            <a className="nav-cta" href="/dashboard">Open workspace</a>
+            <a className="nav-cta" href="/home">Open workspace</a>
             <UserButton />
           </Show>
           <button
@@ -301,7 +301,7 @@ export function App() {
             <span className="headline-second-line">Before you post.</span>
           </h1>
           <p>
-            Test your next idea on a digital twin of your audience.
+            Analyze your audience before your next post.
             <br className="desktop-break" /> Compare drafts. Watch them spread.
             Find your way through.
           </p>
@@ -352,7 +352,7 @@ export function App() {
                 <small>YOUR AUDIENCE, CONNECTED</small>
               </div>
               <span className="feature-number">01 / MAP</span>
-              <h3>A twin of your audience.</h3>
+              <h3>Analyzing your audience.</h3>
               <p>
                 Start with a Bluesky handle. Build a picture of the communities
                 and connections around you, using public behavior.

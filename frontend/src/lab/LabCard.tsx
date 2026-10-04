@@ -38,10 +38,12 @@ export function LabCard({ experiment, niches, headline, onCompose }: LabCardProp
   const a = values(runA, members), b = values(runB, members);
   const maximum = Math.max(1, ...SIGNALS.flatMap(s => [a?.[s] ?? 0, b?.[s] ?? 0]));
   const people = Math.max(0, ...runs.map(r => r.people));
+  const projection = runs.find(r => r.projection?.mode === 'linear')?.projection;
+  const projected = projection ? ` · projected to ${projection.audience.toLocaleString()} followers` : '';
   const scoring = runs.some(r => r.status === 'scoring') || (experiment.status === 'running' && runs.length < 2);
   const status = experiment.status === 'failed' ? 'Could not complete this experiment'
-    : experiment.status === 'queued' ? 'queued…' : scoring ? `scoring ${people} twins with Claude…`
-    : replayProgress !== null ? `replaying · ${people} twins` : experiment.status === 'done' ? `done · ${people} twins` : `simulating · ${people} twins`;
+    : experiment.status === 'queued' ? 'queued…' : scoring ? `Analyzing your audience…`
+    : replayProgress !== null ? `replaying · ${people} people` : experiment.status === 'done' ? `done · ${people} people simulated${projected}` : `simulating · ${people} people`;
   const progress = replayProgress ?? (experiment.status === 'done' ? 1 : Math.min(1, runs.reduce((sum, r) => sum + r.replayTick, 0) / Math.max(1, runs.reduce((sum, r) => sum + r.replayMaxTick, 0))));
   const range = (signal: (typeof SIGNALS)[number]) => {
     const ar = experiment.a?.signals?.[signal], br = experiment.b?.signals?.[signal];

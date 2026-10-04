@@ -52,10 +52,23 @@ def test_membership_main_niche_minimum_and_private_allowlist():
         assert secret not in serialized
     assert "p0001" in serialized
     assert not any("persona_summary" in query for query in stdb.queries)
-    with pytest.raises(ValueError):
-        aggregate_segments(stdb, "brand", ["design_creative"])
-    with pytest.raises(ValueError):
-        aggregate_segments(stdb, "brand", ["politics_society"])
+    # A chosen niche nobody is mainly in, or an excluded one, never blocks generation: the biggest niches stand in.
+    assert [s.slug for s in aggregate_segments(stdb, "brand", ["design_creative"])] == ["ai_agents_tools", "dev_tools"]
+    assert [s.slug for s in aggregate_segments(stdb, "brand", ["politics_society"])] == ["ai_agents_tools", "dev_tools"]
+
+
+def test_a_chosen_small_niche_is_used_instead_of_failing():
+    data = tables()
+    for row in data["twin_niche"][:3]:  # three people now mainly in culture_lifestyle (below the minimum of 5)
+        row["niche"] = "culture_lifestyle"
+        row["affinity"] = .9
+    segments = aggregate_segments(FakeStdb(data), "brand", ["culture_lifestyle"])
+    assert [(s.slug, s.twin_count) for s in segments] == [("culture_lifestyle", 3)]
+
+
+def test_no_audience_at_all_is_the_only_stop():
+    with pytest.raises(ValueError, match="no analysed audience"):
+        aggregate_segments(FakeStdb({"twin_audience": [], "twin": [], "twin_niche": []}), "brand", ["dev_tools"])
 
 
 def test_argmax_ties_are_deterministic_and_exclusions_do_not_reassign():
@@ -354,3 +367,48 @@ def test_seed_cli_does_not_require_xai_key(capsys):
     assert main(["seed-brand-kits", "--brand", "raycast.com"], stdb=stdb) == 0
     assert stdb.reducers("upsert_brand_kit")[0][0] == "brand"
     assert "seeded 1" in capsys.readouterr().out
+
+
+def test_missing_brand_kit_is_derived_from_the_x_profile_and_saved():
+    from conftest import FakeStdb, user_row
+    from creative.brand_kits import load_brand_kit
+    db = FakeStdb({"brand_kit": [], "x_user": [user_row("42", "linear", name="Linear",
+                                                        description="Linear is a purpose-built tool for planning and building products.")]})
+    kit = load_brand_kit(db, "42")
+    assert kit.display_name == "Linear" and "planning and building products" in kit.product_description
+    assert kit.value_props and "guaranteed" in kit.banned_claims and kit.reference_image_urls == []
+    [args] = db.reducers("upsert_brand_kit")
+    assert args[0] == "42" and args[1] == "Linear"
+
+
+def test_missing_brand_kit_without_a_profile_still_fails_clearly():
+    import pytest
+    from conftest import FakeStdb
+    from creative.brand_kits import load_brand_kit
+    with pytest.raises(ValueError, match="brand kit is missing"):
+        load_brand_kit(FakeStdb({"brand_kit": [], "x_user": []}), "nope")
+
+
+def test_derived_kit_reuses_the_hand_authored_kit_for_the_same_brand_name():
+    from conftest import FakeStdb, user_row
+    from creative.brand_kits import load_brand_kit
+    db = FakeStdb({"brand_kit": [], "x_user": [user_row("7", "raycast", name="Raycast", description="Your shortcut to everything.")]})
+    kit = load_brand_kit(db, "7")
+    assert kit.brand_user_id == "7" and "launcher" in kit.product_description and "#FF6363" in kit.palette
+
+
+def test_brief_is_grounded_in_recent_company_news_and_best_posts():
+    segment = aggregate_segments(FakeStdb(tables()), "brand", ["dev_tools"])[0]
+    class Capture:
+        def __init__(self): self.calls, self.system = [], ""
+        def chat_json(self, system, user, model):
+            self.system = system; self.calls.append(json.loads(user))
+            raise GrokError("text model returned an invalid structured response")
+    client = Capture()
+    context = {"news": [{"title": "Raycast 2.0 is here", "date": "2026-09-30", "summary": "File Search in root", "url": "https://raycast.com/blog"}],
+               "best_posts": [{"text": "Raycast v2 is out of beta", "likes": 1191, "date": "2026-08-19"}]}
+    synthesize_brief(client, segment, kit(), context=context)
+    sent = client.calls[0]
+    assert sent["recent_news"][0]["title"] == "Raycast 2.0 is here"
+    assert sent["brand_best_posts"][0]["likes"] == 1191
+    assert "recent_news" in client.system

@@ -23,6 +23,7 @@ export function CascadeCanvas(props:Props) {
   const {network}=props;
   const planar=useMemo(()=>network.planarLayout??buildPlanarLayout(network),[network]);
   const latestPlanar=useRef(planar);latestPlanar.current=planar;
+  // Show one weighted connection per cluster pair; audience maps omit the company source.
   const clusterEdges=useMemo(()=>buildClusterEdges(network).filter(edge=>!props.audienceOnly||edge.kind==='bridge'),[network,props.audienceOnly]);
   const latestEdges=useRef(clusterEdges);latestEdges.current=clusterEdges;
   const firstArrivals=useMemo(()=>network.communities.map((_,index)=>Math.min(...network.nodes.filter(node=>node.community===index).map(node=>network.arrivalById.get(node.id)?.at??Infinity))),[network]);

@@ -36,7 +36,7 @@ test('dashboard shows the loader, then the live audience with real counts and ni
   await expect(canvas).toHaveAttribute('data-focus-community', '0'); // niche 01 sits at the top of the ring
   await page.getByRole('button', { name: 'All niches', exact: true }).click();
   await expect.poll(async () => Number(await canvas.getAttribute('data-camera-y'))).toBeCloseTo(0, 0);
-  await expect(page.getByRole('navigation', { name: 'Workspace navigation' }).getByRole('link', { name: 'Home', exact: true })).toHaveAttribute('href', '/');
+  await expect(page.getByRole('navigation', { name: 'Workspace navigation' }).getByRole('link', { name: 'Home', exact: true })).toHaveAttribute('href', '/home');
 });
 
 test('mobile dashboard shows every person immediately and has no sideways scroll', async ({ page }) => {
@@ -78,8 +78,7 @@ test('landing-style desktop navigation opens the Lab for the current brand', asy
   await expect(audience).toHaveAttribute('aria-current', 'page');
   const lab = nav.getByRole('link', { name: 'Lab', exact: true });
   await expect(lab).toHaveAttribute('href', '/lab?brand=raycast.com');
-  await expect(nav).toContainText('HomeAudienceCampaignsLab');
-  await expect(nav.getByRole('link', { name: 'Lab v2', exact: true })).toHaveCount(0);
+  await expect(nav).toContainText('HomeAudienceCampaignLab');
   expect(await nav.evaluate(el => getComputedStyle(el).borderRadius)).toBe('999px');
   await expect(nav.locator('svg')).toHaveCount(0);
   await lab.click();

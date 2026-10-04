@@ -43,6 +43,15 @@ export const Admin = __t.object("Admin", {
 });
 export type Admin = __Infer<typeof Admin>;
 
+export const ArchivedProfile = __t.object("ArchivedProfile", {
+  userId: __t.string(),
+  username: __t.string(),
+  name: __t.string(),
+  profileImageUrl: __t.string(),
+  verified: __t.bool(),
+});
+export type ArchivedProfile = __Infer<typeof ArchivedProfile>;
+
 export const AudienceEdge = __t.object("AudienceEdge", {
   edgeId: __t.string(),
   brandUserId: __t.string(),
@@ -62,6 +71,20 @@ export const AudienceMembership = __t.object("AudienceMembership", {
 });
 export type AudienceMembership = __Infer<typeof AudienceMembership>;
 
+export const AudienceSnapshot = __t.object("AudienceSnapshot", {
+  snapshotId: __t.string(),
+  brand: __t.string(),
+  brandUserId: __t.string(),
+  title: __t.string(),
+  sourceRunId: __t.string(),
+  people: __t.u32(),
+  niches: __t.u32(),
+  payload: __t.string(),
+  createdAt: __t.u64(),
+  archivedAt: __t.timestamp(),
+});
+export type AudienceSnapshot = __Infer<typeof AudienceSnapshot>;
+
 export const BacktestResult = __t.object("BacktestResult", {
   backtestResultId: __t.string(),
   scope: __t.string(),
@@ -73,6 +96,25 @@ export const BacktestResult = __t.object("BacktestResult", {
   updatedAt: __t.timestamp(),
 });
 export type BacktestResult = __Infer<typeof BacktestResult>;
+
+export const BrandBaseline = __t.object("BrandBaseline", {
+  brandUserId: __t.string(),
+  posts: __t.u32(),
+  likes: __t.f64(),
+  reposts: __t.f64(),
+  replies: __t.f64(),
+  quotes: __t.f64(),
+  views: __t.f64(),
+  likeScale: __t.f64(),
+  repostScale: __t.f64(),
+  replyScale: __t.f64(),
+  quoteScale: __t.f64(),
+  viewScale: __t.f64(),
+  baselineRunId: __t.string(),
+  note: __t.string(),
+  updatedAt: __t.timestamp(),
+});
+export type BrandBaseline = __Infer<typeof BrandBaseline>;
 
 export const BrandKit = __t.object("BrandKit", {
   brandUserId: __t.string(),
@@ -109,6 +151,53 @@ export const Campaign = __t.object("Campaign", {
   createdAt: __t.timestamp(),
 });
 export type Campaign = __Infer<typeof Campaign>;
+
+export const CampaignDraftVideo = __t.object("CampaignDraftVideo", {
+  linkId: __t.string(),
+  campaignId: __t.string(),
+  draft: __t.string(),
+  videoId: __t.string(),
+  updatedAt: __t.timestamp(),
+});
+export type CampaignDraftVideo = __Infer<typeof CampaignDraftVideo>;
+
+export const CampaignFlow = __t.object("CampaignFlow", {
+  campaignId: __t.string(),
+  brand: __t.string(),
+  source: __t.string(),
+  stage: __t.string(),
+  draftA: __t.string(),
+  draftB: __t.string(),
+  experimentId: __t.u64(),
+  videoId: __t.string(),
+  winnerText: __t.string(),
+  requestedBy: __t.identity(),
+  createdAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+  shippedAt: __t.option(__t.timestamp()),
+});
+export type CampaignFlow = __Infer<typeof CampaignFlow>;
+
+export const CampaignVideo = __t.object("CampaignVideo", {
+  videoId: __t.string(),
+  brand: __t.string(),
+  campaignId: __t.string(),
+  news: __t.string(),
+  goal: __t.string(),
+  status: __t.string(),
+  progress: __t.f64(),
+  title: __t.string(),
+  videoUrl: __t.string(),
+  thumbnailUrl: __t.string(),
+  durationS: __t.f64(),
+  scriptJson: __t.string(),
+  reviewJson: __t.string(),
+  error: __t.option(__t.string()),
+  requestedBy: __t.identity(),
+  createdAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+});
+export type CampaignVideo = __Infer<typeof CampaignVideo>;
 
 export const CascadeReplay = __t.object("CascadeReplay", {
   scheduledId: __t.u64(),
@@ -172,12 +261,34 @@ export const CreativeJob = __t.object("CreativeJob", {
 });
 export type CreativeJob = __Infer<typeof CreativeJob>;
 
+export const DraftCopy = __t.object("DraftCopy", {
+  copyId: __t.string(),
+  campaignId: __t.string(),
+  draft: __t.string(),
+  headline: __t.string(),
+  text: __t.string(),
+  status: __t.string(),
+  error: __t.option(__t.string()),
+  requestedBy: __t.identity(),
+  updatedAt: __t.timestamp(),
+});
+export type DraftCopy = __Infer<typeof DraftCopy>;
+
 export const EdgeInput = __t.object("EdgeInput", {
   a: __t.string(),
   b: __t.string(),
   kind: __t.string(),
 });
 export type EdgeInput = __Infer<typeof EdgeInput>;
+
+export const LabDraftMedia = __t.object("LabDraftMedia", {
+  mediaId: __t.string(),
+  experimentId: __t.u64(),
+  draft: __t.string(),
+  videoId: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type LabDraftMedia = __Infer<typeof LabDraftMedia>;
 
 export const LabExperiment = __t.object("LabExperiment", {
   experimentId: __t.u64(),
@@ -222,6 +333,27 @@ export const Onboarding = __t.object("Onboarding", {
   updatedAt: __t.timestamp(),
 });
 export type Onboarding = __Infer<typeof Onboarding>;
+
+export const OpsAdmin = __t.object("OpsAdmin", {
+  identity: __t.identity(),
+  note: __t.string(),
+  addedAt: __t.timestamp(),
+});
+export type OpsAdmin = __Infer<typeof OpsAdmin>;
+
+export const OpsHidden = __t.object("OpsHidden", {
+  key: __t.string(),
+  since: __t.timestamp(),
+});
+export type OpsHidden = __Infer<typeof OpsHidden>;
+
+export const OpsState = __t.object("OpsState", {
+  key: __t.string(),
+  paused: __t.bool(),
+  hidden: __t.bool(),
+  updatedAt: __t.timestamp(),
+});
+export type OpsState = __Infer<typeof OpsState>;
 
 export const SignalProbInput = __t.object("SignalProbInput", {
   userId: __t.string(),
@@ -317,6 +449,16 @@ export const SimProbInput = __t.object("SimProbInput", {
 });
 export type SimProbInput = __Infer<typeof SimProbInput>;
 
+export const SimProjection = __t.object("SimProjection", {
+  runId: __t.string(),
+  mode: __t.string(),
+  audience: __t.u64(),
+  simulated: __t.u32(),
+  factor: __t.f64(),
+  videoId: __t.string(),
+});
+export type SimProjection = __Infer<typeof SimProjection>;
+
 export const SimRun = __t.object("SimRun", {
   runId: __t.string(),
   brandUserId: __t.string(),
@@ -335,6 +477,17 @@ export const SimRun = __t.object("SimRun", {
   completedAt: __t.option(__t.timestamp()),
 });
 export type SimRun = __Infer<typeof SimRun>;
+
+export const SimSettings = __t.object("SimSettings", {
+  key: __t.string(),
+  twinsPerBrand: __t.u32(),
+  followersScraped: __t.u32(),
+  simTwins: __t.u32(),
+  scaleMode: __t.string(),
+  fillReplies: __t.u32(),
+  updatedAt: __t.timestamp(),
+});
+export type SimSettings = __Infer<typeof SimSettings>;
 
 export const SimSignal = __t.object("SimSignal", {
   simSignalId: __t.string(),
@@ -457,6 +610,53 @@ export const TwinTopic = __t.object("TwinTopic", {
   affinity: __t.f64(),
 });
 export type TwinTopic = __Infer<typeof TwinTopic>;
+
+export const TwinTopup = __t.object("TwinTopup", {
+  topupId: __t.u64(),
+  brand: __t.string(),
+  count: __t.u32(),
+  status: __t.string(),
+  error: __t.option(__t.string()),
+  createdAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+});
+export type TwinTopup = __Infer<typeof TwinTopup>;
+
+export const VideoEdit = __t.object("VideoEdit", {
+  videoId: __t.string(),
+  parentId: __t.string(),
+  instruction: __t.string(),
+  beatsJson: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type VideoEdit = __Infer<typeof VideoEdit>;
+
+export const VideoExpectation = __t.object("VideoExpectation", {
+  videoId: __t.string(),
+  likeMin: __t.u32(),
+  likeMax: __t.u32(),
+  repostMin: __t.u32(),
+  repostMax: __t.u32(),
+  updatedAt: __t.timestamp(),
+});
+export type VideoExpectation = __Infer<typeof VideoExpectation>;
+
+export const VideoMode = __t.object("VideoMode", {
+  key: __t.string(),
+  mode: __t.string(),
+  reuseA: __t.string(),
+  reuseB: __t.string(),
+  updatedAt: __t.timestamp(),
+});
+export type VideoMode = __Infer<typeof VideoMode>;
+
+export const VideoSettings = __t.object("VideoSettings", {
+  key: __t.string(),
+  maxSeconds: __t.u32(),
+  voiceId: __t.string(),
+  updatedAt: __t.timestamp(),
+});
+export type VideoSettings = __Infer<typeof VideoSettings>;
 
 export const XContextAnnotation = __t.object("XContextAnnotation", {
   annotationId: __t.string(),
