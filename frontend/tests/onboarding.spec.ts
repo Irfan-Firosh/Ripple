@@ -79,6 +79,17 @@ test('handle and Enter request onboarding and advance with live status', async (
   await page.screenshot({ path: '/tmp/ripple-onboarding-desktop.png', fullPage: true });
 });
 
+test('chat onboarding link watches the existing company build without queuing another', async ({ page }) => {
+  const state = await mockDatabase(page);
+  await page.goto('/onboarding?brand=raycast');
+  await expect(page.getByRole('list', { name: 'Build stages' })).toBeVisible();
+  expect(state.calls).toEqual([]);
+  state.status = 'ready';
+  await expect(page.getByRole('button', { name: 'See your audience' })).toBeEnabled();
+  await page.getByRole('button', { name: 'See your audience' }).click();
+  await expect(page).toHaveURL(/\/dashboard\?brand=raycast$/);
+});
+
 test('invalid handles display the reducer error without advancing', async ({ page }) => {
   const state = await mockDatabase(page); state.reducerError = 'enter a valid X handle';
   await page.goto('/onboarding');

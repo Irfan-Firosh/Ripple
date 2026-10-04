@@ -8,6 +8,7 @@ from twins.stdb import StdbError, sql_str
 log = logging.getLogger(__name__)
 STAGES = {"research", "brief", "voice", "film", "stills", "revise", "render", "thumbnail"}
 MIN_INTERVAL = 1.0  # render reports often; keep reducer calls to about one a second
+WORKER_VERSION = 2
 
 
 class VideoReporter:
@@ -97,7 +98,7 @@ def _direction(stdb, video_id: str, campaign_id: str) -> dict | None:
 
 def make_tracked(stdb, maker, company: str, news: str, goal: str, audience: str, *, video_id: str,
                  campaign_id: str = "") -> dict:
-    stdb.call("start_campaign_video", video_id, company, news, goal, campaign_id)
+    stdb.call("start_campaign_video", video_id, company, news, goal, campaign_id, WORKER_VERSION)
     rep = VideoReporter(stdb, video_id)
     try:  # recent news, the brand's best posts and real screenshots; optional
         context = _company(stdb, company)
@@ -141,13 +142,21 @@ def _attach_to_lab(stdb, video_id: str, campaign_id: str) -> None:
         drafts = mine if links else ["A", "B"]  # per-draft videos go to their own tweet; a shared one to both
         for draft in drafts if exp else ():
             stdb.call("attach_lab_draft_media", exp, draft, video_id)
+        # Approval may happen before rendering; keep the launch preview on the approved draft's latest film.
+        if rows and rows[0].get("stage") == "approved" and mine and exp:
+            experiments = stdb.sql("SELECT * FROM lab_experiment")
+            tested = next((r for r in experiments if int(r["experiment_id"]) == exp), None)
+            if tested and any(tested.get(f"draft_{d.lower()}") == rows[0].get("winner_text") for d in mine):
+                stdb.call("update_campaign_flow", campaign_id, "approved", 0, video_id, "")
     except StdbError as exc:  # media is a bonus; the video itself is done
         log.warning("could not attach video %s to the Lab: %s", video_id, exc)
 
 
-def run_pending_videos(stdb, *, maker) -> int:
+def run_pending_videos(stdb, *, maker, campaign_id=None) -> int:
     handled = 0
     for row in stdb.sql("SELECT * FROM campaign_video WHERE status = 'queued'"):
+        if campaign_id and row["campaign_id"] != campaign_id:
+            continue
         try:
             log.info("video %s (@%s): started", row["video_id"], row["brand"])
             make_tracked(stdb, maker, row["brand"], row["news"], row["goal"], "", video_id=row["video_id"],

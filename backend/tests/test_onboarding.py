@@ -58,3 +58,10 @@ def test_lost_claim_is_skipped():
     db, rec = onboarding_db((1, "raycast", "queued")), Recorder()
     db.fail_on.add("claim_onboarding")
     assert run(db, rec) == 0 and rec.calls == []
+
+
+def test_refresh_rebuilds_existing_personas():
+    db, rec = onboarding_db((7, "elorianai", "queued"), (6, "elorianai", "ready")), Recorder()
+    assert run(db, rec) == 1
+    build = next(call for call in rec.calls if call[0] == "build")
+    assert build[2]["skip_existing"] is False

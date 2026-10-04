@@ -104,7 +104,7 @@ Per-prize scores are in §2. The full rubric discussion is in the [prize researc
 | **C. Real-time and web**             | SpacetimeDB module (tables, reducers, in-module `tick` simulation), "Watch it spread" view, Figma design system                         | Spacetime, Figma, Grand Prize                           |
 | **D. Surfaces, backend and process** | Neon (branches, auth, Data API, AI Gateway), Relay adapter, Photon sidecar, ElevenLabs voices, Notability screenshots, Devpost write-up | Neon, Relay, Photon, ElevenLabs, Notability, LLM-judged |
 
-Beads: Discover (`mhacks-dxo`) is **paused**, and the hero redesign (`mhacks-q73`) has stale paths. New beads are needed for: the SpacetimeDB backend module, the X scraper, graph + twins, the policy model, the in-module simulator, Relay, Photon, audience voices, and the submission checklist.
+The original project plan identified follow-up work for the SpacetimeDB backend module, the X scraper, graph and twins, the policy model, the in-module simulator, Relay, Photon, audience voices, and the submission checklist.
 
 ## 6. The 60-second golden path (the demo)
 

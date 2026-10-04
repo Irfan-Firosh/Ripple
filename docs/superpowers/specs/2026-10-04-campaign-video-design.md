@@ -19,7 +19,7 @@ video model and no fabricated facts.
 5. **Stills check (Opus 5.5 vision)**: 4 stills on a contact sheet, scored 1-10; one revision pass if any score < 7.
 6. **Render**: Playwright Chromium, 1920x1080, 30 fps, 2 subframes blended (tmix), network blocked except the film
    folder (the page is model-written code). Mux voiceover + synthesized whooshes, two-pass loudnorm -14 LUFS.
-7. **Thumbnail (Grok Imagine, `X_API_KEY`)**: one 16:9 image, no text; title overlaid in code (1280x720 JPEG).
+7. **Thumbnail (Grok Imagine, `XAI_API_KEY`)**: one 16:9 image, no text; title overlaid in code (1280x720 JPEG).
 
 Output: `frontend/public/generated/videos/<video_id>/` with `video.mp4`, `thumbnail.jpg`, `film.html`, `meta.json`
 (brief, facts, timings, scores, costs).

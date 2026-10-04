@@ -81,6 +81,11 @@ html[data-theme="light"] .campaign-error { color: #9b3027; }
 .campaign-spin { animation: campaign-spin 1.4s linear infinite; }
 @keyframes campaign-spin { to { transform: rotate(360deg); } }
 @media(max-width: 900px) { .campaign-page .lab-header { gap: 12px; } .campaign-page .lab-header > .lab-icon { margin-left: 0; } }
+.campaign-page .lab-header { flex-wrap: wrap; }
+.campaign-page .lab-header > .ripple-workspace-nav { position: relative; inset: auto; transform: none; margin-inline: auto; }
+.campaign-page .lab-brands { max-width: 300px; margin-left: 0; }
+.campaign-page .lab-brands button { flex-shrink: 0; white-space: nowrap; }
+@media(max-width: 980px) { .campaign-page .lab-header > .ripple-workspace-nav { margin-inline: 0; } .campaign-page .lab-brands { margin-left: auto; } }
 @media(max-width: 640px) {
   .campaign-main { width: calc(100% - 32px); }
   .campaign-toolbar { margin-top: 12px; align-items: flex-start; gap: 12px; }
@@ -96,4 +101,3 @@ html[data-theme="light"] .campaign-error { color: #9b3027; }
   .campaign-empty { min-height: 400px; }
 }
 @media(prefers-reduced-motion: reduce) { .campaign-spin { animation: none; } }
-

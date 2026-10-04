@@ -1,7 +1,0 @@
-{
-  "database": "dolt",
-  "backend": "dolt",
-  "dolt_mode": "embedded",
-  "dolt_database": "mhacks",
-  "project_id": "54f4112a-ccf5-4eef-aa09-04bca7cb2ff7"
-}

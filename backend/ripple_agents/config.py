@@ -19,17 +19,23 @@ AVATAR_URL = os.environ.get(
     "RIPPLE_AVATAR_URL", "https://raw.githubusercontent.com/Irfan-Firosh/Ripple/main/frontend/public/favicon.svg")
 APP_URL = _setting("RIPPLE_APP_URL", "http://localhost:5173").rstrip("/")
 DASHBOARD_URL = _setting("RIPPLE_DASHBOARD_URL")
+CARD_ASSET_URL = _setting("RIPPLE_CARD_ASSET_URL",
+    "https://raw.githubusercontent.com/Irfan-Firosh/Ripple/5c1a2e9598aff9f1088d90a42422c78d18396caf/frontend/public/fetchai-buttons").rstrip("/")
+
+
+def simulation_seed() -> str:
+    try:
+        return load_secret("RIPPLE_SIMULATION_SEED")
+    except MissingSecret:
+        return load_secret("AGENT_SEED_ORCHESTRATOR") + ":ripple-simulation"
 
 
 def _local_simulator() -> str:
-    """Address of our own Simulation agent (backend/agents), which `python -m ripple_agents` runs in the Bureau."""
+    """Keep the existing identity while using the current Lab adapter."""
     try:
-        return Identity.from_seed(load_secret("RIPPLE_SIMULATION_SEED"), 0).address
+        return Identity.from_seed(simulation_seed(), 0).address
     except MissingSecret:
-        try:
-            return Identity.from_seed(load_secret("AGENT_SEED_ORCHESTRATOR") + ":ripple-simulation", 0).address
-        except MissingSecret:
-            return ""
+        return ""
 
 
 # RIPPLE_SIMULATOR_ADDRESS points at a Simulation agent running elsewhere; unset = the one in this Bureau.

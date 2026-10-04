@@ -2,7 +2,7 @@ import { BRANDS, sql, type Audience } from '../audience/liveAudience';
 
 export type HistoryKind = 'audience' | 'lab';
 export type HistoryEntry = { id: string; kind: HistoryKind; brand: string; title: string; createdAt: number; detail: string; status: string; winner?: string };
-export type ActiveBrand = { handle: string; label: string; platform: 'x' | 'bluesky'; maxNiches: number };
+export type ActiveBrand = { handle: string; label: string; platform: 'x' | 'bluesky'; maxNiches: number; userId?: string };
 type SnapshotRow = { snapshot_id: string; brand: string; title: string; people: number; niches: number; created_at: number };
 type ExperimentRow = { experiment_id: number; brand: string; title: string; status: string; winner: string; created_at: number; lift: number };
 const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
@@ -13,7 +13,8 @@ export async function listActiveBrands(signal: AbortSignal): Promise<ActiveBrand
     sql<{ brand_user_id: string }>('SELECT brand_user_id FROM audience_membership', signal),
   ]);
   const ids = new Set(members.map(r => r.brand_user_id));
-  return users.filter(u => ids.has(u.user_id)).map(u => BRANDS.find(b => b.handle === u.username) ?? ({ handle: u.username, label: `@${u.username}`, platform: u.username.includes('.') ? 'bluesky' as const : 'x' as const, maxNiches: u.username.includes('.') ? 7 : 6 }));
+  return users.filter(u => ids.has(u.user_id)).map(u => ({ userId: u.user_id,
+    ...(BRANDS.find(b => b.handle === u.username) ?? { handle: u.username, label: `@${u.username}`, platform: u.username.includes('.') ? 'bluesky' as const : 'x' as const, maxNiches: u.username.includes('.') ? 7 : 6 }) }));
 }
 
 export async function listHistory(kind: HistoryKind, signal: AbortSignal): Promise<HistoryEntry[]> {

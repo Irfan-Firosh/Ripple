@@ -6,6 +6,7 @@ import { App } from "./App";
 import { DemoFilm } from "./DemoFilm";
 import "./styles.css";
 import "./demo.css";
+const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const VisualsPage = lazy(() => import("./VisualsPage"));
 const AuthPage = lazy(() => import("./components/ui/auth-07"));
 const NetworkTestPage = lazy(() => import("./NetworkTestPage"));
@@ -45,7 +46,7 @@ createRoot(document.getElementById("root")!).render(
     ) : params.has("film") ? (
       <DemoFilm theme={params.get("theme") === "light" ? "light" : "dark"} />
     ) : (
-      <ClerkProvider afterSignOutUrl="/" signInUrl="/auth/sign-in" signUpUrl="/auth" signInForceRedirectUrl="/onboarding" signUpForceRedirectUrl="/onboarding" appearance={{ theme: shadcn }}>
+      <ClerkProvider publishableKey={clerkPublishableKey} afterSignOutUrl="/" signInUrl="/auth/sign-in" signUpUrl="/auth" signInForceRedirectUrl="/onboarding" signUpForceRedirectUrl="/onboarding" appearance={{ theme: shadcn }}>
         {path === "/auth" || path === "/auth/sign-in" ? (
           <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening your account…</div>}>
             <AuthPage signIn={path === "/auth/sign-in"} />

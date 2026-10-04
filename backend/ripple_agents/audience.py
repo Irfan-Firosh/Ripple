@@ -16,13 +16,12 @@ TOP_PEOPLE = 5
 
 
 def find_brand(stdb, brand: str) -> dict:
-    """The x_user row for an X handle or a Bluesky handle; "raycast" also matches the Bluesky domain "raycast.com"."""
+    """Resolve the exact handle: X and Bluesky are separate audiences."""
     username = brand.strip().lstrip("@").lower()
     if not HANDLE_RE.match(username):
         raise ValueError(f"invalid handle: {brand!r}")
     users = stdb.sql("SELECT user_id, username FROM x_user")
-    match = next((u for u in users if u["username"].lower() == username), None) or \
-        next((u for u in users if u["username"].lower().startswith(username + ".")), None)
+    match = next((u for u in users if u["username"].lower() == username), None)
     if match is None:
         raise LookupError(f"@{username} has not been ingested yet")
     return match

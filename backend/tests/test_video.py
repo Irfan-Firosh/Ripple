@@ -46,6 +46,31 @@ def test_words_from_alignment_groups_characters_into_timed_words():
     assert [(w.text, w.start, w.end) for w in words] == [("Hi", 0.0, 0.2), ("you.", 0.3, 0.7)]
 
 
+def test_voice_that_exceeds_the_cap_keeps_all_words_and_retimes_audio_with_their_alignment(tmp_path):
+    from pathlib import Path
+    from video.voice import fit_voiceover
+    audio = tmp_path / "voice.mp3"
+    audio.write_bytes(b"original")
+    alignment = dict(characters=list("Hi"), character_start_times_seconds=[0, 10], character_end_times_seconds=[10, 21])
+    calls = []
+    def encode(*args):
+        calls.append(args)
+        Path(args[-1]).write_bytes(b"fitted")
+    fitted = fit_voiceover(alignment, audio, 18.8, transcode=encode)
+    assert audio.read_bytes() == b"fitted" and len(calls) == 1
+    assert float(calls[0][3].split("=")[1]) == pytest.approx(21 / 18.8)
+    assert fitted["characters"] == list("Hi") and fitted["character_end_times_seconds"][-1] == pytest.approx(18.8)
+    assert fitted["character_start_times_seconds"][1] == pytest.approx(10 * 18.8 / 21)
+    assert alignment["character_end_times_seconds"][-1] == 21
+
+
+def test_voice_already_within_the_cap_is_unchanged(tmp_path):
+    from video.voice import fit_voiceover
+    alignment = dict(character_start_times_seconds=[0], character_end_times_seconds=[18])
+    assert fit_voiceover(alignment, tmp_path / "voice.mp3", 18.8,
+                        transcode=lambda *_: pytest.fail("unneeded audio conversion")) is alignment
+
+
 def test_beat_starts_land_on_each_lines_first_word():
     lines = ["Stop alt tabbing.", "Raycast is on Windows."]
     chars = list(" ".join(lines))
@@ -82,6 +107,21 @@ def test_thumbnail_overlay_makes_a_1280x720_jpeg(tmp_path):
     assert img.size == (1280, 720) and img.format == "JPEG"
 
 
+def test_thumbnail_auth_uses_xai_credential_when_x_developer_key_is_also_present(tmp_path, monkeypatch):
+    import base64
+    from types import SimpleNamespace
+    from video.thumbnail import generate_image
+    monkeypatch.setenv("XAI_API_KEY", "xai-test-only")
+    monkeypatch.setenv("X_API_KEY", "x-developer-test-only")
+    def post(url, **kwargs):
+        assert url == "https://api.x.ai/v1/images/generations"
+        assert kwargs["headers"]["Authorization"] == "Bearer xai-test-only"
+        return SimpleNamespace(raise_for_status=lambda: None,
+            json=lambda: {"data": [{"b64_json": base64.b64encode(b"image-result").decode()}]})
+    output = generate_image("Campaign thumbnail", tmp_path / "image.png", session=SimpleNamespace(post=post))
+    assert output.read_bytes() == b"image-result"
+
+
 def test_reporter_mirrors_stages_and_finishes_with_urls_and_script():
     from conftest import FakeStdb
     from video.sync import VideoReporter
@@ -112,7 +152,7 @@ def test_worker_claims_queued_videos_and_records_failures():
         made.append((company, news, video_id))
         raise RuntimeError("ElevenLabs quota exceeded")
     assert run_pending_videos(db, maker=maker) == 1
-    assert db.reducers("start_campaign_video") == [("v1", "Raycast", "v2 is out", "reposts", "")]
+    assert db.reducers("start_campaign_video") == [("v1", "Raycast", "v2 is out", "reposts", "", 2)]
     assert made == [("Raycast", "v2 is out", "v1")]
     assert "quota" in db.reducers("fail_campaign_video")[0][1]
 

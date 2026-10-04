@@ -59,7 +59,7 @@ def opus_key() -> str:
 
 
 def xai_key() -> str:
-    return load_secret("X_API_KEY")
+    return load_secret("XAI_API_KEY")
 
 
 def elevenlabs_key() -> str:

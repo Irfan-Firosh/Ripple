@@ -45,6 +45,17 @@ export default function OnboardingPage() {
 
   useEffect(() => { document.title = 'Onboarding — Ripple'; }, []);
   useEffect(() => {
+    const linked = new URLSearchParams(location.search).get('brand');
+    if (!linked) return;
+    let cancelled = false;
+    setHandle(normalizeHandle(linked));
+    void findOnboarding(linked).then(row => {
+      if (cancelled) return;
+      setRequested(row); setStep(5);
+    }).catch(cause => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not read your build.'); });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#080808' : '#f8f7f3');
     try { localStorage.setItem('ripple-theme', theme); } catch { /* Optional storage. */ }

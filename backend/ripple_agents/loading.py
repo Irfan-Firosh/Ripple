@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from uagents_core.contrib.protocols.chat import ChatMessage, TextContent, StartStreamContent, EndStreamContent
+from uagents_core.contrib.protocols.chat import ChatMessage, TextContent, StartStreamContent, EndStreamContent, EndSessionContent
 
 from .cards import loading
 
@@ -21,6 +21,14 @@ class Loading:
             content.insert(0, StartStreamContent(type="start-stream", stream_id=self.stream_id))
         await self.ctx.send(self.sender, ChatMessage(timestamp=datetime.now(timezone.utc), msg_id=uuid4(), content=content))
 
-    async def finish(self):
-        await self.ctx.send(self.sender, ChatMessage(timestamp=datetime.now(timezone.utc), msg_id=uuid4(),
-            content=[EndStreamContent(type="end-stream", stream_id=self.stream_id)]))
+    async def finish(self, text="", card=None):
+        content = [TextContent(type="text", text=text)] if text else []
+        if card is not None:
+            content.append(card)
+        content.append(EndStreamContent(type="end-stream", stream_id=self.stream_id))
+        if text:
+            content.append(EndSessionContent(type="end-session"))
+        delivery = await self.ctx.send(self.sender, ChatMessage(timestamp=datetime.now(timezone.utc), msg_id=uuid4(),
+            content=content))
+        if text:
+            self.ctx.logger.info(f"interview results sent: {len(text)} characters; delivery={delivery}")

@@ -71,6 +71,15 @@ test('an arbitrary onboarded X handle renders every person in the niche index', 
   expect(sizes.reduce((sum, n) => sum + Number(n), 0)).toBe(80);
 });
 
+test('the X beside an audience name removes that name from the top-right view', async ({ page }) => {
+  await page.goto('/dashboard?brand=spacetimedb');
+  const audienceTabs = page.getByRole('navigation', { name: 'Brand audience' });
+  await expect(audienceTabs.getByRole('link', { name: '@spacetimedb' })).toBeVisible();
+  await audienceTabs.getByRole('button', { name: 'Remove @spacetimedb from audience view' }).click();
+  await expect(audienceTabs).toHaveCount(0);
+  await expect(page.getByRole('img', { name: /Three-dimensional audience network/ })).toBeVisible();
+});
+
 test('landing-style desktop navigation opens the Lab for the current brand', async ({ page }) => {
   await page.goto('/dashboard?brand=raycast.com');
   const nav = page.getByRole('navigation', { name: 'Workspace navigation' });

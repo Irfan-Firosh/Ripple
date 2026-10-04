@@ -63,7 +63,9 @@ export default function NetworkTestPage({workspace=false}:{workspace?:boolean}) 
   const [snapshot] = useState(() => new URLSearchParams(location.search).get('snapshot'));
   const [showHistory, setShowHistory] = useState(false);
   const [brands, setBrands] = useState<Brand[]>([brand]);
+  const [hiddenBrands, setHiddenBrands] = useState<Set<string>>(() => new Set());
   const { state, retry } = useAudienceNetwork(brand, snapshot);
+  const visibleBrands = brands.filter(b => !hiddenBrands.has(b.handle));
   useEffect(() => {
     const controller = new AbortController();
     listActiveBrands(controller.signal).then(rows => {
@@ -83,7 +85,11 @@ export default function NetworkTestPage({workspace=false}:{workspace?:boolean}) 
     <RippleLogo href={workspace ? "/home" : "/"} />
     <span className="nt-page-name">{workspace?'Audience':'Network playground'} <i/> {subtitle}</span>
     {workspace&&<RippleWorkspaceNav brand={brand.handle}/>}
-    <nav className="nt-brands" aria-label="Brand audience">{brands.map(b=><a key={b.handle} href={`?brand=${b.handle}`} aria-current={b.handle===brand.handle?'page':undefined}>{b.label}<span>{b.platform==='bluesky'?'Bluesky':'X'}</span></a>)}</nav>
+    {visibleBrands.length > 0 && <nav className="nt-brands" aria-label="Brand audience">{visibleBrands.map(b=><div className={`nt-brand-entry${b.handle===brand.handle?' is-active':''}`} key={b.handle}>
+      <a href={`?brand=${encodeURIComponent(b.handle)}`} aria-current={b.handle===brand.handle?'page':undefined}>{b.label}</a>
+      <button type="button" aria-label={`Remove ${b.label} from audience view`} title="Remove from view"
+        onClick={()=>setHiddenBrands(previous=>new Set(previous).add(b.handle))}><X size={12}/></button>
+    </div>)}</nav>}
     <div className="nt-header-actions">{snapshot && <a className="nt-replay" href={`/dashboard?brand=${encodeURIComponent(brand.handle)}`}>Live audience</a>}<button className="nt-icon-button" aria-label="Open history" onClick={() => setShowHistory(true)}><History size={16}/></button>{!workspace&&<a href="/dashboard" aria-label="Back to workspace"><ArrowLeft size={15}/></a>}{toggleTheme}</div>
   </header>;
   const drawer = showHistory && <HistoryDrawer kind="audience" activeId={snapshot} onClose={() => setShowHistory(false)} onSelect={entry => location.assign(entry.kind === 'audience'

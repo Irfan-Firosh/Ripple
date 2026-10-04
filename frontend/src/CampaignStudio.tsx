@@ -7,6 +7,7 @@ import { Loader } from './components/ui/loader';
 import { useCreative } from './creative/useCreative';
 import { audienceSegments, BRANDS, RATIOS, type Brief, type Campaign, type CreativeHandoff, type Job, type Variant } from './creative/model';
 import { saveCampaignDrafts } from './creative/handoff';
+import { listActiveBrands } from './history/historyData';
 import './lab/lab.css';
 import './studio.css';
 
@@ -14,7 +15,11 @@ type CreativeData = ReturnType<typeof useCreative>;
 type Recording = { campaign: Campaign; briefs: Brief[]; variants: Variant[] };
 type ModalState = { kind: 'new' } | { kind: 'brief'; brief: Brief } | { kind: 'variant'; variant: Variant } | null;
 type Action = (task: () => Promise<unknown>) => Promise<void>;
-const initialBrand = () => BRANDS.find(b => b.handle === new URLSearchParams(location.search).get('brand')) ?? BRANDS[0];
+type CampaignBrand = { id: string; handle: string; name: string };
+const initialBrand = (): CampaignBrand => {
+  const handle = new URLSearchParams(location.search).get('brand')?.toLowerCase();
+  return BRANDS.find(b => b.handle === handle) ?? (handle ? { id: '', handle, name: `@${handle}` } : BRANDS[0]);
+};
 
 function Modal({ title, close, children }: { title: string; close: () => void; children: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -100,6 +105,8 @@ function VariantEditor({ variant, versions, onVersion, data, action, disabled, c
 export default function CampaignStudio() {
   const [theme, setTheme] = useState(initialTheme);
   const [brandId, setBrandId] = useState<string>(initialBrand().id);
+  const [brands, setBrands] = useState<CampaignBrand[]>([...BRANDS]);
+  const requestedBrand = useRef(initialBrand());
   const [campaignId, setCampaignId] = useState<string | null>(() => new URLSearchParams(location.search).get('campaign'));
   const [modal, setModal] = useState<ModalState>(null);
   const [goal, setGoal] = useState('');
@@ -114,11 +121,12 @@ export default function CampaignStudio() {
   const [now, setNow] = useState(Date.now);
   const restored = useRef('');
   const data = useCreative(brandId, campaignId);
-  const brand = BRANDS.find(b => b.id === brandId) ?? BRANDS[0];
+  const brand = brands.find(b => b.id === brandId) ?? requestedBrand.current;
   const audience = useMemo(() => audienceSegments(brandId, data.audience, data.affinities, data.catalog),
     [brandId, data.audience, data.affinities, data.catalog]);
   const campaigns = data.campaigns.filter(c => c.brandUserId === brandId);
   const active = recorded ? recording?.campaign : campaigns.find(c => c.campaignId === campaignId);
+  const shared = Boolean(!recorded && active && active.createdBy.toHexString() !== data.identity);
   const briefs = recorded ? recording?.briefs ?? [] : data.briefs;
   const variants = recorded ? recording?.variants ?? [] : data.variants;
   const latestBriefs = [...briefs.reduce((map, brief) => {
@@ -131,7 +139,7 @@ export default function CampaignStudio() {
     const takes = variants.filter(v => v.rootVariantId === root).sort((a, b) => b.depth - a.depth);
     return takes.find(v => v.variantId === versions[root]) ?? takes.find(v => v.approved) ?? takes[0];
   });
-  const selected = concepts.filter(v => recorded ? demoSelection.includes(v.variantId) : v.approved);
+  const selected = concepts.filter(v => recorded || shared ? demoSelection.includes(v.variantId) : v.approved);
   const jobs = data.jobs.filter(j => ['pending', 'running'].includes(j.status));
   const stalled = jobs.some(j => {
     const timed = j as Job & { createdAt?: { microsSinceUnixEpoch: bigint }; claimedAt?: { microsSinceUnixEpoch: bigint } };
@@ -140,6 +148,20 @@ export default function CampaignStudio() {
   });
   const disabled = busy || !data.ready;
   const kit = data.brandKits.find(k => k.brandUserId === brandId);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void listActiveBrands(controller.signal).then(rows => {
+      if (controller.signal.aborted) return;
+      const next = [...BRANDS, ...rows.filter(row => row.userId && !BRANDS.some(b => b.id === row.userId))
+        .map(row => ({ id: row.userId!, handle: row.handle, name: row.label }))];
+      setBrands(next);
+      const selected = next.find(b => b.handle === requestedBrand.current.handle);
+      if (selected) setBrandId(selected.id);
+      else setError(`@${requestedBrand.current.handle}'s audience is not ready yet.`);
+    }).catch(cause => { if (!controller.signal.aborted) setError(String(cause.message ?? cause)); });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -151,7 +173,7 @@ export default function CampaignStudio() {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    if (!data.ready || !data.identity || recorded) return;
+    if (!data.ready || !data.identity || recorded || !brandId || (campaignId && !data.campaignReady)) return;
     const key = 'ripple-active-campaign:' + data.identity + ':' + brandId;
     if (restored.current === key) return;
     restored.current = key;
@@ -160,9 +182,9 @@ export default function CampaignStudio() {
       const previous = campaigns.find(c => c.campaignId === saved) ?? campaigns[0];
       setCampaignId(previous?.campaignId ?? null);
     } catch { /* history is still available */ }
-  }, [data.ready, data.identity, brandId, recorded]);
+  }, [data.ready, data.identity, data.campaignReady, brandId, recorded]);
   useEffect(() => {
-    if (!data.ready || !data.identity || recorded) return;
+    if (!data.ready || !data.identity || recorded || !brandId) return;
     try {
       const key = 'ripple-active-campaign:' + data.identity + ':' + brandId;
       if (campaignId) localStorage.setItem(key, campaignId);
@@ -208,7 +230,7 @@ export default function CampaignStudio() {
     });
   };
   const select = (variant: Variant) => {
-    if (recorded) {
+      if (recorded || shared) {
       setDemoSelection(ids => ids.includes(variant.variantId) ? ids.filter(id => id !== variant.variantId)
         : ids.length < 2 ? [...ids, variant.variantId] : ids);
       return;
@@ -224,7 +246,7 @@ export default function CampaignStudio() {
   };
   const handoff = () => void action(async () => {
     if (!active || selected.length !== 2) return;
-    if (!recorded && active.status !== 'handed_off') await data.run(conn => conn.reducers.handoffCampaign({ campaignId: active.campaignId }));
+    if (!recorded && !shared && active.status !== 'handed_off') await data.run(conn => conn.reducers.handoffCampaign({ campaignId: active.campaignId }));
     const input: CreativeHandoff = { campaign: active, recordedRehearsal: recorded,
       variants: selected.map(v => ({ ...v, brief: briefs.find(b => b.briefId === v.briefId),
         segment: briefs.find(b => b.briefId === v.briefId)?.segment ?? '' })) };
@@ -237,7 +259,7 @@ export default function CampaignStudio() {
       <RippleLogo />
       <span className="lab-crumb">Campaigns</span>
       <RippleWorkspaceNav brand={brand.handle} />
-      <nav className="lab-brands" aria-label="Audience">{[...BRANDS].reverse().map(b =>
+      <nav className="lab-brands" aria-label="Audience">{[...brands].reverse().map(b =>
         <button key={b.id} disabled={recorded} aria-current={b.id === brandId ? 'page' : undefined} onClick={() => switchBrand(b.id)}>
           {b.handle === 'spacetimedb' ? '@spacetimedb' : b.name}
         </button>)}</nav>
@@ -271,7 +293,7 @@ export default function CampaignStudio() {
           <div className="campaign-briefs">{latestBriefs.map(brief => <section className="campaign-brief" key={brief.briefId}>
             <div className="campaign-brief-heading"><h2>{brief.audienceLabel}</h2>
               <span>{brief.twinCount} people</span>
-              {!recorded && <button className="campaign-text-button" disabled={disabled} onClick={() => setModal({ kind: 'brief', brief })}><Pencil size={13} /> Edit brief</button>}
+              {!recorded && !shared && <button className="campaign-text-button" disabled={disabled} onClick={() => setModal({ kind: 'brief', brief })}><Pencil size={13} /> Edit brief</button>}
             </div>
             <p>{brief.messageAngle}</p>
             <div className="campaign-brief-bottom">
@@ -279,7 +301,7 @@ export default function CampaignStudio() {
                 <ul>{brief.keyInterests.map((t, i) => <li key={i}>{t.text}</li>)}</ul>
                 {brief.avoid.length > 0 && <><span className="campaign-muted">Avoid</span><ul>{brief.avoid.map((t, i) => <li key={i}>{t.text}</li>)}</ul></>}
               </details>
-              {!recorded && !variants.some(v => v.briefId === brief.briefId) && <button className="lab-primary"
+              {!recorded && !shared && !variants.some(v => v.briefId === brief.briefId) && <button className="lab-primary"
                 disabled={disabled || jobs.some(j => j.targetId === brief.briefId)} onClick={() => void action(() =>
                   data.run(conn => conn.reducers.requestCreative({ campaignId: brief.campaignId, kind: 'generate', targetId: brief.briefId })))}>
                 {jobs.some(j => j.targetId === brief.briefId) ? 'Generating…' : 'Generate concepts'}<ArrowRight size={13} />
@@ -304,7 +326,7 @@ export default function CampaignStudio() {
               </div>
               <div className="campaign-concept-content"><h3>{v.headline}</h3><p>{v.cta}</p>
                 <div className="campaign-concept-actions">
-                  {!recorded && <button className="lab-secondary" disabled={disabled || !ready || jobs.length > 0} onClick={() => setModal({ kind: 'variant', variant: v })}><Pencil size={13} /> Edit</button>}
+                  {!recorded && !shared && <button className="lab-secondary" disabled={disabled || !ready || jobs.length > 0} onClick={() => setModal({ kind: 'variant', variant: v })}><Pencil size={13} /> Edit</button>}
                   <button className={picked ? 'lab-primary' : 'lab-secondary'} aria-pressed={picked}
                     disabled={!ready || busy || (!recorded && !data.ready) || (!picked && selected.length >= 2)}
                     onClick={() => select(v)}>{picked ? <Check size={14} /> : <Plus size={14} />}{picked ? 'Selected' : 'Select'}</button>
