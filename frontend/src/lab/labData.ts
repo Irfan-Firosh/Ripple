@@ -12,10 +12,13 @@ export const SIGNALS = ['like', 'repost', 'reply', 'quote'] as const;
 export type Signal = (typeof SIGNALS)[number];
 export const SIGNAL_LABEL: Record<Signal, string> = { like: 'Likes', repost: 'Reposts', reply: 'Replies', quote: 'Quotes' };
 export type SignalRange = { p10: number; p50: number; p90: number; mean: number };
+export type LabComment = { userId: string; handle: string; name: string; avatar: string; kind: 'reply' | 'quote'; text: string; tick: number };
+export type OutsideTick = { tick: number; views: number; like: number; repost: number; reply: number; quote: number };
 export type LabEvent = { userId: string; handle: string; name: string; avatar: string; signal: Signal; tick: number; draft: 'A' | 'B' };
 export type LabRun = {
   runId: string; status: 'scoring' | 'replaying' | 'done' | 'failed'; replayTick: number; replayMaxTick: number; people: number;
   signals: Record<Signal, SignalRange> | null; events: LabEvent[]; shares: Map<string, Record<Signal, number>>;
+  views: SignalRange | null; outside: OutsideTick[]; comments: LabComment[]; outsideShare: number;
 };
 export type LabExperimentSummary = {
   id: string; brand: string; title: string; status: 'queued' | 'running' | 'done' | 'failed';
@@ -23,6 +26,7 @@ export type LabExperimentSummary = {
 };
 export type LabExperiment = LabExperimentSummary & { draftA: string; draftB: string; error: string | null; a: LabRun | null; b: LabRun | null };
 export type LabNiche = { slug: string; label: string; members: Set<string> };
+export type LabBrand = { handle: string; name: string; avatar: string; verified: boolean };
 export type BacktestHeadline = { metric: string; value: number; baseline: number; n: number; note: string } | null;
 
 const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
@@ -38,29 +42,53 @@ export async function listExperiments(brand: string, signal?: AbortSignal): Prom
   return rows.map(summary).sort((a, b) => b.createdAt - a.createdAt);
 }
 
+// x_user rows are cached per session: every poll would otherwise re-download the whole table.
+let userCache: Map<string, Record<string, any>> | null = null;
+async function users(ids: string[], signal?: AbortSignal): Promise<Map<string, Record<string, any>>> {
+  if (!userCache || ids.some(id => !userCache!.has(id))) {
+    const rows = await sql('SELECT user_id, username, name, profile_image_url, verified FROM x_user', signal);
+    userCache = new Map(rows.map(u => [u.user_id as string, u]));
+  }
+  return userCache;
+}
+const bigger = (url?: string | null) => (url ?? '').replace('_normal.', '_200x200.');
+
 async function loadRun(runId: string, draft: 'A' | 'B', signal?: AbortSignal): Promise<LabRun | null> {
   if (!runId) return null;
-  const [runs, sigs, events, shares] = await Promise.all([
+  const [runs, sigs, events, shares, outside, comments, sources] = await Promise.all([
     sql(`SELECT * FROM sim_run WHERE run_id = ${q(runId)}`, signal),
     sql(`SELECT * FROM sim_signal WHERE run_id = ${q(runId)}`, signal),
     sql(`SELECT * FROM sim_event WHERE run_id = ${q(runId)}`, signal),
     sql(`SELECT * FROM sim_node_signal WHERE run_id = ${q(runId)}`, signal),
+    sql(`SELECT * FROM sim_outside_tick WHERE run_id = ${q(runId)}`, signal),
+    sql(`SELECT * FROM sim_comment WHERE run_id = ${q(runId)}`, signal),
+    sql(`SELECT * FROM sim_signal_source WHERE run_id = ${q(runId)}`, signal),
   ]);
   const run = runs[0];
   if (!run) return null;
-  const ids = [...new Set(events.map(e => e.user_id as string))];
-  const users = ids.length ? await sql(`SELECT user_id, username, name, profile_image_url FROM x_user`, signal) : [];
-  const byId = new Map(users.filter(u => ids.includes(u.user_id)).map(u => [u.user_id as string, u]));
-  const ranges = sigs.length ? Object.fromEntries(sigs.map(s => [s.signal, { p10: s.p_10, p50: s.p_50, p90: s.p_90, mean: s.mean }])) as Record<Signal, SignalRange> : null;
+  const byId = await users([...events, ...comments].map(e => e.user_id as string), signal);
+  const person = (id: string) => { const u = byId.get(id); return { handle: u?.username ?? id, name: u?.name ?? '', avatar: bigger(u?.profile_image_url) }; };
+  const range = (r: Record<string, any>): SignalRange => ({ p10: r.p_10, p50: r.p_50, p90: r.p_90, mean: r.mean });
+  const engaged = sources.filter(r => (SIGNALS as readonly string[]).includes(r.signal));
+  const total = engaged.reduce((a, r) => a + r.mean, 0);
+  const counted = sigs.filter(r => (SIGNALS as readonly string[]).includes(r.signal));
+  const view = sigs.find(r => r.signal === 'view');
   return {
-    runId, status: run.status, replayTick: run.replay_tick, replayMaxTick: run.replay_max_tick, people: run.people, signals: ranges,
-    events: events.map(e => {
-      const u = byId.get(e.user_id);
-      return { userId: e.user_id, handle: u?.username ?? e.user_id, name: u?.name ?? '', avatar: (u?.profile_image_url ?? '').replace('_normal.', '_200x200.'),
-               signal: e.signal, tick: e.tick, draft };
-    }).sort((x, y) => x.tick - y.tick),
+    runId, status: run.status, replayTick: run.replay_tick, replayMaxTick: run.replay_max_tick, people: run.people,
+    signals: counted.length ? Object.fromEntries(counted.map(r => [r.signal, range(r)])) as Record<Signal, SignalRange> : null,
+    views: view ? range(view) : null,
+    events: events.map(e => ({ userId: e.user_id, ...person(e.user_id), signal: e.signal, tick: e.tick, draft })).sort((x, y) => x.tick - y.tick),
     shares: new Map(shares.map(s => [s.user_id as string, { like: s.like_share, repost: s.repost_share, reply: s.reply_share, quote: s.quote_share }])),
+    outside: outside.map(o => ({ tick: o.tick, views: o.views, like: o.likes, repost: o.reposts, reply: o.replies, quote: o.quotes })).sort((x, y) => x.tick - y.tick),
+    comments: comments.map(c => ({ userId: c.user_id, ...person(c.user_id), kind: c.kind, text: c.text, tick: c.tick })).sort((x, y) => x.tick - y.tick),
+    outsideShare: total ? engaged.filter(r => r.source === 'outside').reduce((a, r) => a + r.mean, 0) / total : 0,
   };
+}
+
+export async function loadBrand(brand: string, signal?: AbortSignal): Promise<LabBrand> {
+  const all = await users([], signal);
+  const u = [...all.values()].find(r => String(r.username).toLowerCase() === brand.toLowerCase());
+  return { handle: u?.username ?? brand, name: u?.name ?? brand, avatar: bigger(u?.profile_image_url), verified: Boolean(u?.verified) };
 }
 
 export async function loadExperiment(id: string, signal?: AbortSignal): Promise<LabExperiment> {
@@ -107,16 +135,24 @@ export async function requestExperiment(input: { brand: string; title: string; d
   }
 }
 
-export function countsAt(run: LabRun, members?: Set<string>): Record<Signal, number> {
+// Live counts at the run's current replay tick: followers' actions (optionally only `members`) plus, for the whole
+// audience view, the engagement reposts brought in from outside the brand's followers. Always whole numbers.
+export function countsAt(run: LabRun, members?: Set<string>, tick: number = run.replayTick): Record<Signal, number> {
   const out = zero();
-  for (const e of run.events) if (e.tick <= run.replayTick && (!members || members.has(e.userId))) out[e.signal] += 1;
+  for (const e of run.events) if (e.tick <= tick && (!members || members.has(e.userId))) out[e.signal] += 1;
+  if (!members) for (const o of run.outside) if (o.tick <= tick) for (const k of SIGNALS) out[k] += o[k];
   return out;
 }
 
+export function viewsAt(run: LabRun, tick: number = run.replayTick): number {
+  return run.people + run.outside.filter(o => o.tick <= tick).reduce((a, o) => a + o.views, 0);
+}
+
+// Expected counts for a niche (sum of each member's per-signal share), rounded to whole people.
 export function expectedCounts(run: LabRun, members?: Set<string>): Record<Signal, number> {
   const out = zero();
   run.shares.forEach((s, userId) => { if (!members || members.has(userId)) for (const k of SIGNALS) out[k] += s[k]; });
-  for (const k of SIGNALS) out[k] = Math.round(out[k] * 10) / 10;
+  for (const k of SIGNALS) out[k] = Math.round(out[k]);
   return out;
 }
 
