@@ -7,7 +7,8 @@ dependencies = [
     "anthropic>=0.60",
     "pydantic>=2.7",
     "requests>=2.32",
-    "uagents==0.26.0",
+    "uagents>=0.26,<0.27",
+    "uagents-core>=0.4.11",
 ]
 
 [dependency-groups]
