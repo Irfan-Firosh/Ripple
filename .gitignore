@@ -24,3 +24,10 @@ data/backups/
 # Python caches
 __pycache__/
 .pytest_cache/
+
+# uAgents local key + storage files (secrets / runtime state)
+private_keys.json
+agent*_data.json
+
+# superpowers plan workspaces (ledgers, review packages)
+.superpowers/
