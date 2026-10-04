@@ -27,7 +27,7 @@ These override anything below that conflicts with them.
   - About $0.14 per ~15-post call.
 - **What it does _not_ give:** a follower graph or "who liked / reposted". Accepted. The audience graph will be built from what X does expose: **reply, quote and mention edges** around the chosen page, plus thread fetches. Whether this yields a dense enough graph is untested.
 - **Target:** a **specific X page (account)** to scrape. It is chosen later, and this plan gets updated then.
-- **Agents split (2026-10-03):** **Fetch.ai uAgents** run the general agents: Orchestrator/chat, X Scraper, Graph Builder, Policy model, Backtester. **Claude API (Haiku 4.5) twin builder, synced via SpacetimeDB** builds the twins (`backend/twins/`), plus "ask the twin" explanations through the `twin_question` queue. AWS AgentCore was dropped after AWS denied access. See [agentcore-twins.md](agentcore-twins.md).
+- **Agents split (2026-10-03):** **Fetch.ai uAgents** are the front door and orchestration: Orchestrator (Chat Protocol, ASI:One), Audience agent and Simulation agent, wrapping `backend/twins` and SpacetimeDB ([fetchai-integration.md](fetchai-integration.md)). **Claude API (Haiku 4.5) twin builder, synced via SpacetimeDB** builds the twins (`backend/twins/`), plus "ask the twin" explanations through the `twin_question` queue. AWS AgentCore was dropped after AWS denied access. See [agentcore-twins.md](agentcore-twins.md).
 - **Backend: SpacetimeDB is Ripple's backend**: scraped posts, the graph, twins, drafts, model outputs, the simulation itself (scheduled `tick` reducer) and results. See [spacetime-backend.md](spacetime-backend.md). It's live on Maincloud as `ripple-mhacks`. Neon's role is open.
 
 **Dev infrastructure diagram (Lucid):** https://lucid.app/lucidchart/98e15453-d4db-417a-b9ca-56ab9d30761a/view
@@ -51,7 +51,7 @@ The loop is **Discover → Draft → Simulate → Post → Recalibrate.** The cu
 | ----------- | -------------------------------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------- |
 | Core        | Grand Prize                                                                      | $5,000 + ElevenLabs Pro      | Coherent, polished, working loop; the 60-second golden path (§6)                                                           | 4.2      |
 | Core        | Actually Intelligent (AI)                                                        | $2,500                       | Multi-agent reasoning, a self-trained policy model, a backtest that beats baselines                                        | 5.0      |
-| Core        | Fetch.ai ASI:One Agent Challenge                                                 | $1,250 / $750 / $500         | Ten agent types on Agentverse; the full loop works in the ASI:One chat alone; Interactive Cards                            | 4.5      |
+| Core        | Fetch.ai ASI:One Agent Challenge | $1,250 / $750 / $500 + internship interviews | Orchestrator + Audience + Simulation agents on Agentverse; Chat Protocol; the draft → prediction workflow completes inside ASI:One; Payment Protocol + Interactive Cards for bonus. Criteria and plan: [fetchai-integration.md](fetchai-integration.md) | 4.5 |
 | Core        | Spacetime                                                                        | $1,000 / $500 / $200         | **SpacetimeDB is the backend:** all pipeline state + the simulation runs inside it ([details](spacetime-backend.md))       | 4.0      |
 | Surface     | ElevenLabs                                                                       | Scale tier per member        | **Audience voices:** each community has a designed voice that reads its simulated reactions aloud; optional voice briefing | 4.25     |
 | Surface     | Relay: Interactive Agents                                                        | SF trip + Relay house week   | Text or call Ripple in the Relay app                                                                                       | 3.0      |
@@ -136,8 +136,11 @@ Beads: Discover (`mhacks-dxo`) is **paused**, and the hero redesign (`mhacks-q73
   - demo video;
   - "how we used X" for every sponsor;
   - Notability tag + ≥2 screenshots.
-- [ ] **Fetch.ai:**
-  - agents on Agentverse, with the README badges `innovationlab` + `hackathon` and agent names and addresses;
+- [ ] **Fetch.ai** (criteria and requirements: [fetchai-integration.md](fetchai-integration.md)):
+  - agents on Agentverse with the Chat Protocol; the primary workflow completes inside one ASI:One conversation;
+  - Payment Protocol + Interactive Cards (both named in the judging criteria and bonus list);
+  - README badges `innovationlab` + `hackathon`, agent names and addresses, run instructions;
+  - 3–5 minute demo video;
   - a public ASI:One shared-chat URL;
   - **the MHacks Submission Agent:** the lead creates the team, then teammates join with the Team ID; fill in the agent URLs and shared-chat URLs for bonus points.
 - [ ] **Relay:** the agent works in the Relay app.
