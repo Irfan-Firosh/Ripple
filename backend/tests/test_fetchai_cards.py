@@ -103,3 +103,44 @@ def test_two_post_card_uses_main_lab_workflow(monkeypatch):
     asyncio.run(agents._handle_request(ctx, "user", '{"action":"react","brand":"linear","draft_a":"A","draft_b":"B"}'))
     assert seen[-1].draft_a == "A" and seen[-1].draft_b == "B"
     assert "exp=42" in ctx.sent[-1].content[0].text and "B wins" in ctx.sent[-1].content[0].text
+
+
+def test_form_values_override_selection_and_blank_keeps_explicit_audience():
+    submit = payload(agents._text("", card=cards.form("react", "supermemory")))["submit_cta"]["selection"]
+    plan = cards.submission(json.dumps({"selection": submit, "brand": "linear", "draft_a": "Exact A", "draft_b": "Exact B"}))
+    assert plan.brand == "linear" and plan.variants == ["Exact A", "Exact B"]
+    plan = cards.submission(json.dumps({"selection": submit, "brand": "", "draft_a": "Exact A"}))
+    assert plan.brand == "supermemory"
+    build = payload(agents._text("", card=cards.form("onboard", "supermemory")))
+    assert build["fields"][0]["required"] and build["submit_cta"]["selection"]["brand"] == ""
+
+
+def test_fresh_session_does_not_inherit_other_chats_audience(monkeypatch):
+    class Storage:
+        def __init__(self): self.values = {}
+        def get(self, key): return self.values.get(key)
+        def set(self, key, value): self.values[key] = value.copy()
+    ctx = Context()
+    ctx.storage, ctx.session = Storage(), "first"
+    key, state = agents._state(ctx, "user")
+    state.update(brand="supermemory", awaiting="create", last_action="create")
+    agents._save_state(ctx, key, state)
+    ctx.session = "second"
+    asyncio.run(agents._handle_request(ctx, "user", "Open the Ripple menu"))
+    assert "Current audience" not in ctx.sent[-1].content[0].text
+    ctx.session = "first"
+    assert agents._state(ctx, "user")[1]["brand"] == "supermemory"
+
+
+def test_switching_company_clears_unfinished_goal_and_saved_request(monkeypatch):
+    ctx = Context()
+    ctx._ripple_state = {"brand": "supermemory", "awaiting": "create", "last_action": "create", "pending": {"brand": "supermemory"}}
+    monkeypatch.setattr(agents, "asi1_api_key", lambda: "test")
+    requests = []
+    async def ask(ctx, address, request, reply_type, timeout):
+        requests.append(request)
+        return AudienceResult(brand=request.brand, personas=60), ""
+    monkeypatch.setattr(agents, "_ask", ask)
+    asyncio.run(agents._handle_request(ctx, "user", "What are the main interests in @linear’s audience?"))
+    assert len(requests) == 1 and requests[0].brand == "linear"
+    assert "pending" not in ctx._ripple_state and "awaiting" not in ctx._ripple_state

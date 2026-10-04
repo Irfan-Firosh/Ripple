@@ -31,7 +31,7 @@ test('campaigns are a separate tab with a compact creation dialog', async ({ pag
   const nav = page.getByRole('navigation', { name: 'Workspace navigation' });
   await expect(nav.getByRole('link', { name: 'Campaigns', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(nav.getByRole('link', { name: 'Lab', exact: true })).toHaveAttribute('href', '/lab?brand=raycast.com');
-  await expect(nav.getByRole('link', { name: 'Lab v2', exact: true })).toHaveCount(1);
+  await expect(nav.getByRole('link', { name: 'Lab v2', exact: true })).toHaveCount(0);
   await expect(page.getByText('Campaigns are unavailable.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'New campaign', exact: true }).first().click();
   const dialog = page.getByRole('dialog');
@@ -110,7 +110,11 @@ test('Campaigns and Lab v2 fit mobile in both themes', async ({ page }) => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await page.screenshot({ path: '/private/tmp/ripple-campaigns-mobile-light.png', fullPage: true });
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  await page.getByRole('navigation', { name: 'Workspace navigation' }).getByRole('link', { name: 'Lab v2', exact: true }).click();
+  await expect(page.getByRole('navigation', { name: 'Workspace navigation' }).getByRole('link', { name: 'Lab v2', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close navigation' }).click();
+  await page.locator('.campaign-concept').nth(0).getByRole('button', { name: 'Select', exact: true }).click();
+  await page.locator('.campaign-concept').nth(1).getByRole('button', { name: 'Select', exact: true }).click();
+  await page.getByRole('button', { name: 'Open in Lab v2' }).click();
   await expect(page.getByLabel('Draft A')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

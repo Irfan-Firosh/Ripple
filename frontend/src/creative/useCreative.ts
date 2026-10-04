@@ -72,12 +72,12 @@ export function useCreative(brandId: string, campaignId: string | null) {
     if (!connection || !campaignId) return;
     let cancelled = false;
     const bump = () => setRevision(value => value + 1);
-    const tables = [connection.db.creativeBrief, connection.db.adVariant, connection.db.creativeJob];
+    const tables = [connection.db.creativeBrief, connection.db.adVariant, connection.db.creativeJob, connection.db.campaign];
     for (const table of tables) { table.onInsert(bump); table.onUpdate(bump); table.onDelete(bump); }
     const subscription = connection.subscriptionBuilder()
       .onApplied(() => { if (!cancelled) { setSubscribedCampaign(campaignId); bump(); } })
       .onError(ctx => setError(errorText(ctx.event)))
-      .subscribe(['creative_brief', 'ad_variant', 'creative_job'].map(table => `SELECT * FROM ${table} WHERE campaign_id = ${sqlString(campaignId)}`));
+      .subscribe(['campaign', 'creative_brief', 'ad_variant', 'creative_job'].map(table => `SELECT * FROM ${table} WHERE campaign_id = ${sqlString(campaignId)}`));
     return () => {
       cancelled = true;
       for (const table of tables) { table.removeOnInsert(bump); table.removeOnUpdate(bump); table.removeOnDelete(bump); }
@@ -87,7 +87,7 @@ export function useCreative(brandId: string, campaignId: string | null) {
 
   // Rows are immutable SDK snapshots; copy before sorting/editing.
   void revision;
-  const campaigns: Campaign[] = connection && baseReady ? [...connection.db.campaign.iter()].filter(row => row.createdBy.toHexString() === identity).reverse() : [];
+  const campaigns: Campaign[] = connection && baseReady ? [...connection.db.campaign.iter()].filter(row => row.createdBy.toHexString() === identity || row.campaignId === campaignId).reverse() : [];
   const briefs: Brief[] = connection && campaignReady ? [...connection.db.creativeBrief.iter()].filter(row => row.campaignId === campaignId) : [];
   const variants: Variant[] = connection && campaignReady ? [...connection.db.adVariant.iter()].filter(row => row.campaignId === campaignId) : [];
   const jobs: Job[] = connection && campaignReady ? [...connection.db.creativeJob.iter()].filter(row => row.campaignId === campaignId) : [];

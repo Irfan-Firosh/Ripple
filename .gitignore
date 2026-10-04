@@ -9,14 +9,10 @@ playwright-report/
 !.env.example
 .venv*/
 
-# Beads / Dolt files (added by bd init)
-.dolt/
+# Local database files
 *.db
 *.db-shm
 *.db-wal
-.beads-credential-key
-.beads/proxieddb/
-*.gate.lock*
 
 # Raw X / Bluesky API caches (follower data, not committed)
 data/x_raw/

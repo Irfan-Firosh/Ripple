@@ -2,7 +2,6 @@
 import asyncio
 import json
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -12,6 +11,7 @@ from uagents_core.contrib.protocols.chat import (
     ChatAcknowledgement,
     ChatMessage,
     EndSessionContent,
+    StartSessionContent,
     TextContent,
     MetadataContent,
     chat_protocol_spec,
@@ -106,11 +106,6 @@ def _state(ctx, sender):
     storage = getattr(ctx, "storage", None)
     state = (storage.get(key) if storage else getattr(ctx, "_ripple_state", None)) or {}
     state["brand"] = _audience_handle(state.get("brand")) or _audience_handle(state.get("last_valid_brand"))
-    if not state.get("brand") and storage:
-        recent = storage.get(f"ripple-last-audience:{sender}") or {}
-        if time.time() - recent.get("updated", 0) < 86400:
-            state.update({k: recent[k] for k in ("brand", "last_action") if k in recent})
-            state["brand"] = _audience_handle(state.get("brand"))
     return key, state
 
 
@@ -121,10 +116,6 @@ def _save_state(ctx, key, state):
     storage = getattr(ctx, "storage", None)
     if storage:
         storage.set(key, state)
-        if state.get("brand"):
-            sender = key.split(":", 2)[1]
-            storage.set(f"ripple-last-audience:{sender}", {"brand": state["brand"],
-                        "last_action": state.get("last_action"), "updated": time.time()})
     else:
         ctx._ripple_state = state
 
@@ -205,12 +196,16 @@ async def _reach_lines(ctx: Context, brand: str, drafts: list[str]) -> list[str]
 
 async def _handle_request(ctx: Context, sender: str, text: str) -> None:
     state_key, state = _state(ctx, sender)
+    awaiting, previous_brand = state.get("awaiting"), state.get("brand")
     selection = cards.selection(text)
     action = selection.get("action") if isinstance(selection, dict) else None
     if not isinstance(action, str):
         action = None
     named = _audience_handle(selection.get("brand")) if isinstance(selection, dict) else _named_brand(text)
     if named:
+        if named.lower() != state.get("brand", "").lower():
+            for field in ("awaiting", "last_action", "pending"):
+                state.pop(field, None)
         state["brand"] = named.strip().lstrip("@")
         _save_state(ctx, state_key, state)
     command = re.sub(r"@(?:ripple|(?:test-)?agent1[a-z0-9]+)\b", "", text, flags=re.I).strip()
@@ -219,7 +214,9 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
               "test another post": "test_form", "test a post": "test_form", "simulate": "test_form",
               "simulate it": "test_form", "run simulation": "test_form", "i want to simulate a post": "test_form",
               "i want to compare two posts": "test_form", "explore an audience": "audience_form",
-              "create campaign images": "campaign_form"}
+              "create campaign images": "campaign_form", "explore this audience": "audience",
+              "back to menu": "menu", "check progress": "status", "continue my request": "resume",
+              "retry build": "retry", "test another post / compare two": "test_form"}
     action = action or labels.get(short)
     if not action:
         # ASI may deliver a button click as prose rather than its JSON selection.
@@ -228,14 +225,16 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
                                    or short.strip('"\'') == label):
                 action = labels[label]
                 break
-    if action == "menu" or text.strip().lower() in {"menu", "help", "hi", "hello", "start", "open the ripple menu"}:
+    if action == "menu" or short in {"menu", "help", "hi", "hello", "start", "open the ripple menu"}:
+        state.pop("awaiting", None)
+        _save_state(ctx, state_key, state)
         await ctx.send(sender, _text(_help(state.get("brand")), card=cards.menu(state.get("brand"))))
         return
     forms = {"onboard_form": "onboard", "test_form": "react", "audience_form": "audience", "campaign_form": "create"}
     if action in forms:
         state["awaiting"] = forms[action]
         _save_state(ctx, state_key, state)
-        brand = state.get("brand", "")
+        brand = "" if action == "onboard_form" else state.get("brand", "")
         ctx.logger.info(f"form: {forms[action]} @{brand or '(unset)'}")
         body = (f"Using **@{brand}**. " if brand else "Enter your audience handle. ")
         body += "Paste Post A (and optionally Post B) to simulate." if forms[action] == "react" else "Complete the form below."
@@ -243,7 +242,7 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
         return
     if action == "resume":
         pending = state.get("pending")
-        if not pending or pending["brand"].lower() != str(selection.get("brand", "")).lower():
+        if not pending or pending["brand"].lower() != (named or state.get("brand", "")).lower():
             await ctx.send(sender, _text("No saved request for this audience. Choose what to do next.", card=cards.menu()))
             return
         row = await asyncio.to_thread(onboarding_state, _stdb(), pending["brand"])
@@ -253,7 +252,11 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
         plan = asi1.CampaignPlan.model_validate(state.pop("pending"))
         _save_state(ctx, state_key, state)
     else:
-        plan = cards.submission(text)
+        plan = cards.submission(text) if selection else None
+        if plan is None and action in {"audience", "status", "retry"}:
+            plan = asi1.CampaignPlan(action=action, brand=state.get("brand", ""))
+    if plan is None and awaiting and _audience_handle(command) and (not previous_brand or awaiting == "onboard" or command.startswith("@")):
+        plan = asi1.CampaignPlan(action=awaiting, brand=_audience_handle(command))
     if plan is None:
         plan = asi1.direct_request(command, state.get("brand", ""), awaiting=state.get("awaiting", ""))
     key = asi1_api_key()
@@ -263,7 +266,7 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
             if (state.get("awaiting") == "react" and state.get("brand") and not named
                     and not re.match(r"(?:how|help|menu|create|generate|make|build|status|retry|check)\b", short)):
                 plan = asi1.CampaignPlan(action="react", brand=state["brand"], variants=[text])
-            elif (state.get("last_action") == "audience" and state.get("brand") and len(text.split()) <= 6
+            elif ((state.get("last_action") == "audience" or state.get("awaiting") == "audience") and state.get("brand") and len(text.split()) <= 6
                   and not named and not re.match(r"(?:simulate|test|compare|create|generate|make|build|onboard|status|retry|menu|help|check|analy[sz]e|explore)\b", short)):
                 plan = asi1.CampaignPlan(action="audience", brand=state["brand"], niches=asi1.topic_niches(text))
             if plan is None:
@@ -351,7 +354,7 @@ async def _handle_request(ctx: Context, sender: str, text: str) -> None:
         reply += "\n\nChoose a concept to test its generated post copy. Images stay attached for review; predictions model the post copy."
         if errors:
             reply += "\n\nSome segments could not finish: " + "; ".join(errors)
-        reply += f"\n\n[Open campaign studio]({APP_URL}/campaigns)"
+        reply += f"\n\n[Open campaign studio]({APP_URL}/campaigns?brand={plan.brand}&campaign={campaign_id})"
         result_card = cards.next_steps(plan.brand)
         if links:
             try:
@@ -414,14 +417,16 @@ def build_orchestrator() -> Agent:
         if str(msg.msg_id) in seen:
             return
         ctx.storage.set(seen_key, (seen + [str(msg.msg_id)])[-100:])
+        if any(isinstance(c, StartSessionContent) for c in msg.content):
+            state_key, _ = _state(ctx, sender)
+            _save_state(ctx, state_key, {})
         text = " ".join(c.text for c in msg.content if isinstance(c, TextContent)).strip()
-        if not text:
-            for c in msg.content:
-                if isinstance(c, MetadataContent):
-                    raw = c.metadata.get("selection") or c.metadata.get("card_selection")
-                    if raw:
-                        text = raw
-                        break
+        for c in msg.content:
+            if isinstance(c, MetadataContent):
+                raw = c.metadata.get("selection") or c.metadata.get("card_selection")
+                if raw:
+                    text = raw
+                    break
         if not text:
             return
         try:

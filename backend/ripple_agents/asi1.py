@@ -195,7 +195,14 @@ def plan_campaign(api_key: str, request_text: str, *, session=requests) -> Campa
 
 
 def takeaway(api_key: str, report: str, *, session=requests) -> str:
-    return chat(api_key, "You are a concise marketing analyst. In at most 3 sentences, say how the audience "
+    if "**Lab: every follower sees both** (Simulation agent): A and B are tied" in report:
+        return ("A and B are tied in the full-audience Lab prediction. "
+                "The interview results above describe a smaller sample. "
+                "Try a more specific benefit in the opening line, then test the revised drafts.")
+    return chat(api_key, "You are a concise marketing analyst. All results are synthetic predictions, never measured or actual engagement. "
+                "If the report includes a full-audience Lab winner, use that as the overall predicted winner. "
+                "Interview sample engagement can differ from the Lab; describe it as a separate sample, never override the Lab winner. "
+                "In at most 3 sentences, say how the audience "
                 "received the draft(s) (and which variant won, if several), for which niches, and give one concrete "
                 "rewrite suggestion. Use only the numbers given.",
                 report, max_tokens=300, session=session).strip()

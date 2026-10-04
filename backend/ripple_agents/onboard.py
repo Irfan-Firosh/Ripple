@@ -40,7 +40,7 @@ def render_onboarding(row: dict) -> str:
         return f"Couldn't build @{handle}'s audience: {row.get('error') or 'the build failed'}."
     return (f"Building @{handle}'s audience from their real X followers. Stage: {status}. "
             f"Check progress, then continue when it is ready. Timing depends on X rate limits.\n\n"
-            f"[Watch it build]({APP_URL}/onboarding)")
+            f"[Watch it build]({APP_URL}/onboarding?brand={handle})")
 
 
 def onboarding_reply(stdb, brand: str) -> str:

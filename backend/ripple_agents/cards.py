@@ -23,6 +23,8 @@ def menu(brand=None):
 
 
 def form(action, brand=""):
+    if action == "onboard":
+        brand = ""
     label = f"Audience (leave blank to keep @{brand})" if brand else "X handle (or an existing Bluesky handle)"
     fields = [{"name": "brand", "kind": "text", "label": label, "required": not bool(brand)}]
     if action == "react":
@@ -36,7 +38,7 @@ def form(action, brand=""):
     titles = {"react": "Test your post", "audience": "Explore your audience", "create": "Create campaign images",
               "onboard": "Build your X audience"}
     return card("form", {"title": titles[action], "fields": fields,
-        "submit_cta": {"label": "Build audience" if action == "onboard" else "Continue", "selection": {"action": action, "brand": brand}}})
+        "submit_cta": {"label": "Build audience" if action == "onboard" else "Continue", "selection": {"action": action, "brand": brand, "audience": brand}}})
 
 
 def selection(text):
@@ -49,7 +51,12 @@ def selection(text):
         if isinstance(data.get("action"), dict):
             nested = data["action"].get("selection")
         if isinstance(nested, dict):
-            data = {**data, **nested}
+            submitted = {k: v for k, v in data.items() if k != "selection" and not (k == "action" and isinstance(v, dict))}
+            data = {**nested, **submitted}
+        if isinstance(data.get("values"), dict):
+            data = {**data, **data["values"]}
+        if not data.get("brand") and isinstance(data.get("audience"), str):
+            data["brand"] = data["audience"]
     return data if isinstance(data, dict) else None
 
 
@@ -87,7 +94,7 @@ def onboarding(row, *, can_resume=False):
 def next_steps(brand):
     return card("custom", {"root": {"type": "section", "title": f"@{brand} · next steps", "children": [
         button("Explore this audience", "audience", brand=brand),
-        button("Test another post", "test_form", brand=brand), button("Create campaign images", "campaign_form", brand=brand),
+        button("Test another post / compare two", "test_form", brand=brand), button("Create campaign images", "campaign_form", brand=brand),
         button("Back to menu", "menu")]}})
 
 
@@ -95,7 +102,10 @@ def creatives(brand, variants):
     children = []
     for i, variant in enumerate(variants):
         draft = "\n".join(s for s in (variant.get("headline", ""), variant.get("cta", "")) if s).strip()
+        preview = [{"type": "image", "src": variant["image_url"], "alt": f"Concept {i + 1}",
+                    "aspect_ratio": variant.get("aspect_ratio", "1:1")}] if variant.get("image_url") else []
         children.append({"type": "section", "title": f"Concept {i + 1}", "children": [
+            *preview,
             {"type": "text", "value": draft or "Image concept"},
             button("Test this post", "react", brand=brand, draft_a=draft)] if draft else [
             {"type": "text", "value": "Add post copy with Test another post to simulate this concept."}]})

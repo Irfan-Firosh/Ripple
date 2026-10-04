@@ -23,7 +23,9 @@ The demo audience is Raycast's Bluesky followers: 999 personas built from 1,000 
 |---|---|---|
 | `ripple` (orchestrator, handle `ripple`) | `agent1qvq9ea8vhcvwure28rvzzdjp23k2ffnmcq0d6sed9thmn85kvam5jvqdrlj` | Agent Chat Protocol entry point for ASI:One. Plans each request with the ASI:One LLM, delegates, and replies in chat. |
 | `ripple-audience` | `agent1qvl0y3yn06476jkk6wpzj638x0hjh4ws87wgs4200k83n4ugk0nk65ruxnw` | Finds who in the audience cares about a topic; asks the most relevant personas how they would react to each draft. |
-| Simulation agent | set via `RIPPLE_SIMULATOR_ADDRESS` | Projects reach for a draft. |
+| `ripple-creative-director` | `agent1qwnufkenp53ewr5rfqxprkvx04ztes96xqmw32uvcegd4674dh5ajkfva3y` | Creates audience-backed campaign briefs and queues persisted work. |
+| `ripple-image-gen` | `agent1q0ed307u95982pv35ecz3ekr5u9l6eckx6nfcswahtyp56f4fgv9x7muyse` | Generates campaign images and saves each concept. |
+| `ripple-simulation` | `agent1qtcpquer88v9q83t3p7t83cwjkt9m5t9lt2etw435c04grerdzw26ve3d2f` | Projects reach and runs the same A/B experiments shown in the web Lab. Runs inside the Bureau by default; `RIPPLE_SIMULATOR_ADDRESS` can override it. |
 
 Shared state (raw follower data, personas, niches) lives in the SpacetimeDB database `ripple-mhacks`.
 
@@ -50,8 +52,10 @@ RIPPLE_DASHBOARD_URL=https://...
 ```bash
 cd backend
 uv sync
-uv run python -m ripple_agents              # starts both agents and registers them on Agentverse
+uv run python -m ripple_agents              # starts the orchestrator and specialists
 uv run python -m ripple_agents --addresses  # prints the agent addresses
 uv run python -m ripple_agents.probe "Who in @raycast.com's audience cares about AI agents?"  # test without ASI:One
 uv run pytest                               # unit tests
 ```
+
+For the complete guided chat demo, worker commands, and live verification, see [Fetch.ai demo instructions](docs/fetch-ai-demo.md).
