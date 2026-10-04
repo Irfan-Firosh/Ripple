@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
+import type { SimRunState } from '../audience/liveSimulation';
 import type { CascadeNetwork, Vec3 } from './liveNetwork';
 import { createNodeSprite, loadPortraits } from './nodeSprites';
 
-type Props={network:CascadeNetwork;elapsed:number;theme:'dark'|'light';selected:number|null;focus:number|null;zoomStep:number;reset:number;onSelect:(id:number)=>void;onPrepared:(ready:boolean)=>void};
+type Props={network:CascadeNetwork;elapsed:number;theme:'dark'|'light';selected:number|null;focus:number|null;zoomStep:number;reset:number;onSelect:(id:number)=>void;onPrepared:(ready:boolean)=>void;replay?:{run:SimRunState;tick:number}|null};
 export function CascadeCanvas(props:Props) {
   const canvas=useRef<HTMLCanvasElement>(null);
   const latest=useRef(props);latest.current=props;
@@ -71,7 +72,7 @@ export function CascadeCanvas(props:Props) {
       c.center=c.center.map((v,i)=>v+(c.target[i]-v)*ease);c.zoom+=(c.targetZoom-c.zoom)*ease;
       c.center=c.center.map((v,i)=>Math.abs(v-c.target[i])<.001?c.target[i]:v);
       if(Math.abs(c.zoom-c.targetZoom)<.0001)c.zoom=c.targetZoom;
-      const signature=[width,height,c.yaw,c.pitch,c.zoom,...c.center,p.elapsed,p.selected,p.theme,revision.current].join('|');
+      const signature=[width,height,c.yaw,c.pitch,c.zoom,...c.center,p.elapsed,p.selected,p.theme,revision.current,p.replay?.run.runId,p.replay?.tick].join('|');
       if(document.hidden||signature===lastSignature){frame=requestAnimationFrame(render);return;}
       lastSignature=signature;drawCount++;el.dataset.drawCount=String(drawCount);
       ctx.clearRect(0,0,width,height);
@@ -85,9 +86,15 @@ export function CascadeCanvas(props:Props) {
         const perspective=focalLength/Math.max(focalLength*.25,focalLength+depth);
         return {x:width/2+rx*scale*perspective,y:height/2+ry*scale*perspective,perspective,depth};
       };
+      // Replay mode: a simulated run (trial 0 of the cascade) decides who saw and who engaged, tick by tick.
+      const replay=p.replay;
+      const simState=(id:number)=>replay?.run.nodes.get(n.nodes[id].member.userId);
       const project=(id:number)=>{
         const source=id===n.sourceId,pt=projectPoint(source?[0,0,0]:n.nodes[id].position);
-        return {id,x:pt.x,y:pt.y,depth:pt.depth,r:(source?n.nodeRadius*1.6:n.nodeRadius)*scale*pt.perspective,active:(n.arrivalById.get(id)?.at??Infinity)<=p.elapsed};
+        const sim=!source&&replay?simState(id):undefined;
+        const active=replay?source||(sim?.seenTick!=null&&sim.seenTick<=replay.tick):(n.arrivalById.get(id)?.at??Infinity)<=p.elapsed;
+        const engaged=!!replay&&!source&&sim?.engagedTick!=null&&sim.engagedTick<=replay.tick;
+        return {id,x:pt.x,y:pt.y,depth:pt.depth,r:(source?n.nodeRadius*1.6:n.nodeRadius)*scale*pt.perspective,active,engaged};
       };
       const points=[...n.nodes.map(node=>project(node.id)),project(n.sourceId)];
       const byId=points;
@@ -102,7 +109,7 @@ export function CascadeCanvas(props:Props) {
         if(fromSource){
           // The brand reaches everyone; only draw the links the post actually travelled along.
           const target=edge.a===n.sourceId?edge.b:edge.a;
-          if(!active||n.arrivalById.get(target)?.from!==n.sourceId)continue;
+          if(!active||(replay?simState(target)?.seenTick!==0:n.arrivalById.get(target)?.from!==n.sourceId))continue;
         }
         const color=fromSource?'#e6bc8826':edge.bridge?(active?'#e6bc8899':'#e6bc8830'):(p.theme==='dark'?(active?'#9caec34a':'#9caec315'):(active?'#4b658b50':'#4b658b18'));
         let group=edgePaths.get(color);if(!group){group={path:new Path2D(),bridge:edge.bridge};edgePaths.set(color,group);}
@@ -113,7 +120,7 @@ export function CascadeCanvas(props:Props) {
         if(arrival.from===null)continue;
         const from=byId[arrival.from],to=byId[arrival.id];
         const start=n.arrivalById.get(arrival.from)!.at,f=(p.elapsed-start)/(arrival.at-start);
-        if(f>=0&&f<1&&!reduced){ctx.beginPath();ctx.arc(from.x+(to.x-from.x)*f,from.y+(to.y-from.y)*f,2.4*scale,0,Math.PI*2);ctx.fillStyle='#e6bc88';ctx.shadowColor='#e6bc88';ctx.shadowBlur=12;ctx.fill();ctx.shadowBlur=0;}
+        if(f>=0&&f<1&&!reduced&&!replay){ctx.beginPath();ctx.arc(from.x+(to.x-from.x)*f,from.y+(to.y-from.y)*f,2.4*scale,0,Math.PI*2);ctx.fillStyle='#e6bc88';ctx.shadowColor='#e6bc88';ctx.shadowBlur=12;ctx.fill();ctx.shadowBlur=0;}
       }
       // Depth order changes with orbit, but not with zoom or camera translation.
       const angles=`${c.yaw}|${c.pitch}|${n.nodes.length}`;
@@ -122,11 +129,12 @@ export function CascadeCanvas(props:Props) {
       for(const id of order){
         const node=points[id];
         const source=node.id===n.sourceId,color=source?'#e6bc88':n.communities[n.nodes[node.id].community].color;
-        ctx.globalAlpha=node.active?1:.24;
+        ctx.globalAlpha=replay&&!source?(node.engaged?1:node.active?.45:.12):node.active?1:.24;
         if(!source){const b=bounds[n.nodes[id].community];b.left=Math.min(b.left,node.x-node.r);b.right=Math.max(b.right,node.x+node.r);b.bottom=Math.max(b.bottom,node.y+node.r);}
         const sprite=sprites.current.get(id),size=node.r*128/48;
         if(sprite&&node.x+size>0&&node.x-size<width&&node.y+size>0&&node.y-size<height)ctx.drawImage(sprite,node.x-size/2,node.y-size/2,size,size);
         ctx.globalAlpha=1;
+        if(node.engaged){ctx.strokeStyle='#e6bc88';ctx.lineWidth=2;ctx.beginPath();ctx.arc(node.x,node.y,node.r+1.5*scale,0,Math.PI*2);ctx.stroke();}
         if(node.id===p.selected){ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(node.x,node.y,node.r+3*scale,0,Math.PI*2);ctx.stroke();}
         if(source){ctx.strokeStyle=color+'30';ctx.beginPath();ctx.arc(node.x,node.y,node.r+11*scale,0,Math.PI*2);ctx.stroke();ctx.fillStyle=p.theme==='dark'?'#e6bc88':'#805322';ctx.font=`${Math.max(8,9*scale)}px "Space Mono"`;ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillText(`@${n.source.handle.toUpperCase()} POST`,node.x,node.y+node.r+26*scale);}
         if(node.id===p.selected){ctx.fillStyle=p.theme==='dark'?'#f3f1ed':'#1d2d40';ctx.font=`${Math.max(10,11*scale)}px "DM Sans"`;ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillText(`@${n.nodes[node.id].handle}`,node.x,node.y+node.r+18*scale);}
@@ -145,8 +153,9 @@ export function CascadeCanvas(props:Props) {
     return()=>{cancelAnimationFrame(frame);resize.disconnect();};
   },[]);
   const reached=network.arrivals.filter(a=>a.id!==network.sourceId&&a.at<=props.elapsed).length;
+  const engagedCount=props.replay?network.nodes.filter(node=>{const sim=props.replay!.run.nodes.get(node.member.userId);return sim?.engagedTick!=null&&sim.engagedTick<=props.replay!.tick;}).length:undefined;
   return <canvas ref={canvas} role="img" aria-label="Three-dimensional audience network. Drag to orbit, scroll to zoom, or choose a niche to fly to it." tabIndex={0}
-    data-node-count={network.nodes.length} data-active-count={reached} data-focus-community={props.focus??'all'} data-complete={props.elapsed>=network.duration}
+    data-node-count={network.nodes.length} data-active-count={reached} data-focus-community={props.focus??'all'} data-complete={props.elapsed>=network.duration} data-run={props.replay?.run.runId} data-engaged-count={engagedCount}
     onPointerDown={e=>{drag.current={x:e.clientX,y:e.clientY,moved:false};e.currentTarget.setPointerCapture(e.pointerId);}}
     onPointerMove={e=>{const d=drag.current;if(!d)return;const dx=e.clientX-d.x,dy=e.clientY-d.y;if(Math.abs(dx)+Math.abs(dy)>2)d.moved=true;camera.current.yaw+=dx*.005;camera.current.pitch=Math.max(-.9,Math.min(.9,camera.current.pitch+dy*.004));d.x=e.clientX;d.y=e.clientY;}}
     onPointerUp={e=>{if(drag.current&&!drag.current.moved){const rect=e.currentTarget.getBoundingClientRect();const found=hits.current.slice().reverse().find(h=>Math.hypot(h.x-(e.clientX-rect.left),h.y-(e.clientY-rect.top))<h.r+4);if(found)latest.current.onSelect(found.id);}drag.current=null;}}

@@ -79,3 +79,14 @@ test('Raycast (Bluesky) audience renders every twin in at most 7 niche groups', 
   expect(sizes.reduce((sum, n) => sum + Number(n), 0)).toBe(people);
   await expect(index).not.toContainText(/other/i); // no catch-all bucket: each person sits in a real niche
 });
+
+test('a simulation run replays live from SpacetimeDB', async ({ page }) => {
+  const runId = process.env.RIPPLE_TEST_RUN_ID;
+  test.skip(!runId, 'set RIPPLE_TEST_RUN_ID to a run created by the simulation agent');
+  await page.goto(`/dashboard?brand=spacetimedb&run=${runId}`);
+  const canvas = page.getByRole('img', { name: /Three-dimensional audience network/ });
+  await expect(canvas).toBeVisible({ timeout: 20000 });
+  await expect(canvas).toHaveAttribute('data-run', runId!);
+  await expect(page.getByText(/likely reach \d+–\d+/)).toBeVisible();
+  await expect.poll(async () => Number(await canvas.getAttribute('data-engaged-count'))).toBeGreaterThan(0);
+});
