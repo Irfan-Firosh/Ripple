@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
-import { ClerkFailed, ClerkLoading, Show, SignIn, SignUp, UserButton } from "@clerk/react";
+import { ClerkFailed, ClerkLoading, Show, SignIn, SignUp, useAuth } from "@clerk/react";
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowLeft, ArrowUpRight, Moon, Sun } from "lucide-react";
+import { ArrowLeft, Moon, Sun } from "lucide-react";
 import { RippleMark, initialTheme } from "../../App";
 import "../../auth.css";
 
 // Adapted from Watermelon auth-07: split form / cloudscape composition.
 export default function Auth7({ signIn = false }: { signIn?: boolean }) {
   const [theme, setTheme] = useState(initialTheme);
+  const { isLoaded, isSignedIn } = useAuth();
   const reducedMotion = useReducedMotion();
+  useEffect(() => {
+    if (isLoaded && isSignedIn) location.replace("/onboarding");
+  }, [isLoaded, isSignedIn]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.title = `${signIn ? "Sign in" : "Get started"} — Ripple`;
@@ -65,16 +69,13 @@ export default function Auth7({ signIn = false }: { signIn?: boolean }) {
             <Show when="signed-out">
               <div className="auth-intro"><span className="eyebrow">{signIn ? "WELCOME BACK" : "YOUR NEXT RIPPLE STARTS HERE"}</span></div>
               {signIn ? (
-                <SignIn routing="hash" signUpUrl="/auth" forceRedirectUrl="/dashboard" appearance={appearance} />
+                <SignIn routing="hash" signUpUrl="/auth" forceRedirectUrl="/onboarding" signUpForceRedirectUrl="/onboarding" appearance={appearance} />
               ) : (
-                <SignUp routing="hash" signInUrl="/auth/sign-in" forceRedirectUrl="/dashboard" appearance={appearance} />
+                <SignUp routing="hash" signInUrl="/auth/sign-in" forceRedirectUrl="/onboarding" signInForceRedirectUrl="/onboarding" appearance={appearance} />
               )}
             </Show>
             <Show when="signed-in">
-              <div className="auth-signed-in">
-                <UserButton /><h1>You’re all set.</h1><p>Let’s see what happens next.</p>
-                <a className="button primary" href="/dashboard">Open workspace <ArrowUpRight size={16} /></a>
-              </div>
+              <p className="auth-status" role="status">Opening onboarding…</p>
             </Show>
           </motion.div>
         </div>

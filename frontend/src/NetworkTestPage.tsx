@@ -14,11 +14,12 @@ import './network-test.css';
 type LoadState = { status: 'loading'; preparing?:boolean } | { status: 'error'|'oversized'; message: string } | { status: 'ready'; network: CascadeNetwork };
 
 // Loads the scraped audience from SpacetimeDB. There is no sample fallback: if the database can't be read, say so.
-type Brand = (typeof BRANDS)[number];
+type Brand = { handle: string; label: string; platform: 'x' | 'bluesky'; maxNiches: number };
 
 function brandFromUrl(): Brand {
   const wanted = new URLSearchParams(location.search).get('brand')?.toLowerCase();
-  return BRANDS.find(b => b.handle === wanted) ?? BRANDS[0];
+  return BRANDS.find(b => b.handle === wanted) ?? (wanted && /^[a-z0-9_]{1,15}$/.test(wanted)
+    ? { handle: wanted, label: `@${wanted}`, platform: 'x', maxNiches: 6 } : BRANDS[0]);
 }
 
 function useAudienceNetwork(brand: Brand) {
@@ -82,6 +83,7 @@ function useSimReplay(runId: string | null): Replay | null {
 export default function NetworkTestPage({workspace=false}:{workspace?:boolean}) {
   const [theme,setTheme]=useState(initialTheme);
   const [brand]=useState(brandFromUrl);
+  const brands = BRANDS.some(b => b.handle === brand.handle) ? BRANDS : [...BRANDS, brand];
   const { state, retry } = useAudienceNetwork(brand);
   const [runId]=useState(()=>new URLSearchParams(location.search).get('run'));
   const replay=useSimReplay(runId);
@@ -95,7 +97,7 @@ export default function NetworkTestPage({workspace=false}:{workspace?:boolean}) 
     <a className="brand" href="/" aria-label="Ripple home"><RippleMark size={27}/><span>Ripple</span></a>
     <span className="nt-page-name">{workspace?'Audience':'Network playground'} <i/> {subtitle}</span>
     {workspace&&<RippleWorkspaceNav brand={brand.handle}/>}
-    <nav className="nt-brands" aria-label="Brand audience">{BRANDS.map(b=><a key={b.handle} href={`?brand=${b.handle}`} aria-current={b.handle===brand.handle?'page':undefined}>{b.label}<span>{b.platform==='bluesky'?'Bluesky':'X'}</span></a>)}</nav>
+    <nav className="nt-brands" aria-label="Brand audience">{brands.map(b=><a key={b.handle} href={`?brand=${b.handle}`} aria-current={b.handle===brand.handle?'page':undefined}>{b.label}<span>{b.platform==='bluesky'?'Bluesky':'X'}</span></a>)}</nav>
     <div className="nt-header-actions">{!workspace&&<a href="/dashboard" aria-label="Back to workspace"><ArrowLeft size={15}/></a>}{toggleTheme}</div>
   </header>;
   if(state.status!=='ready') return <main className="network-test">
