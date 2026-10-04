@@ -18,3 +18,7 @@ Needs `.env`: `CLAUDE_API_KEY`, `RIPPLE_AUDIENCE_SEED`, `RIPPLE_SIMULATION_SEED`
 
 Local round trip without Agentverse (no Inspector step): set `RIPPLE_AGENTS_LOCAL=1` for both agents and run
 `uv run python -m agents.dev_client <simulation address> <audience address>`.
+
+## Lab (A/B pre-tests from the browser)
+- `uv run python -m twins lab-worker`: runs experiments queued from `/lab` (`request_lab_experiment`): Claude scores both drafts per twin on likes/reposts/replies/quotes, then two cascades run in SpacetimeDB and the winner + lift are written back.
+- `uv run python -m twins anchor --brand raycast.com --posts 5`: provisional per-signal calibration against Raycast's real Bluesky engagement (replaced later by the backtest in `docs/superpowers/plans/2026-10-04-backtest-calibration.md`).

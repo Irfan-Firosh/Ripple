@@ -18,8 +18,9 @@ def test_anchor_scales_each_signal_to_observed_follower_means():
                                                    SimpleNamespace(signal="quote", mean=0.0)])
     cal = anchor(db, None, "raycast.com", posts=2, simulate=sim,
                  fetch_posts=lambda *a, **k: posts, fetch_people=lambda uri, **k: people)
-    assert cal["like_scale"] == 0.1 and cal["repost_scale"] == 0.25      # 2/20 and 1/4
-    assert cal["reply_scale"] == 0.01                                     # 0 observed → floor, never 0
+    # +0.5 smoothing on each signal's total: (4+0.5)/2/20 likes, (2+0.5)/2/4 reposts
+    assert cal["like_scale"] == 0.1125 and cal["repost_scale"] == 0.3125
+    assert cal["reply_scale"] == 0.125                                    # none seen in 2 posts ≠ impossible: (0+0.5)/2/2
     assert cal["quote_scale"] == 1.0                                      # nothing predicted → unchanged
     scopes = [args[0] for args in db.reducers("set_sim_calibration")]
     assert scopes == ["B", "default"]

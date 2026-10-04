@@ -11,6 +11,7 @@ from .stdb import sql_str
 
 SIGNALS = ("like", "repost", "reply", "quote")
 FLOOR, CEIL = 0.01, 10.0
+SMOOTHING = 0.5  # added to each signal's observed total: zero in a few posts means rare, not impossible
 
 
 def _current(stdb, scope: str) -> dict:
@@ -32,7 +33,7 @@ def anchor(stdb, client, brand: str, *, posts: int = 5, settle_days: int = 2, si
     if not sample:
         raise ValueError(f"no settled posts for @{handle}")
     predicted = {s: 0.0 for s in SIGNALS}
-    observed = {s: 0.0 for s in SIGNALS}
+    observed = {s: SMOOTHING / len(sample) for s in SIGNALS}
     for p in sample:
         result = simulate(stdb, client, handle, p.text)
         for sig in result.signals:
