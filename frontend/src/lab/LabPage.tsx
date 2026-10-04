@@ -151,7 +151,7 @@ export default function LabPage() {
           {winnerLine && <span className={`lab-verdict lab-draft-${experiment.winner}`}>{winnerLine}</span>}
           {experiment.status === 'failed' && <span className="lab-verdict lab-failed" role="alert">{experiment.error ?? 'This experiment failed.'}</span>}
           {(experiment.status === 'queued') && <span className="lab-verdict" role="status">Queued — waiting for the simulator…</span>}
-          <div className="lab-simulation-actions"><button className="lab-secondary lab-action" onClick={() => setAnalyzing(true)} disabled={experiment.status !== 'done'}>Side-by-side analysis</button><button className="lab-secondary lab-action" onClick={() => void rerun()} disabled={resimulating || experiment.status === 'queued' || experiment.status === 'running'}>{resimulating ? 'Resimulating…' : 'Resimulate'}</button></div>
+          <div className="lab-simulation-actions"><button className="lab-primary lab-action lab-action-primary" onClick={() => setAnalyzing(true)} disabled={experiment.status !== 'done'}>Analysis</button><button className="lab-secondary lab-action" onClick={() => void rerun()} disabled={resimulating || experiment.status === 'queued' || experiment.status === 'running'}>{resimulating ? 'Resimulating…' : 'Resimulate'}</button></div>
         </div>
         {simulationError && <p className="lab-resim-error" role="alert">{simulationError}</p>}
         {experiment.status === 'queued' || experiment.status === 'running' ? <div className="lab-state lab-simulating" role="status" aria-live="polite">

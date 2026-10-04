@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { listActiveBrands, type ActiveBrand } from '../history/historyData';
-import { ArrowRight, Check, Download, FlaskConical, Import, Send, Sparkles } from 'lucide-react';
+import { ArrowRight, BarChart3, Check, Download, FlaskConical, Import, Send, Sparkles } from 'lucide-react';
 import type { Variant } from '../creative/model';
 import { MAX_POST, shipIntent, type BrandPost, type ExperimentRow, type VideoRow } from './flowApi';
 import { ClientTweetCard } from '@/registry/magicui/client-tweet-card';
@@ -106,8 +106,9 @@ export function TestStep({ experiment, labHref, busy, onApprove }: {
   </div>;
 }
 
-export function LaunchStep({ brand, brandId, text, onText, video, shipped, busy, onShip }: {
+export function LaunchStep({ brand, brandId, text, onText, video, shipped, busy, onShip, labHref }: {
   brand: string; brandId: string; text: string; onText: (t: string) => void; video: VideoRow | null; shipped: boolean; busy: boolean; onShip: () => void;
+  labHref?: string;
 }) {
   const author = useBrandAuthor(brand, brandId);
   // The post exactly as it will look (same card as the Lab), with the text editable underneath.
@@ -118,6 +119,7 @@ export function LaunchStep({ brand, brandId, text, onText, video, shipped, busy,
     <label className="flow-post"><span className="flow-eyebrow">EDIT THE POST</span><textarea rows={4} maxLength={MAX_POST} value={text} onChange={e => onText(e.target.value)} />
       <i>{text.length}/{MAX_POST}</i></label>
     <div className="flow-row">
+      {labHref && <a className="flow-primary" href={labHref}><BarChart3 size={15} />View performance</a>}
       <a className="flow-primary" href={shipIntent(text)} target="_blank" rel="noreferrer"
         onClick={() => { if (!busy) onShip(); }}><Send size={15} />{shipped ? 'Post again on X' : 'Ship it to X'}</a>
       {video?.status === 'done' && <>

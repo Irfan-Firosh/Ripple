@@ -12,7 +12,7 @@ import { DraftsStep, type DraftCopy } from './FlowDrafts';
 import { useFlowData } from './useFlowData';
 import { CampaignResearch } from './CampaignResearch';
 import './flow.css';
-import { DEFAULT_BRAND } from '../snapshot';
+import { DEFAULT_BRAND, SHOWCASE_CAMPAIGN, SHOWCASE_LAB_HREF, STATIC_SNAPSHOT } from '../snapshot';
 
 const params = () => new URLSearchParams(location.search);
 const STEPS = ['Audience', 'Concepts', 'Test', 'Launch'] as const;
@@ -20,7 +20,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export default function CampaignFlowPage({ preview = false }: { preview?: boolean }) {
   const brand = (params().get('brand') || DEFAULT_BRAND).toLowerCase().replace(/^@/, '');
-  const [campaignId, setCampaignId] = useState<string | null>(params().get('id'));
+  const [campaignId, setCampaignId] = useState<string | null>(params().get('id') ?? SHOWCASE_CAMPAIGN);
   const [mode, setMode] = useState<'choose' | 'import'>(params().get('start') === 'import' ? 'import' : 'choose');
   const [theme, setTheme] = useState(initialTheme);
   const [brandId, setBrandId] = useState('');
@@ -30,6 +30,8 @@ export default function CampaignFlowPage({ preview = false }: { preview?: boolea
   const [revision, setRevision] = useState(0);
   const [post, setPost] = useState('');
   const creative = useCreative(brandId, campaignId);
+  // The Lab is where results live: fetch its code while the campaign is on screen so the jump is instant.
+  useEffect(() => { void import('../lab/LabPage'); }, []);
   const { flow, video, drafts, copies, experiment } = useFlowData(campaignId, revision);
   const requested = useRef(false);
   const autoStart = useRef(params().get('start') === 'generate'); // "Generate" on the map is one click
@@ -186,7 +188,7 @@ export default function CampaignFlowPage({ preview = false }: { preview?: boolea
           <p>From your audience to a campaign worth sharing.</p>
           <a className="flow-hero-link" href={`/dashboard?brand=${encodeURIComponent(brand)}`}>Explore your audience <ArrowRight size={14} /></a>
         </div>
-        {campaignId && <button className="flow-secondary flow-new" disabled={busy} onClick={() => { setCampaignId(null); setMode('choose'); setError(''); requested.current = false; }}><Plus size={15} />New campaign</button>}
+        {campaignId && !STATIC_SNAPSHOT && <button className="flow-secondary flow-new" disabled={busy} onClick={() => { setCampaignId(null); setMode('choose'); setError(''); requested.current = false; }}><Plus size={15} />New campaign</button>}
       </section>
       {!campaignId && <StartChoice brand={brand} busy={busy} onGenerate={() => void generate()} onImport={() => setMode('import')} />}
       <div className="flow-workspace"><div className="flow-workspace-main">
@@ -200,7 +202,8 @@ export default function CampaignFlowPage({ preview = false }: { preview?: boolea
       {campaignId && step === 2 && <><h1>{experiment?.status === 'done' ? 'Results are in.' : 'Testing on your audience.'}</h1>
         <TestStep experiment={experiment} labHref={`/lab?brand=${brand}&exp=${flow?.experiment_id}`} busy={busy} onApprove={d => void approve(d)} /></>}
       {campaignId && step === 3 && <><h1>{stage === 'shipped' ? 'Shipped.' : 'Ready to ship.'}</h1>
-        <LaunchStep brand={brand} brandId={brandId} text={post || flow?.winner_text || ''} onText={setPost} video={winnerVideo ?? video} shipped={stage === 'shipped'} busy={busy} onShip={ship} /></>}
+        <LaunchStep brand={brand} brandId={brandId} text={post || flow?.winner_text || ''} onText={setPost} video={winnerVideo ?? video} shipped={stage === 'shipped'} busy={busy} onShip={ship}
+          labHref={STATIC_SNAPSHOT ? SHOWCASE_LAB_HREF : Number(flow?.experiment_id ?? 0) > 0 ? `/lab?brand=${brand}&exp=${flow?.experiment_id}` : undefined} /></>}
       </div>
       <CampaignResearch brand={brand} campaignId={campaignId} flow={flow} campaigns={creative.campaigns ?? []} brief={brief} jobs={creative.jobs}
         onSelect={id => { requested.current = false; setCampaignId(id); setError(''); }} />

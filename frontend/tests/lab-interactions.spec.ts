@@ -59,8 +59,8 @@ test('simulation has browsable reactions and minimal side-by-side audience graph
   await page.getByRole('article', { name: 'Draft A', exact: true }).locator('[data-metric="replies"]').click();
   await expect(draft.getByText('Love the launch.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Replay', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Side-by-side analysis' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Side-by-side analysis' });
+  await page.getByRole('button', { name: 'Analysis' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Analysis' });
   const spread = dialog.getByRole('region', { name: 'Audience spread comparison' });
   await expect(spread.getByRole('figure')).toHaveCount(2);
   const a = dialog.getByRole('img', { name: 'Draft A @raycast audience spread' });
@@ -97,10 +97,10 @@ test('simulation has browsable reactions and minimal side-by-side audience graph
   await expect(dialog.getByText('B wins · +20% expected engagement')).toHaveCount(0);
   await page.screenshot({ path: '/tmp/ripple-lab-analysis-black.png', fullPage: true });
   await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Side-by-side analysis' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Analysis' })).toBeFocused();
   await expect(page.locator('.lab-page')).toHaveCSS('background-color', 'rgb(8, 8, 8)');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'Side-by-side analysis' }).click();
+  await page.getByRole('button', { name: 'Analysis' }).click();
   await expect(dialog.getByRole('img', { name: 'Draft A @raycast audience spread' })).toBeVisible();
   await expect(dialog.getByRole('img', { name: 'Draft B @raycast audience spread' })).toBeVisible();
   await expect(dialog.locator('.spread-popup').first()).toBeVisible({ timeout: 10000 });
@@ -121,8 +121,8 @@ test('analysis handles unavailable audiences, retry and reduced motion without s
   const state = await database(page); state.audienceError = true;
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/lab?brand=raycast&exp=10');
-  await page.getByRole('button', { name: 'Side-by-side analysis' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Side-by-side analysis' });
+  await page.getByRole('button', { name: 'Analysis' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Analysis' });
   await expect(dialog.getByRole('alert')).toContainText('Audience unavailable.');
   state.audienceError = false; await dialog.getByRole('button', { name: 'Try again' }).click();
   const a = dialog.getByRole('img', { name: 'Draft A @raycast audience spread' });
@@ -142,8 +142,8 @@ test('new brand campaigns use their own audience in a fresh light-mode session',
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/lab?brand=northstar&exp=10');
   await page.getByRole('button', { name: 'Switch to light mode' }).click();
-  await page.getByRole('button', { name: 'Side-by-side analysis' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Side-by-side analysis' });
+  await page.getByRole('button', { name: 'Analysis' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Analysis' });
   await expect(dialog.getByRole('img', { name: 'Draft A @northstar audience spread' })).toHaveAttribute('data-total', '3');
   await expect(dialog.getByRole('img', { name: 'Draft B @northstar audience spread' })).toBeVisible();
   await expect(dialog.getByAltText('@northstar logo')).toHaveCount(2);
