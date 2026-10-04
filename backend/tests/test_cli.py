@@ -38,3 +38,9 @@ def test_build_rejects_out_of_range_numbers(args):
     with pytest.raises(SystemExit) as exc:
         main(["build", "--brand", "spacetimedb", *args], stdb=audience_db(), client=FakeClient([]))
     assert exc.value.code == 2
+
+
+def test_lab_worker_runs_bounded_loops():
+    db = twin_db()
+    db.tables["lab_experiment"] = []
+    assert main(["lab-worker", "--poll", "0", "--max-loops", "2"], stdb=db, client=FakeClient([])) == 0
