@@ -460,6 +460,42 @@ const backtestResult = table(
   }
 );
 
+// Outside-the-audience engagement: per run+signal split, the replayed trial's outside counts per tick, and comments.
+const simSignalSource = table(
+  { name: 'sim_signal_source', public: true },
+  {
+    simSignalSourceId: t.string().primaryKey(), // `${runId}:${signal}:${source}` source = followers | outside
+    runId: t.string().index('btree'),
+    signal: t.string(), // like | repost | reply | quote | view
+    source: t.string(),
+    mean: t.f64(),
+  }
+);
+
+const simOutsideTick = table(
+  { name: 'sim_outside_tick', public: true },
+  {
+    simOutsideTickId: t.string().primaryKey(), // `${runId}:${tick}`
+    runId: t.string().index('btree'),
+    tick: t.u32(),
+    views: t.u32(), likes: t.u32(), reposts: t.u32(), replies: t.u32(), quotes: t.u32(),
+  }
+);
+
+const CommentInput = t.object('CommentInput', { userId: t.string(), kind: t.string(), text: t.string(), tick: t.u32() });
+
+const simComment = table(
+  { name: 'sim_comment', public: true },
+  {
+    simCommentId: t.string().primaryKey(), // `${runId}:${userId}:${kind}`
+    runId: t.string().index('btree'),
+    userId: t.string(),
+    kind: t.string(), // reply | quote
+    text: t.string(),
+    tick: t.u32(),
+  }
+);
+
 const spacetimedb = schema({
   admin,
   xUser,
@@ -489,6 +525,9 @@ const spacetimedb = schema({
   simCalibration,
   labExperiment,
   backtestResult,
+  simSignalSource,
+  simOutsideTick,
+  simComment,
 });
 export default spacetimedb;
 
@@ -819,49 +858,78 @@ type Rng = () => number;
 const SIGNALS = ['like', 'repost', 'reply', 'quote'] as const;
 type Signal = (typeof SIGNALS)[number];
 type SignalP = Record<Signal, number>;
-type Calib = { feedReach: number; shareReach: number; scale: SignalP };
-type TrialEvent = { userId: string; signal: Signal; tick: number };
 
-function calibrationFor(ctx: Ctx, brandUserId: string): Calib {
-  const row = ctx.db.simCalibration.scope.find(brandUserId) ?? ctx.db.simCalibration.scope.find('default');
-  if (!row) return { feedReach: FEED_REACH, shareReach: SHARE_REACH, scale: { like: 1, repost: 1, reply: 1, quote: 1 } };
-  return { feedReach: row.feedReach, shareReach: row.shareReach,
-           scale: { like: row.likeScale, repost: row.repostScale, reply: row.replyScale, quote: row.quoteScale } };
+// Everyone in the audience sees the post. Each person draws each signal independently (Claude's probabilities).
+// A follower's repost/quote (a) gives their audience neighbours who haven't acted another chance (social proof) and
+// (b) reaches their own followers outside the audience: REPOST_VIEW_RATE of them see it and act at OUT_OF_NETWORK x the
+// audience's average rate; outside reposts compound generation by generation until nobody new reposts.
+const REPOST_VIEW_RATE = 0.1;
+const OUT_OF_NETWORK = 0.5;
+const MAX_GENERATIONS = 20;
+
+type TrialEvent = { userId: string; signal: Signal; tick: number };
+type OutsideTick = { tick: number; views: number; counts: SignalP };
+type Audience = { ids: string[]; p: Map<string, SignalP>; adj: Map<string, string[]>; followers: Map<string, number>;
+                  medianFollowers: number; pOut: SignalP };
+
+// Binomial draw: exact for small n, Poisson for rare events, normal approximation otherwise.
+function binom(rand: Rng, n: number, p: number): number {
+  if (n <= 0 || p <= 0) return 0;
+  if (p >= 1) return n;
+  if (n <= 60) { let k = 0; for (let i = 0; i < n; i++) if (rand() < p) k += 1; return k; }
+  const mean = n * p;
+  if (mean < 30) {
+    const limit = Math.exp(-mean); let k = 0, prod = rand();
+    while (prod > limit) { k += 1; prod *= rand(); }
+    return Math.min(n, k);
+  }
+  const u = Math.max(rand(), 1e-12), v = rand();
+  const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  return Math.max(0, Math.min(n, Math.round(mean + z * Math.sqrt(mean * (1 - p)))));
 }
 
-// One independent-cascade trial. Seeing the post = a chance to act on each signal independently;
-// only reposts and quotes put the post in front of the actor's neighbours (Bluesky: likes don't spread).
-function signalTrial(rand: Rng, ids: string[], p: Map<string, SignalP>, adj: Map<string, string[]>, cal: Calib,
-                     record?: { seen: Map<string, number>; events: TrialEvent[] }) {
-  const seen = new Set<string>();
+function signalTrial(rand: Rng, a: Audience, record?: { seen: Map<string, number>; events: TrialEvent[]; outside: OutsideTick[] }) {
   const acted = new Map<string, Set<Signal>>();
-  const counts: SignalP = { like: 0, repost: 0, reply: 0, quote: 0 };
+  const followerCounts: SignalP = { like: 0, repost: 0, reply: 0, quote: 0 };
+  const outsideCounts: SignalP = { like: 0, repost: 0, reply: 0, quote: 0 };
+  let outsideViews = 0;
   let tick = 0;
-  const expose = (id: string, chance: number, next: string[]) => {
-    if (seen.has(id) || rand() >= chance) return;
-    seen.add(id); record?.seen.set(id, tick);
-    const pr = p.get(id);
-    if (!pr) return;
+  const act = (id: string, next: string[]) => {
+    const pr = a.p.get(id);
+    if (!pr || acted.has(id)) return;
     let spreads = false;
+    const mine = new Set<Signal>();
     for (const s of SIGNALS) {
       if (rand() >= pr[s]) continue;
-      counts[s] += 1;
-      const mine = acted.get(id) ?? new Set<Signal>();
-      mine.add(s); acted.set(id, mine);
+      mine.add(s); followerCounts[s] += 1;
       record?.events.push({ userId: id, signal: s, tick });
       if (s === 'repost' || s === 'quote') spreads = true;
     }
+    if (mine.size) acted.set(id, mine);
     if (spreads) next.push(id);
   };
   let frontier: string[] = [];
-  for (const id of ids) expose(id, cal.feedReach, frontier);
-  while (frontier.length) {
+  for (const id of a.ids) { record?.seen.set(id, 0); act(id, frontier); }
+  let outsideSpreaders = 0;
+  while ((frontier.length || outsideSpreaders) && tick < MAX_GENERATIONS) {
     tick += 1;
     const next: string[] = [];
-    for (const u of frontier) for (const v of adj.get(u) ?? []) expose(v, cal.shareReach, next);
+    let reach = 0;
+    for (const u of frontier) {
+      for (const v of a.adj.get(u) ?? []) act(v, next);          // second chance inside the audience
+      reach += a.followers.get(u) ?? a.medianFollowers;          // the reposter's own followers
+    }
+    reach += outsideSpreaders * a.medianFollowers;
+    const views = binom(rand, reach, REPOST_VIEW_RATE);
+    const counts: SignalP = { like: 0, repost: 0, reply: 0, quote: 0 };
+    for (const s of SIGNALS) counts[s] = binom(rand, views, a.pOut[s]);
+    for (const s of SIGNALS) outsideCounts[s] += counts[s];
+    outsideViews += views;
+    outsideSpreaders = counts.repost + counts.quote;
+    if (record && (views || counts.like || counts.repost || counts.reply || counts.quote)) record.outside.push({ tick, views, counts });
     frontier = next;
   }
-  return { seen, acted, counts, lastTick: tick };
+  return { acted, followerCounts, outsideCounts, outsideViews, lastTick: tick };
 }
 
 function percentile(sorted: number[], q: number): number {
@@ -938,30 +1006,44 @@ export const startCascade = spacetimedb.reducer(
       if (!inRun.has(e.a) || !inRun.has(e.b)) continue;
       link(e.a, e.b); link(e.b, e.a);
     }
-    const cal = calibrationFor(ctx, run.brandUserId);
-    // Per-signal probabilities when the policy sent them; otherwise the legacy single p_engage spreads like a repost.
+    // Per-signal probabilities when the policy sent them; otherwise the legacy single p_engage acts like a repost.
     const p = new Map<string, SignalP>();
     for (const pr of probs) {
       const sp = ctx.db.simSignalProb.simSignalProbId.find(`${runId}:${pr.userId}`);
-      const raw: SignalP = sp ? { like: sp.pLike, repost: sp.pRepost, reply: sp.pReply, quote: sp.pQuote }
-                              : { like: 0, repost: pr.pEngage, reply: 0, quote: 0 };
-      p.set(pr.userId, sp ? {
-        like: Math.min(1, raw.like * cal.scale.like), repost: Math.min(1, raw.repost * cal.scale.repost),
-        reply: Math.min(1, raw.reply * cal.scale.reply), quote: Math.min(1, raw.quote * cal.scale.quote),
-      } : raw);
+      p.set(pr.userId, sp ? { like: sp.pLike, repost: sp.pRepost, reply: sp.pReply, quote: sp.pQuote }
+                          : { like: 0, repost: pr.pEngage, reply: 0, quote: 0 });
     }
+    const followers = new Map<string, number>();
+    for (const id of ids) {
+      const fc = ctx.db.xUser.userId.find(id)?.followersCount;
+      if (fc !== undefined && fc !== null) followers.set(id, Number(fc));
+    }
+    const known = [...followers.values()].sort((x, y) => x - y);
+    const medianFollowers = known.length ? known[Math.floor(known.length / 2)] : 0;
+    const pOut: SignalP = { like: 0, repost: 0, reply: 0, quote: 0 };
+    for (const pr of p.values()) for (const s of SIGNALS) pOut[s] += pr[s] / p.size;
+    for (const s of SIGNALS) pOut[s] = Math.min(1, pOut[s] * OUT_OF_NETWORK);
+    const audience: Audience = { ids, p, adj, followers, medianFollowers, pOut };
+
     const rand: Rng = () => ctx.random();
-    const engagedCount = new Map<string, number>(), seenCount = new Map<string, number>();
+    const engagedCount = new Map<string, number>();
     const signalCount = new Map<string, SignalP>();
     const reach: number[] = [], seenTotals: number[] = [];
-    const perSignal: Record<Signal, number[]> = { like: [], repost: [], reply: [], quote: [] };
-    const replay = { seen: new Map<string, number>(), events: [] as TrialEvent[] };
+    const total: Record<Signal | 'view', number[]> = { like: [], repost: [], reply: [], quote: [], view: [] };
+    const sums = { followers: { like: 0, repost: 0, reply: 0, quote: 0, view: 0 }, outside: { like: 0, repost: 0, reply: 0, quote: 0, view: 0 } };
+    const replay = { seen: new Map<string, number>(), events: [] as TrialEvent[], outside: [] as OutsideTick[] };
     let replayMaxTick = 0;
     for (let trial = 0; trial < n; trial++) {
-      const r = signalTrial(rand, ids, p, adj, cal, trial === 0 ? replay : undefined);
-      reach.push(r.acted.size); seenTotals.push(r.seen.size);
-      for (const s of SIGNALS) perSignal[s].push(r.counts[s]);
-      for (const id of r.seen) seenCount.set(id, (seenCount.get(id) ?? 0) + 1);
+      const r = signalTrial(rand, audience, trial === 0 ? replay : undefined);
+      let outsideEngaged = 0;
+      for (const s of SIGNALS) {
+        total[s].push(r.followerCounts[s] + r.outsideCounts[s]);
+        sums.followers[s] += r.followerCounts[s]; sums.outside[s] += r.outsideCounts[s];
+        outsideEngaged += r.outsideCounts[s];
+      }
+      total.view.push(ids.length + r.outsideViews);
+      sums.followers.view += ids.length; sums.outside.view += r.outsideViews;
+      reach.push(r.acted.size + outsideEngaged); seenTotals.push(ids.length + r.outsideViews);
       for (const [id, acts] of r.acted) {
         engagedCount.set(id, (engagedCount.get(id) ?? 0) + 1);
         const c = signalCount.get(id) ?? { like: 0, repost: 0, reply: 0, quote: 0 };
@@ -970,31 +1052,38 @@ export const startCascade = spacetimedb.reducer(
       }
       if (trial === 0) replayMaxTick = r.lastTick;
     }
-    reach.sort((a, b) => a - b); seenTotals.sort((a, b) => a - b);
+    reach.sort((x, y) => x - y); seenTotals.sort((x, y) => x - y);
     const firstAct = new Map<string, number>();
     for (const e of replay.events) if (!firstAct.has(e.userId)) firstAct.set(e.userId, e.tick);
     for (const id of ids) {
       const c = signalCount.get(id) ?? { like: 0, repost: 0, reply: 0, quote: 0 };
       ctx.db.simNode.insert({
         simNodeId: `${runId}:${id}`, runId, userId: id,
-        engagedShare: (engagedCount.get(id) ?? 0) / n, seenShare: (seenCount.get(id) ?? 0) / n,
-        replaySeenTick: replay.seen.get(id), replayEngagedTick: firstAct.get(id),
+        engagedShare: (engagedCount.get(id) ?? 0) / n, seenShare: 1,
+        replaySeenTick: 0, replayEngagedTick: firstAct.get(id),
       } as Row<'simNode'>);
       ctx.db.simNodeSignal.insert({
         simNodeSignalId: `${runId}:${id}`, runId, userId: id,
         likeShare: c.like / n, repostShare: c.repost / n, replyShare: c.reply / n, quoteShare: c.quote / n,
       });
     }
-    for (const s of SIGNALS) {
-      const xs = perSignal[s].sort((a, b) => a - b);
+    for (const s of [...SIGNALS, 'view'] as const) {
+      const xs = total[s].sort((x, y) => x - y);
       ctx.db.simSignal.insert({
         simSignalId: `${runId}:${s}`, runId, signal: s,
         p10: percentile(xs, 0.1), p50: percentile(xs, 0.5), p90: percentile(xs, 0.9),
-        mean: xs.reduce((a, b) => a + b, 0) / n,
+        mean: xs.reduce((x, y) => x + y, 0) / n,
       });
+      for (const source of ['followers', 'outside'] as const) {
+        ctx.db.simSignalSource.insert({ simSignalSourceId: `${runId}:${s}:${source}`, runId, signal: s, source, mean: sums[source][s] / n });
+      }
     }
     for (const e of replay.events) {
       ctx.db.simEvent.insert({ simEventId: `${runId}:${e.userId}:${e.signal}`, runId, userId: e.userId, signal: e.signal, tick: e.tick });
+    }
+    for (const o of replay.outside) {
+      ctx.db.simOutsideTick.insert({ simOutsideTickId: `${runId}:${o.tick}`, runId, tick: o.tick, views: o.views,
+        likes: o.counts.like, reposts: o.counts.repost, replies: o.counts.reply, quotes: o.counts.quote });
     }
     ctx.db.simRun.runId.update({
       ...run, status: 'replaying', trials: n,
@@ -1141,5 +1230,22 @@ export const setBacktestResult = spacetimedb.reducer(
     const row = { backtestResultId: `${a.scope}:${a.metric}`, ...a, note: a.note.slice(0, 300), updatedAt: ctx.timestamp };
     if (ctx.db.backtestResult.backtestResultId.find(row.backtestResultId)) ctx.db.backtestResult.backtestResultId.update(row);
     else ctx.db.backtestResult.insert(row);
+  }
+);
+
+// Comments (replies / quotes) written by the backend in each replying person's voice, shown under the Lab tweet.
+const MAX_COMMENT = 280;
+export const addSimComments = spacetimedb.reducer(
+  { runId: t.string(), comments: t.array(CommentInput) },
+  (ctx, { runId, comments }) => {
+    requireAdmin(ctx);
+    if (!ctx.db.simRun.runId.find(runId)) throw new SenderError(`unknown sim run ${runId}`);
+    for (const c of comments) {
+      if (c.kind !== 'reply' && c.kind !== 'quote') throw new SenderError('kind must be reply or quote');
+      const row = { simCommentId: `${runId}:${c.userId}:${c.kind}`, runId, userId: c.userId, kind: c.kind,
+                    text: c.text.slice(0, MAX_COMMENT), tick: c.tick };
+      if (ctx.db.simComment.simCommentId.find(row.simCommentId)) ctx.db.simComment.simCommentId.update(row);
+      else ctx.db.simComment.insert(row);
+    }
   }
 );

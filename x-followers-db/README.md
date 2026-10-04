@@ -33,6 +33,9 @@ Live database: `ripple-mhacks` on maincloud.
 | `sim_calibration` | `scope` | feed/share reach + per-signal scales (`default` or a brand user id); source = anchor/backtest |
 | `lab_experiment` | `experiment_id` | A/B draft experiments requested from the browser; worker fills runs, winner, lift |
 | `backtest_result` | `scope:metric` | headline backtest metrics shown on the Lab card |
+| `sim_signal_source` | `run_id:signal:source` | mean per signal (incl. `view`) split into `followers` vs `outside` (reached through reposts) |
+| `sim_outside_tick` | `run_id:tick` | the replayed trial's outside-the-audience views/likes/reposts/replies/quotes per tick (live counters) |
+| `sim_comment` | `run_id:user_id:kind` | reply/quote text written in each replying twin's voice (shown under the Lab tweet) |
 
 All upsert reducers are idempotent. Tables are publicly readable; only the publishing identity can write (add more with `add_admin`).
 

@@ -30,6 +30,31 @@ expect "$(sql "SELECT p_50 FROM sim_signal WHERE sim_signal_id = 'r1:reply'")" '
 expect "$(sql "SELECT COUNT(*) AS n FROM sim_event WHERE run_id = 'r1'")" ' 3'
 expect "$(sql "SELECT like_share FROM sim_node_signal WHERE sim_node_signal_id = 'r1:u1'")" ' 1'
 
+# Everyone sees the post; reposts reach the reposter's own followers outside the audience.
+call upsert_x_user '"u2"' '"u2h"' '"U Two"' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"some":1000}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}'
+call create_sim_run '"r5"' '"b"' '"Outside reach"' 4
+call set_sim_probs '"r5"' '[{"user_id":"u1","p_engage":1,"action":"like","reason":"x"},{"user_id":"u2","p_engage":1,"action":"repost","reason":"x"},{"user_id":"u3","p_engage":0,"action":"ignore","reason":"x"},{"user_id":"u4","p_engage":0,"action":"ignore","reason":"x"}]'
+call set_sim_signal_probs '"r5"' '[{"user_id":"u1","p_like":1,"p_repost":0,"p_reply":0,"p_quote":0},{"user_id":"u2","p_like":1,"p_repost":1,"p_reply":0,"p_quote":0},{"user_id":"u3","p_like":0,"p_repost":0,"p_reply":0,"p_quote":0},{"user_id":"u4","p_like":0,"p_repost":0,"p_reply":0,"p_quote":0}]'
+call start_cascade '"r5"' 50
+expect "$(sql "SELECT COUNT(*) AS n FROM sim_event WHERE run_id = 'r5'")" ' 3'                   # u1 like, u2 like+repost
+views=$(sql "SELECT p_50 FROM sim_signal WHERE sim_signal_id = 'r5:view'" | tail -1 | tr -d ' ')
+[ "$views" -gt 40 ] || { echo "FAIL: expected ~100 outside views from u2's 1000 followers, got $views"; exit 1; }
+outside=$(sql "SELECT mean FROM sim_signal_source WHERE sim_signal_source_id = 'r5:like:outside'" | tail -1 | tr -d ' ')
+awk "BEGIN{exit !($outside > 1)}" || { echo "FAIL: outside likes mean $outside"; exit 1; }
+expect "$(sql "SELECT COUNT(*) AS n FROM sim_outside_tick WHERE run_id = 'r5'")" ' [1-9]'
+
+# No reposts → no outside reach: views are exactly the 4 followers.
+call create_sim_run '"r6"' '"b"' '"Likes only"' 4
+call set_sim_probs '"r6"' '[{"user_id":"u1","p_engage":1,"action":"like","reason":"x"},{"user_id":"u2","p_engage":0,"action":"ignore","reason":"x"},{"user_id":"u3","p_engage":0,"action":"ignore","reason":"x"},{"user_id":"u4","p_engage":0,"action":"ignore","reason":"x"}]'
+call set_sim_signal_probs '"r6"' '[{"user_id":"u1","p_like":1,"p_repost":0,"p_reply":0,"p_quote":0},{"user_id":"u2","p_like":0,"p_repost":0,"p_reply":0,"p_quote":0},{"user_id":"u3","p_like":0,"p_repost":0,"p_reply":0,"p_quote":0},{"user_id":"u4","p_like":0,"p_repost":0,"p_reply":0,"p_quote":0}]'
+call start_cascade '"r6"' 50
+expect "$(sql "SELECT p_50, p_90 FROM sim_signal WHERE sim_signal_id = 'r6:view'")" ' 4 *| *4'
+expect "$(sql "SELECT p_90 FROM sim_signal WHERE sim_signal_id = 'r6:like'")" ' 1'
+
+# Comments written by the backend for the replayed run
+call add_sim_comments '"r5"' '[{"user_id":"u2","kind":"quote","text":"This is great","tick":0}]'
+expect "$(sql "SELECT text FROM sim_comment WHERE run_id = 'r5'")" 'This is great'
+
 # Lab queue: brand "brandx" (user 100) with one twin (alice), set up exactly like smoke-twins.sh
 must_fail request_lab_experiment '"nobody"' '"t"' '"a"' '"b"'                        # unknown brand
 call upsert_x_user '"100"' '"brandx"' '"Brand X"' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}' '{"none":[]}'
