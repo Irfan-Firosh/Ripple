@@ -1,7 +1,7 @@
 """Pure async handlers for the Audience and Simulation agents. The uAgent files only wire these up."""
 import asyncio
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from twins.ask import ask_twin
@@ -12,8 +12,12 @@ from twins.simulate import compare_drafts, profile_url, run_simulation
 from twins.stdb import StdbClient
 from twins.sync import load_twin
 
+from .settings import allowed_senders
 from .contracts import (BRANDS, AudienceRequest, AudienceResult, CompareRequest, CompareResult, NicheReach,
                         SimulateRequest, SimulateResult, WhyRequest, WhyResult)
+
+
+SIMULATION_SLOTS = 2  # concurrent simulations per agent (each runs ~100 parallel Claude calls for 1,000 twins)
 
 
 @dataclass(frozen=True)
@@ -22,9 +26,13 @@ class Deps:
     compare: Callable
     why: Callable
     audience: Callable
+    allowed_senders: frozenset[str] | None = None  # None = anyone (dev); set it to the Orchestrator's address
+    slots: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(SIMULATION_SLOTS))
 
 
-def _brand_error(brand: str) -> str | None:
+def _request_error(deps: Deps, sender: str, brand: str) -> str | None:
+    if deps.allowed_senders is not None and sender not in deps.allowed_senders:
+        return "This agent only serves the Ripple Orchestrator; sender not allowed."
     return None if brand in BRANDS else f"Unknown brand '{brand}'. Available: {', '.join(BRANDS)}"
 
 
@@ -33,11 +41,12 @@ def _to_result(request_id: str, summary) -> SimulateResult:
 
 
 async def handle_simulate(ctx, sender: str, msg: SimulateRequest, deps: Deps) -> None:
-    if err := _brand_error(msg.brand):
+    if err := _request_error(deps, sender, msg.brand):
         await ctx.send(sender, SimulateResult(request_id=msg.request_id, ok=False, error=err))
         return
     try:
-        summary = await asyncio.to_thread(deps.simulate, msg.brand, msg.draft, msg.trials)
+        async with deps.slots:
+            summary = await asyncio.to_thread(deps.simulate, msg.brand, msg.draft, msg.trials)
         await ctx.send(sender, _to_result(msg.request_id, summary))
     except Exception as exc:
         await ctx.send(sender, SimulateResult(request_id=msg.request_id, ok=False, error=str(exc)[:300],
@@ -45,11 +54,12 @@ async def handle_simulate(ctx, sender: str, msg: SimulateRequest, deps: Deps) ->
 
 
 async def handle_compare(ctx, sender: str, msg: CompareRequest, deps: Deps) -> None:
-    if err := _brand_error(msg.brand):
+    if err := _request_error(deps, sender, msg.brand):
         await ctx.send(sender, CompareResult(request_id=msg.request_id, ok=False, error=err))
         return
     try:
-        summaries, winner = await asyncio.to_thread(deps.compare, msg.brand, msg.drafts)
+        async with deps.slots:
+            summaries, winner = await asyncio.to_thread(deps.compare, msg.brand, msg.drafts)
         await ctx.send(sender, CompareResult(request_id=msg.request_id, ok=True, winner_index=winner,
                                              results=[_to_result(msg.request_id, s) for s in summaries]))
     except Exception as exc:
@@ -57,7 +67,7 @@ async def handle_compare(ctx, sender: str, msg: CompareRequest, deps: Deps) -> N
 
 
 async def handle_why(ctx, sender: str, msg: WhyRequest, deps: Deps) -> None:
-    if err := _brand_error(msg.brand):
+    if err := _request_error(deps, sender, msg.brand):
         await ctx.send(sender, WhyResult(request_id=msg.request_id, ok=False, error=err))
         return
     try:
@@ -68,7 +78,7 @@ async def handle_why(ctx, sender: str, msg: WhyRequest, deps: Deps) -> None:
 
 
 async def handle_audience(ctx, sender: str, msg: AudienceRequest, deps: Deps) -> None:
-    if err := _brand_error(msg.brand):
+    if err := _request_error(deps, sender, msg.brand):
         await ctx.send(sender, AudienceResult(request_id=msg.request_id, ok=False, error=err))
         return
     try:
@@ -103,4 +113,4 @@ def default_deps() -> Deps:
 
     return Deps(simulate=lambda b, d, t: run_simulation(stdb, client, b, d, trials=t),
                 compare=lambda b, ds: compare_drafts(stdb, client, b, ds),
-                why=why, audience=audience)
+                why=why, audience=audience, allowed_senders=allowed_senders())

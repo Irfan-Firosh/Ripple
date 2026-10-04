@@ -112,4 +112,10 @@ Ripple's SpacetimeDB live state and its real scraped X data map directly onto "r
 - Every `SimulateResult` has a `dashboard_url` (`/dashboard?brand=…&run=…`) for the "Watch it spread" card button; it replays the run live.
 - `brand` is `spacetimedb` (X, 95 twins) or `raycast.com` (Bluesky, 999 twins).
 - Local testing without Agentverse: `RIPPLE_AGENTS_LOCAL=1` on every agent (see `backend/agents/README.md`).
+- `SimulateResult.scored` is the number of twins Claude actually scored. A run fails with `ok=False` when more than 25% of twins are unscored, so the Orchestrator never shows a falsely low reach.
+- The agents serve only addresses in `RIPPLE_ALLOWED_SENDERS`, so set it to the Orchestrator's address.
+- Payment hardening:
+  - The transfer must be newer than the `RequestPayment` and committed within 300 s.
+  - It must not have paid for anything before; used tx hashes persist in agent storage across restarts.
+  - If the transfer memo is set, it must equal the `reference`. Ask buyers to put the reference in the memo; this binds the payment to the request.
 

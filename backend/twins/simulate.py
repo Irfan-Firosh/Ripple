@@ -15,6 +15,7 @@ DASHBOARD_BASE = os.environ.get("RIPPLE_DASHBOARD_URL", "http://localhost:5173/d
 PROB_CHUNK = 200
 TOP_RESPONDERS = 5
 TOP_NICHES = 4
+MAX_UNSCORED = 0.25  # fail rather than report a reach that silently ignores a quarter of the audience
 
 
 class SimNiche(BaseModel):
@@ -41,6 +42,7 @@ class SimSummary(BaseModel):
     brand: str
     draft: str
     people: int
+    scored: int
     reach_p10: int
     reach_p50: int
     reach_p90: int
@@ -79,8 +81,9 @@ def run_simulation(stdb, client, brand: str, draft: str, *, trials: int = 200, r
     stdb.call("create_sim_run", run_id, brand_user.user_id, draft, len(twins))
     try:
         scores = score_twins(client, twins, draft)
-        if all(s.reason == NO_PREDICTION for s in scores):
-            raise RuntimeError("Claude could not score this draft for any twin")
+        scored = sum(s.reason != NO_PREDICTION for s in scores)
+        if scored < len(scores) * (1 - MAX_UNSCORED):
+            raise RuntimeError(f"Claude scored only {scored} of {len(scores)} twins; try again shortly")
         probs = [{"user_id": s.user_id, "p_engage": s.p_engage, "action": s.action, "reason": s.reason} for s in scores]
         for i in range(0, len(probs), PROB_CHUNK):
             stdb.call("set_sim_probs", run_id, probs[i:i + PROB_CHUNK])
@@ -110,7 +113,7 @@ def run_simulation(stdb, client, brand: str, draft: str, *, trials: int = 200, r
         action=score_by[t.user_id].action, p_engage=score_by[t.user_id].p_engage,
         engaged_share=round(nodes.get(t.user_id, {}).get("engaged_share", 0.0), 3), reason=score_by[t.user_id].reason)
         for t in ranked]
-    return SimSummary(run_id=run_id, brand=brand_user.username, draft=draft, people=len(twins),
+    return SimSummary(run_id=run_id, brand=brand_user.username, draft=draft, people=len(twins), scored=scored,
                       reach_p10=run["reach_p_10"], reach_p50=run["reach_p_50"], reach_p90=run["reach_p_90"],
                       seen_p50=run["seen_p_50"], top_niches=top_niches, top_responders=top_responders,
                       dashboard_url=f"{dashboard_base}?brand={brand_user.username}&run={run_id}")

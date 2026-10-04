@@ -42,6 +42,7 @@ class SimulateResult(Model):
     brand: str = ""
     draft: str = ""
     people: int = 0
+    scored: int = 0  # twins Claude actually scored (the rest count as not engaging)
     reach_p10: int = 0
     reach_p50: int = 0
     reach_p90: int = 0

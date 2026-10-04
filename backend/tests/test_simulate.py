@@ -65,3 +65,16 @@ def test_compare_picks_highest_median_reach():
 def test_profile_urls():
     assert profile_url("did:plc:x", "a.bsky.social") == "https://bsky.app/profile/a.bsky.social"
     assert profile_url("123", "alice") == "https://x.com/alice"
+
+
+def test_mostly_unscored_audience_fails_instead_of_underreporting_reach():
+    db = sim_db()
+    only_alice = {"scores": [SCORES["scores"][0]]}  # bob (half the audience) gets no prediction
+    with pytest.raises(RuntimeError, match="scored"):
+        run_simulation(db, FakeClient([only_alice]), "spacetimedb", "x", run_id="r3", sleep=lambda _: None)
+    assert db.reducers("fail_sim_run")[0][0] == "r3"
+
+
+def test_summary_reports_how_many_twins_were_scored():
+    s = run_simulation(sim_db(), FakeClient([SCORES]), "spacetimedb", "x", run_id="r4", sleep=lambda _: None)
+    assert s.scored == 2

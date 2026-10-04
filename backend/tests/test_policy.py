@@ -62,3 +62,20 @@ def test_a_failed_batch_scores_its_twins_as_ignore_instead_of_aborting():
 def test_default_parallelism_fits_a_1000_person_budget():
     import inspect
     assert inspect.signature(score_twins).parameters["workers"].default >= 16  # 100 batches inside ~120 s
+
+
+def test_late_batches_count_as_no_prediction_after_the_deadline():
+    import time
+
+    class SlowClient(FakeClient):
+        def _create(self, **kw):
+            ids = [line.split('"')[1] for line in kw["messages"][0]["content"].splitlines() if line.startswith('<twin id="')]
+            if "slow" in ids:
+                time.sleep(1.0)
+            return SimpleNamespace(content=[SimpleNamespace(type="tool_use", name=kw["tool_choice"]["name"], input=batch(ids))])
+
+    twins = [bt("fast", "x", 1), bt("slow", "x", 1)]
+    start = time.monotonic()
+    scores = score_twins(SlowClient([]), twins, "draft", batch_size=1, workers=2, deadline=0.3)
+    assert time.monotonic() - start < 0.8
+    assert scores[0].p_engage == 0.6 and scores[1].reason == "no prediction"

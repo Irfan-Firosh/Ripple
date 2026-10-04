@@ -14,5 +14,7 @@ Ripple tests a post on Claude-built digital twins of a brand's real audience bef
 Run: `cd backend && uv run python -m agents.simulation_agent` and `uv run python -m agents.audience_agent`.
 Needs `.env`: `CLAUDE_API_KEY`, `RIPPLE_AUDIENCE_SEED`, `RIPPLE_SIMULATION_SEED` (+ optional `AGENTVERSE_API_KEY`).
 
+**Before connecting mailboxes, set `RIPPLE_ALLOWED_SENDERS=<orchestrator agent address>`**. Otherwise anyone who finds these agents on Agentverse can spend our Claude credits and get the paid compare for free. Leave it unset only for local development.
+
 Local round trip without Agentverse (no Inspector step): set `RIPPLE_AGENTS_LOCAL=1` for both agents and run
 `uv run python -m agents.dev_client <simulation address> <audience address>`.
