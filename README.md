@@ -27,7 +27,7 @@ The demo audience is Raycast's Bluesky followers: 999 personas built from 1,000 
 
 Shared state (raw follower data, personas, niches) lives in the SpacetimeDB database `ripple-mhacks`.
 
-The web dashboard also has a **Campaign studio**: audience-backed briefs, Grok Imagine ads, editable copy, take history, and approval before draft comparison. See [setup and demo instructions](docs/campaign-studio.md).
+The workspace has separate **Campaigns** and **Lab v2** tabs: audience-backed briefs, Grok Imagine concepts, editable drafts, and a handoff to the existing Lab simulator. Lab v2 also retains the original illustrative comparison, history, and export tools. See [setup and demo instructions](docs/campaign-studio.md).
 
 ## Run the agents
 

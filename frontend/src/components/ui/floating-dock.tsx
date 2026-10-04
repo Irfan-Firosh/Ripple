@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { FlaskConical, House, Menu, Network, X } from 'lucide-react';
+import { FileText, FlaskConical, House, Menu, Network, PanelsTopLeft, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import './floating-dock.css';
 
@@ -45,7 +45,9 @@ export function RippleWorkspaceNav({ brand }: { brand: string }) {
   return <FloatingDock className="ripple-workspace-nav" items={[
     { title: 'Home', icon: <House />, href: '/' },
     { title: 'Audience', icon: <Network />, href: `/dashboard${query}` },
+    { title: 'Campaigns', icon: <PanelsTopLeft />, href: `/campaigns${query}` },
     { title: 'Lab', icon: <FlaskConical />, href: `/lab${query}` },
+    { title: 'Lab v2', icon: <FileText />, href: `/lab-v2${query}` },
   ]} />;
 }
 
