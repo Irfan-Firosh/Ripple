@@ -98,6 +98,7 @@ const xUser = table(
     username: t.string().index('btree'),
     ingestedAt: t.timestamp(),
     updatedAt: t.timestamp(),
+    profileImage: t.option(t.string()).default(undefined), // data: URL of the 400x400 avatar, set by fetch_profile_images.py
   }
 );
 
@@ -398,11 +399,23 @@ export const upsertXUser = spacetimedb.reducer(xUserFields, (ctx, user) => {
   requireAdmin(ctx);
   const existing = ctx.db.xUser.userId.find(user.userId);
   if (existing) {
-    ctx.db.xUser.userId.update({ ...user, ingestedAt: existing.ingestedAt, updatedAt: ctx.timestamp } as Row<'xUser'>);
+    ctx.db.xUser.userId.update({
+      ...user, ingestedAt: existing.ingestedAt, updatedAt: ctx.timestamp, profileImage: existing.profileImage,
+    } as Row<'xUser'>);
   } else {
-    ctx.db.xUser.insert({ ...user, ingestedAt: ctx.timestamp, updatedAt: ctx.timestamp } as Row<'xUser'>);
+    ctx.db.xUser.insert({ ...user, ingestedAt: ctx.timestamp, updatedAt: ctx.timestamp, profileImage: undefined } as Row<'xUser'>);
   }
 });
+
+export const setXUserProfileImage = spacetimedb.reducer(
+  { userId: t.string(), profileImage: t.string() },
+  (ctx, { userId, profileImage }) => {
+    requireAdmin(ctx);
+    const user = ctx.db.xUser.userId.find(userId);
+    if (!user) throw new SenderError(`unknown user ${userId}`);
+    ctx.db.xUser.userId.update({ ...user, profileImage });
+  }
+);
 
 export const upsertAudienceMembership = spacetimedb.reducer(
   { brandUserId: t.string(), followerUserId: t.string(), ingestionRunId: t.string(), source: t.string() },

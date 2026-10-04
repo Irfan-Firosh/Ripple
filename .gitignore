@@ -16,8 +16,9 @@ playwright-report/
 .beads/proxieddb/
 *.gate.lock*
 
-# Raw X API cache (follower data, not committed)
+# Raw X / Bluesky API caches (follower data, not committed)
 data/x_raw/
+data/bsky_raw/
 data/backups/
 
 # Python caches
