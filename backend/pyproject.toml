@@ -3,7 +3,12 @@ name = "ripple-backend"
 version = "0.1.0"
 description = "Ripple backend services: Claude-built behavioural twins synced through SpacetimeDB"
 requires-python = ">=3.12"
-dependencies = ["anthropic>=0.60", "pydantic>=2.7", "requests>=2.32"]
+dependencies = [
+    "anthropic>=0.60",
+    "pydantic>=2.7",
+    "requests>=2.32",
+    "uagents==0.26.0",
+]
 
 [dependency-groups]
 dev = ["pytest>=8"]
