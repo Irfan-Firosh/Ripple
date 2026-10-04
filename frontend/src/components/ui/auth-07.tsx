@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { ArrowLeft, Moon, Sun } from "lucide-react";
 import { RippleMark, initialTheme } from "../../App";
 import "../../auth.css";
+import { AFTER_AUTH, STATIC_SNAPSHOT } from "../../snapshot";
 
 // Adapted from Watermelon auth-07: split form / cloudscape composition.
 export default function Auth7({ signIn = false }: { signIn?: boolean }) {
@@ -11,7 +12,7 @@ export default function Auth7({ signIn = false }: { signIn?: boolean }) {
   const { isLoaded, isSignedIn } = useAuth();
   const reducedMotion = useReducedMotion();
   useEffect(() => {
-    if (isLoaded && isSignedIn) location.replace("/onboarding");
+    if (isLoaded && isSignedIn) location.replace(AFTER_AUTH);
   }, [isLoaded, isSignedIn]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -69,13 +70,13 @@ export default function Auth7({ signIn = false }: { signIn?: boolean }) {
             <Show when="signed-out">
               <div className="auth-intro"><span className="eyebrow">{signIn ? "WELCOME BACK" : "YOUR NEXT RIPPLE STARTS HERE"}</span></div>
               {signIn ? (
-                <SignIn routing="hash" signUpUrl="/auth" forceRedirectUrl="/onboarding" signUpForceRedirectUrl="/onboarding" appearance={appearance} />
+                <SignIn routing="hash" signUpUrl="/auth" forceRedirectUrl={AFTER_AUTH} signUpForceRedirectUrl={AFTER_AUTH} appearance={appearance} />
               ) : (
-                <SignUp routing="hash" signInUrl="/auth/sign-in" forceRedirectUrl="/onboarding" signInForceRedirectUrl="/onboarding" appearance={appearance} />
+                <SignUp routing="hash" signInUrl="/auth/sign-in" forceRedirectUrl={AFTER_AUTH} signInForceRedirectUrl={AFTER_AUTH} appearance={appearance} />
               )}
             </Show>
             <Show when="signed-in">
-              <p className="auth-status" role="status">Opening onboarding…</p>
+              <p className="auth-status" role="status">{STATIC_SNAPSHOT ? "Opening your workspace…" : "Opening onboarding…"}</p>
             </Show>
           </motion.div>
         </div>

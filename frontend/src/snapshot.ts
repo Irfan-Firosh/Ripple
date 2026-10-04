@@ -12,6 +12,9 @@ const SHOWCASE = {
   campaignId: '26654684-3c5e-4a79-b751-f2a4258c91ff',
 };
 
+// Where sign-in lands: the static demo has no onboarding, so accounts go straight to the workspace.
+export const AFTER_AUTH = STATIC_SNAPSHOT ? '/home' : '/onboarding';
+
 // Pages opened without ?brand= show this brand.
 export const DEFAULT_BRAND = STATIC_SNAPSHOT ? SHOWCASE.brand : 'raycast';
 
