@@ -6,7 +6,7 @@ import { buildPlanarLayout } from './networkLayout2D';
 import { buildClusterEdges } from './clusterEdges';
 const GOLDEN_ANGLE=2.399963;
 
-type Props={network:CascadeNetwork;view:'2d'|'3d';elapsed:number;theme:'dark'|'light';selected:number|null;focus:number|null;zoomStep:number;reset:number;onSelect:(id:number)=>void;onPrepared:(ready:boolean)=>void;replay?:{run:SimRunState;tick:number}|null};
+type Props={audienceOnly?:boolean;network:CascadeNetwork;view:'2d'|'3d';elapsed:number;theme:'dark'|'light';selected:number|null;focus:number|null;zoomStep:number;reset:number;onSelect:(id:number)=>void;onPrepared:(ready:boolean)=>void;replay?:{run:SimRunState;tick:number}|null};
 export function CascadeCanvas(props:Props) {
   const canvas=useRef<HTMLCanvasElement>(null);
   const latest=useRef(props);latest.current=props;
@@ -23,7 +23,7 @@ export function CascadeCanvas(props:Props) {
   const {network}=props;
   const planar=useMemo(()=>network.planarLayout??buildPlanarLayout(network),[network]);
   const latestPlanar=useRef(planar);latestPlanar.current=planar;
-  const clusterEdges=useMemo(()=>buildClusterEdges(network),[network]);
+  const clusterEdges=useMemo(()=>buildClusterEdges(network).filter(edge=>!props.audienceOnly||edge.kind==='bridge'),[network,props.audienceOnly]);
   const latestEdges=useRef(clusterEdges);latestEdges.current=clusterEdges;
   const firstArrivals=useMemo(()=>network.communities.map((_,index)=>Math.min(...network.nodes.filter(node=>node.community===index).map(node=>network.arrivalById.get(node.id)?.at??Infinity))),[network]);
   const latestArrivals=useRef(firstArrivals);latestArrivals.current=firstArrivals;
@@ -61,7 +61,7 @@ export function CascadeCanvas(props:Props) {
       ctx.fillStyle=gradient;ctx.fillRect(0,0,128,128);return tile;
     });
     const prepare=async()=>{
-      for(let id=0;id<=network.sourceId;id++){
+      for(let id=0;id<network.nodes.length+(props.audienceOnly?0:1);id++){
         if(cancelled)return;
         sprites.current.set(id,createNodeSprite(network,id,props.theme,images.current.get(id)));
         // Yield between batches so the preparation loader remains responsive.
@@ -70,7 +70,7 @@ export function CascadeCanvas(props:Props) {
       if(!cancelled){revision.current++;props.onPrepared(true);}
     };
     void prepare();return()=>{cancelled=true;};
-  },[network,props.theme,props.onPrepared]);
+  },[network,props.theme,props.onPrepared,props.audienceOnly]);
   useEffect(()=>{
     const el=canvas.current;if(!el)return;const ctx=el.getContext('2d');if(!ctx)return;
     let width=1,height=1,frame=0,previous=0,lastDraw=0,lastSignature='',drawCount=0,angleKey='';
@@ -82,7 +82,7 @@ export function CascadeCanvas(props:Props) {
       const dt=previous?Math.min((now-previous)/1000,.05):.016;previous=now;
       const reduced=motion.matches;
       // Only the overview drifts. Keep inspection, zoomed views and 2D stationary.
-      const idle=!reduced&&!flat&&!document.hidden&&p.focus===null&&p.selected===null&&!drag.current&&!interaction.current.hovered&&now>=interaction.current.resumeAt&&c.targetZoom<=1.02&&sprites.current.size===n.sourceId+1;
+      const idle=!reduced&&!flat&&!document.hidden&&p.focus===null&&p.selected===null&&!drag.current&&!interaction.current.hovered&&now>=interaction.current.resumeAt&&c.targetZoom<=1.02&&sprites.current.size===n.nodes.length+(p.audienceOnly?0:1);
       el.dataset.idleOrbit=String(idle);
       if(idle)c.yaw=(c.yaw+dt*.026)%(Math.PI*2);
       const ease=reduced?1:1-Math.exp(-dt*7);
@@ -112,11 +112,11 @@ export function CascadeCanvas(props:Props) {
       const project=(id:number)=>{
         const source=id===n.sourceId,pt=projectPoint(source?[0,0,0]:flat?layout.positions[id]:n.nodes[id].position);
         const sim=!source&&replay?simState(id):undefined;
-        const active=replay?source||(sim?.seenTick!=null&&sim.seenTick<=replay.tick):(n.arrivalById.get(id)?.at??Infinity)<=p.elapsed;
+        const active=p.audienceOnly?true:replay?source||(sim?.seenTick!=null&&sim.seenTick<=replay.tick):(n.arrivalById.get(id)?.at??Infinity)<=p.elapsed;
         const engaged=!!replay&&!source&&sim?.engagedTick!=null&&sim.engagedTick<=replay.tick;
         return {id,x:pt.x,y:pt.y,depth:pt.depth,r:(source?n.nodeRadius*1.6:n.nodeRadius)*scale*pt.perspective,active,engaged};
       };
-      const points=[...n.nodes.map(node=>project(node.id)),project(n.sourceId)];
+      const points=n.nodes.map(node=>project(node.id));if(!p.audienceOnly)points.push(project(n.sourceId));
       const clusterPoints=n.communities.map((community,index)=>projectPoint(flat?layout.centers[index]:community.center));
       const activeClusters=n.communities.map(()=>false);
       points.forEach(point=>{if(point.id!==n.sourceId&&point.active)activeClusters[n.nodes[point.id].community]=true;});
@@ -148,7 +148,7 @@ export function CascadeCanvas(props:Props) {
       for(const id of order){
         const node=points[id];
         const source=node.id===n.sourceId,color=source?'#e6bc88':n.communities[n.nodes[node.id].community].color;
-        ctx.globalAlpha=replay&&!source?(node.engaged?1:node.active?.45:.12):node.active?1:.24;
+        ctx.globalAlpha=p.audienceOnly?1:replay&&!source?(node.engaged?1:node.active?.45:.12):node.active?1:.24;
         if(!source){const b=bounds[n.nodes[id].community];b.left=Math.min(b.left,node.x-node.r);b.right=Math.max(b.right,node.x+node.r);b.bottom=Math.max(b.bottom,node.y+node.r);}
         const sprite=sprites.current.get(id),size=node.r*128/48;
         if(sprite&&node.x+size>0&&node.x-size<width&&node.y+size>0&&node.y-size<height)ctx.drawImage(sprite,node.x-size/2,node.y-size/2,size,size);
@@ -167,7 +167,7 @@ export function CascadeCanvas(props:Props) {
         const labelScale=width<500?.8:1,bw=badge.width*labelScale,bh=badge.height*labelScale;
         let x=anchorX,y=anchorY;
         const free=(cx:number,cy:number)=>!labels.some(label=>Math.abs(label.y-cy)<(label.height+bh)/2+8&&Math.abs(label.x-cx)<(label.width+bw)/2+8)
-          &&!(Math.abs(cx-width/2)<bw/2+45&&Math.abs(cy-height/2)<bh/2+45);
+          &&(p.audienceOnly||!(Math.abs(cx-width/2)<bw/2+45&&Math.abs(cy-height/2)<bh/2+45));
         for(let attempt=0;attempt<32;attempt++){
           const angle=attempt*GOLDEN_ANGLE,offset=attempt===0?0:30+Math.sqrt(attempt)*20;
           x=Math.max(bw/2+8,Math.min(width-bw/2-8,anchorX+Math.cos(angle)*offset));
@@ -183,10 +183,10 @@ export function CascadeCanvas(props:Props) {
     };frame=requestAnimationFrame(render);
     return()=>{cancelAnimationFrame(frame);resize.disconnect();};
   },[]);
-  const reached=network.arrivals.filter(a=>a.id!==network.sourceId&&a.at<=props.elapsed).length;
+  const reached=props.audienceOnly?network.nodes.length:network.arrivals.filter(a=>a.id!==network.sourceId&&a.at<=props.elapsed).length;
   const engagedCount=props.replay?network.nodes.filter(node=>{const sim=props.replay!.run.nodes.get(node.member.userId);return sim?.engagedTick!=null&&sim.engagedTick<=props.replay!.tick;}).length:undefined;
   return <canvas ref={canvas} role="img" aria-label={props.view==='2d'?'Two-dimensional audience network. Drag to pan, scroll to zoom, or choose a niche to focus it.':'Three-dimensional audience network. Drag to orbit, scroll to zoom, or choose a niche to fly to it.'} tabIndex={0} data-view={props.view}
-    data-node-count={network.nodes.length} data-active-count={reached} data-focus-community={props.focus??'all'} data-complete={props.elapsed>=network.duration} data-run={props.replay?.run.runId} data-engaged-count={engagedCount}
+    data-source-node-count={props.audienceOnly?0:1} data-node-count={network.nodes.length} data-active-count={reached} data-focus-community={props.focus??'all'} data-complete={props.elapsed>=network.duration} data-run={props.replay?.run.runId} data-engaged-count={engagedCount}
     data-post-edge-count={clusterEdges.filter(edge=>edge.kind==='post').length} data-bridge-edge-count={clusterEdges.filter(edge=>edge.kind==='bridge').length}
     onPointerEnter={()=>{interaction.current.hovered=true;}}
     onPointerLeave={()=>{interaction.current.hovered=false;interaction.current.resumeAt=performance.now()+2500;}}

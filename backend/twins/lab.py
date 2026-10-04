@@ -10,27 +10,61 @@ MAX_ERROR = 300
 STALE_SECONDS = 15 * 60  # a Raycast experiment takes ~2-5 min; past this its worker is gone
 
 
+def _run_one(stdb, client, row: dict, runner) -> tuple[bool, object]:
+    """Claim and run one queued experiment. Returns (claimed, outcome); outcome is None when it failed."""
+    exp_id = row["experiment_id"]
+    try:
+        stdb.call("claim_lab_experiment", exp_id)
+    except StdbError:
+        return False, None  # another worker took it, or it is no longer queued
+    try:
+        out = runner(stdb, client, row["brand"], row["draft_a"], row["draft_b"],
+                     on_runs=lambda a, b: stdb.call("attach_lab_runs", exp_id, a, b))
+        stdb.call("finish_lab_experiment", exp_id, out.winner, out.lift)
+        return True, out
+    except BaseException as exc:  # noqa: BLE001 - record every failure, including Ctrl-C, then re-raise those
+        try:
+            stdb.call("fail_lab_experiment", exp_id, f"{type(exc).__name__}: {exc}"[:MAX_ERROR])
+        except StdbError as fail_exc:
+            log.error("experiment %s stuck in running: %s", exp_id, fail_exc)
+        if not isinstance(exc, Exception):
+            raise
+        return True, None
+
+
 def run_pending_labs(stdb, client, *, runner=run_lab) -> int:
     handled = 0
     for row in stdb.sql("SELECT * FROM lab_experiment WHERE status = 'queued'"):
-        exp_id = row["experiment_id"]
-        try:
-            stdb.call("claim_lab_experiment", exp_id)
-        except StdbError:
-            continue  # another worker took it, or it is no longer queued
-        try:
-            out = runner(stdb, client, row["brand"], row["draft_a"], row["draft_b"],
-                         on_runs=lambda a, b: stdb.call("attach_lab_runs", exp_id, a, b))
-            stdb.call("finish_lab_experiment", exp_id, out.winner, out.lift)
-        except BaseException as exc:  # noqa: BLE001 - record every failure, including Ctrl-C, then re-raise those
-            try:
-                stdb.call("fail_lab_experiment", exp_id, f"{type(exc).__name__}: {exc}"[:MAX_ERROR])
-            except StdbError as fail_exc:
-                log.error("experiment %s stuck in running: %s", exp_id, fail_exc)
-            if not isinstance(exc, Exception):
-                raise
-        handled += 1
+        claimed, _ = _run_one(stdb, client, row, runner)
+        handled += claimed
     return handled
+
+
+def _experiments(stdb, brand: str, draft_a: str, draft_b: str) -> list[dict]:
+    rows = stdb.sql("SELECT * FROM lab_experiment")
+    return [r for r in rows if r["brand"].lower() == brand and r["draft_a"] == draft_a and r["draft_b"] == draft_b]
+
+
+def run_experiment(stdb, client, brand: str, draft_a: str, draft_b: str, *, runner=run_lab,
+                   poll_seconds: float = 2.0, wait_seconds: float = STALE_SECONDS, sleep=time.sleep) -> tuple[dict, object]:
+    """Queue an experiment like the browser does (so the Lab page lists it), then run it here. If the Lab worker
+    claims it first, wait for it. Returns (final lab_experiment row, LabOutcome or None)."""
+    brand = brand.strip().lstrip("@").lower()
+    known = {r["experiment_id"] for r in _experiments(stdb, brand, draft_a, draft_b)}
+    stdb.call("request_lab_experiment", brand, "", draft_a, draft_b)
+    fresh = [r for r in _experiments(stdb, brand, draft_a, draft_b) if r["experiment_id"] not in known]
+    if not fresh:
+        raise RuntimeError("the Lab experiment was queued but could not be found")
+    row = max(fresh, key=lambda r: r["experiment_id"])
+    claimed, outcome = _run_one(stdb, client, row, runner)
+    for _ in range(int(wait_seconds / poll_seconds) + 1):
+        row = next(r for r in _experiments(stdb, brand, draft_a, draft_b) if r["experiment_id"] == row["experiment_id"])
+        if row["status"] in ("done", "failed"):
+            return row, outcome
+        if claimed:
+            break
+        sleep(poll_seconds)
+    raise TimeoutError(f"Lab experiment {row['experiment_id']} did not finish")
 
 
 def reap_stale(stdb, *, now_micros: int | None = None) -> int:

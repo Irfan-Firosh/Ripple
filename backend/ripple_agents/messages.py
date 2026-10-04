@@ -94,3 +94,20 @@ class SimulateResult(Model):
     reach_high: int = 0
     summary: str = ""
     error: str = ""
+
+
+# A vs B on the whole audience: the Simulation agent runs a Lab experiment, which the web Lab replays live.
+class LabRequest(Model):
+    brand: str
+    draft_a: str
+    draft_b: str
+
+
+class LabResult(Model):
+    brand: str
+    experiment_id: str = ""
+    winner: str = ""  # A | B | tie
+    lift: float = 0.0  # B's expected engagement over A's (0.58 = +58%)
+    summary_a: str = ""
+    summary_b: str = ""
+    error: str = ""

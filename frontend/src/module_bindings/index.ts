@@ -42,6 +42,7 @@ import AskTwinReducer from "./ask_twin_reducer";
 import AttachLabRunsReducer from "./attach_lab_runs_reducer";
 import ClaimCreativeJobReducer from "./claim_creative_job_reducer";
 import ClaimLabExperimentReducer from "./claim_lab_experiment_reducer";
+import ClaimOnboardingReducer from "./claim_onboarding_reducer";
 import ClaimTwinQuestionReducer from "./claim_twin_question_reducer";
 import CompleteIngestionRunReducer from "./complete_ingestion_run_reducer";
 import CompleteTwinBuildRunReducer from "./complete_twin_build_run_reducer";
@@ -51,6 +52,7 @@ import DeleteCampaignReducer from "./delete_campaign_reducer";
 import EditBriefReducer from "./edit_brief_reducer";
 import FailCreativeJobReducer from "./fail_creative_job_reducer";
 import FailLabExperimentReducer from "./fail_lab_experiment_reducer";
+import FailOnboardingReducer from "./fail_onboarding_reducer";
 import FailSimRunReducer from "./fail_sim_run_reducer";
 import FailTwinQuestionReducer from "./fail_twin_question_reducer";
 import FinishCreativeJobReducer from "./finish_creative_job_reducer";
@@ -62,8 +64,10 @@ import PublishTwinReducer from "./publish_twin_reducer";
 import ReplaceAudienceEdgesReducer from "./replace_audience_edges_reducer";
 import RequestCreativeReducer from "./request_creative_reducer";
 import RequestLabExperimentReducer from "./request_lab_experiment_reducer";
+import RequestOnboardingReducer from "./request_onboarding_reducer";
 import ResetStaleCreativeJobsReducer from "./reset_stale_creative_jobs_reducer";
 import SetBacktestResultReducer from "./set_backtest_result_reducer";
+import SetOnboardingProgressReducer from "./set_onboarding_progress_reducer";
 import SetSimCalibrationReducer from "./set_sim_calibration_reducer";
 import SetSimProbsReducer from "./set_sim_probs_reducer";
 import SetSimSignalProbsReducer from "./set_sim_signal_probs_reducer";
@@ -75,6 +79,7 @@ import StartCascadeReducer from "./start_cascade_reducer";
 import StartIngestionRunReducer from "./start_ingestion_run_reducer";
 import StartTwinBuildRunReducer from "./start_twin_build_run_reducer";
 import UpdateIngestionRunReducer from "./update_ingestion_run_reducer";
+import UpdateOnboardingBriefReducer from "./update_onboarding_brief_reducer";
 import UpsertAudienceMembershipReducer from "./upsert_audience_membership_reducer";
 import UpsertBrandKitReducer from "./upsert_brand_kit_reducer";
 import UpsertContextAnnotationReducer from "./upsert_context_annotation_reducer";
@@ -99,6 +104,7 @@ import CreativeBriefRow from "./creative_brief_table";
 import CreativeJobRow from "./creative_job_table";
 import LabExperimentRow from "./lab_experiment_table";
 import NicheRow from "./niche_table";
+import OnboardingRow from "./onboarding_table";
 import SimCalibrationRow from "./sim_calibration_table";
 import SimCommentRow from "./sim_comment_table";
 import SimEventRow from "./sim_event_table";
@@ -278,6 +284,23 @@ const tablesSchema = __schema({
       { name: 'niche_slug_key', constraint: 'unique', columns: ['slug'] },
     ],
   }, NicheRow),
+  onboarding: __table({
+    name: 'onboarding',
+    indexes: [
+      { accessor: 'onboardingId', name: 'onboarding_onboarding_id_idx_btree', algorithm: 'btree', columns: [
+        'onboardingId',
+      ] },
+      { accessor: 'requestedBy', name: 'onboarding_requested_by_idx_btree', algorithm: 'btree', columns: [
+        'requestedBy',
+      ] },
+      { accessor: 'status', name: 'onboarding_status_idx_btree', algorithm: 'btree', columns: [
+        'status',
+      ] },
+    ],
+    constraints: [
+      { name: 'onboarding_onboarding_id_key', constraint: 'unique', columns: ['onboardingId'] },
+    ],
+  }, OnboardingRow),
   simCalibration: __table({
     name: 'sim_calibration',
     indexes: [
@@ -632,6 +655,7 @@ const reducersSchema = __reducers(
   __reducerSchema("attach_lab_runs", AttachLabRunsReducer),
   __reducerSchema("claim_creative_job", ClaimCreativeJobReducer),
   __reducerSchema("claim_lab_experiment", ClaimLabExperimentReducer),
+  __reducerSchema("claim_onboarding", ClaimOnboardingReducer),
   __reducerSchema("claim_twin_question", ClaimTwinQuestionReducer),
   __reducerSchema("complete_ingestion_run", CompleteIngestionRunReducer),
   __reducerSchema("complete_twin_build_run", CompleteTwinBuildRunReducer),
@@ -641,6 +665,7 @@ const reducersSchema = __reducers(
   __reducerSchema("edit_brief", EditBriefReducer),
   __reducerSchema("fail_creative_job", FailCreativeJobReducer),
   __reducerSchema("fail_lab_experiment", FailLabExperimentReducer),
+  __reducerSchema("fail_onboarding", FailOnboardingReducer),
   __reducerSchema("fail_sim_run", FailSimRunReducer),
   __reducerSchema("fail_twin_question", FailTwinQuestionReducer),
   __reducerSchema("finish_creative_job", FinishCreativeJobReducer),
@@ -652,8 +677,10 @@ const reducersSchema = __reducers(
   __reducerSchema("replace_audience_edges", ReplaceAudienceEdgesReducer),
   __reducerSchema("request_creative", RequestCreativeReducer),
   __reducerSchema("request_lab_experiment", RequestLabExperimentReducer),
+  __reducerSchema("request_onboarding", RequestOnboardingReducer),
   __reducerSchema("reset_stale_creative_jobs", ResetStaleCreativeJobsReducer),
   __reducerSchema("set_backtest_result", SetBacktestResultReducer),
+  __reducerSchema("set_onboarding_progress", SetOnboardingProgressReducer),
   __reducerSchema("set_sim_calibration", SetSimCalibrationReducer),
   __reducerSchema("set_sim_probs", SetSimProbsReducer),
   __reducerSchema("set_sim_signal_probs", SetSimSignalProbsReducer),
@@ -665,6 +692,7 @@ const reducersSchema = __reducers(
   __reducerSchema("start_ingestion_run", StartIngestionRunReducer),
   __reducerSchema("start_twin_build_run", StartTwinBuildRunReducer),
   __reducerSchema("update_ingestion_run", UpdateIngestionRunReducer),
+  __reducerSchema("update_onboarding_brief", UpdateOnboardingBriefReducer),
   __reducerSchema("upsert_audience_membership", UpsertAudienceMembershipReducer),
   __reducerSchema("upsert_brand_kit", UpsertBrandKitReducer),
   __reducerSchema("upsert_context_annotation", UpsertContextAnnotationReducer),

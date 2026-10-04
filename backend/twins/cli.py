@@ -34,6 +34,8 @@ def _parser() -> argparse.ArgumentParser:
     lw = sub.add_parser("lab-worker", help="run queued Lab A/B experiments (lab_experiment rows)")
     lw.add_argument("--poll", type=float, default=2.0)
     lw.add_argument("--max-loops", type=int)
+    ow = sub.add_parser("onboarding-worker", help="scrape + twin + graph brands queued by request_onboarding")
+    ow.add_argument("--poll", type=float, default=2.0)
     a = sub.add_parser("ask", help="ask a twin directly (prints JSON, writes nothing)")
     a.add_argument("--username", required=True)
     a.add_argument("--draft", required=True)
@@ -65,5 +67,14 @@ def main(argv: list[str] | None = None, *, stdb=None, client=None) -> int:
         return 0
     if args.cmd == "lab-worker":
         run_lab_worker(stdb, client, poll_seconds=args.poll, max_loops=args.max_loops)
+        return 0
+    if args.cmd == "onboarding-worker":
+        from .onboarding import run_onboarding_worker
+        from .graph import publish_edges
+        from .onboarding_deps import backfill, scweet_ingest
+        from .audience_history import capture_audience
+        ingest = scweet_ingest()
+        run_onboarding_worker(stdb, client, poll_seconds=args.poll, ingest=ingest, build=run_build,
+                              edges=publish_edges, after_ready=backfill(stdb, client, ingest), archive=capture_audience)
         return 0
     return _ask(args, stdb, client)

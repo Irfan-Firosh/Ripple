@@ -12,6 +12,8 @@ playwright-report/
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
+*.db-shm
+*.db-wal
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
@@ -19,6 +21,7 @@ playwright-report/
 # Raw X / Bluesky API caches (follower data, not committed)
 data/x_raw/
 data/bsky_raw/
+data/scweet_raw/
 data/backups/
 data/logs/
 

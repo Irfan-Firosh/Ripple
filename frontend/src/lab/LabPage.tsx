@@ -1,24 +1,26 @@
-import { ArrowLeft, Moon, RotateCcw, Sun } from 'lucide-react';
+import { ArrowLeft, History, Moon, RotateCcw, Sun } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { RippleMark, initialTheme } from '../App';
 import { Loader } from '../components/ui/loader';
 import { RippleWorkspaceNav } from '../components/ui/floating-dock';
-import { BRANDS } from '../audience/liveAudience';
+import { listActiveBrands, type ActiveBrand } from '../history/historyData';
 import { listExperiments, loadBrand, useLabExperiment, type LabBrand, type LabExperimentSummary } from './labData';
 import { LabComposer } from './LabComposer';
 import { LabDock } from './LabDock';
 import { Tweet } from './Tweet';
 import { useReplayTick } from './useReplayTick';
 import './lab.css';
+import { HistoryDrawer } from '../history/HistoryDrawer';
 
 const params = () => new URLSearchParams(location.search);
-const initialBrand = () => BRANDS.find(b => b.handle === params().get('brand')?.toLowerCase())?.handle ?? 'raycast.com';
+const initialBrand = () => params().get('brand')?.toLowerCase() || 'raycast';
 
 function useExperiments(brand: string, refreshKey: number) {
   const [list, setList] = useState<LabExperimentSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     const controller = new AbortController();
+    setList(null); setError(null);
     let timer = 0;
     const poll = () => listExperiments(brand, controller.signal).then(next => {
       setList(next); setError(null);
@@ -33,8 +35,10 @@ function useExperiments(brand: string, refreshKey: number) {
 export default function LabPage() {
   const [theme, setTheme] = useState(initialTheme);
   const [brand, setBrand] = useState<string>(initialBrand);
+  const [brands, setBrands] = useState<ActiveBrand[]>([]);
   const [expId, setExpId] = useState<string | null>(() => params().get('exp'));
   const [composing, setComposing] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [awaitingNew, setAwaitingNew] = useState<number | null>(null);
   const [profile, setProfile] = useState<LabBrand | null>(null);
@@ -42,6 +46,15 @@ export default function LabPage() {
   const { experiment, error } = useLabExperiment(expId);
   const a = useReplayTick(experiment?.a ?? null);
   const b = useReplayTick(experiment?.b ?? null);
+  useEffect(() => {
+    const controller = new AbortController();
+    listActiveBrands(controller.signal).then(rows => {
+      if (controller.signal.aborted) return;
+      setBrands(rows);
+      if (!params().has('brand') && rows.length && !rows.some(row => row.handle === brand)) setBrand(rows[0].handle);
+    }).catch(() => { /* Experiments and their history remain readable independently. */ });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme; document.title = 'Lab — Ripple';
@@ -69,8 +82,8 @@ export default function LabPage() {
     return () => document.removeEventListener('keydown', onKey);
   }, [list, expId, composing]);
 
-  const switchBrand = (handle: string) => { const next = BRANDS.find(x => x.handle === handle); if (next) { setBrand(next.handle); setExpId(null); } };
-  const queued = useCallback((b: string) => { setComposing(false); setAwaitingNew(Date.now() * 1000 - 60_000_000); setBrand(BRANDS.find(x => x.handle === b)?.handle ?? 'raycast.com'); setRefresh(n => n + 1); }, []);
+  const switchBrand = (handle: string) => { setBrand(handle); setExpId(null); };
+  const queued = useCallback((b: string) => { setComposing(false); setAwaitingNew(Date.now() * 1000 - 60_000_000); setBrand(b); setRefresh(n => n + 1); }, []);
   const replay = () => { a.restart(); b.restart(); };
   const bothDone = experiment?.status === 'done' && a.finished && b.finished;
   const winnerLine = experiment && bothDone
@@ -82,8 +95,9 @@ export default function LabPage() {
       <a className="brand" href="/" aria-label="Ripple home"><RippleMark size={26} /><span>Ripple</span></a>
       <span className="lab-crumb">Lab</span>
       <RippleWorkspaceNav brand={brand} />
-      <nav className="lab-brands" aria-label="Audience">{BRANDS.map(x => <button key={x.handle} aria-current={x.handle === brand ? 'page' : undefined} onClick={() => switchBrand(x.handle)}>{x.label}</button>)}</nav>
+      <nav className="lab-brands" aria-label="Audience">{[...brands, ...(!brands.some(x => x.handle === brand) ? [{ handle: brand, label: `@${brand}` }] : [])].map(x => <button key={x.handle} aria-current={x.handle === brand ? 'page' : undefined} onClick={() => switchBrand(x.handle)}>{x.label}</button>)}</nav>
       <div className="lab-header-actions">
+        <button className="lab-icon" aria-label="Open history" onClick={() => setShowHistory(true)}><History size={16} /></button>
         <a className="lab-icon" href="/dashboard" aria-label="Back to dashboard"><ArrowLeft size={15} /></a>
         <button className="lab-icon" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
       </div>
@@ -107,6 +121,10 @@ export default function LabPage() {
       </>}
 
     <LabDock experiments={list ?? []} activeId={expId} onSelect={setExpId} onNew={() => setComposing(true)} />
+    {showHistory && <HistoryDrawer kind="lab" activeId={expId} onClose={() => setShowHistory(false)} onSelect={entry => {
+      if (entry.kind === 'audience') location.assign(`/dashboard?brand=${encodeURIComponent(entry.brand)}&snapshot=${encodeURIComponent(entry.id)}`);
+      else { setBrand(entry.brand); setExpId(entry.id); setShowHistory(false); }
+    }} />}
     {composing && <LabComposer brand={brand} onClose={() => setComposing(false)} onQueued={queued} />}
   </main>;
 }

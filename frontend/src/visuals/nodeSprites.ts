@@ -23,7 +23,7 @@ export function createNodeSprite(network:CascadeNetwork,id:number,theme:'dark'|'
   const sphere=ctx.createRadialGradient(x-r*.4,y-r*.5,0,x,y,r*1.15);
   sphere.addColorStop(0,theme==='dark'?'#35475e':'#ffffff');sphere.addColorStop(.6,theme==='dark'?'#142439':'#dbe2e9');sphere.addColorStop(1,theme==='dark'?'#050e1b':'#a7b6c7');
   ctx.fillStyle=sphere;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.shadowOffsetY=0;
-  if(image){
+  if(image&&!source){
     ctx.save();ctx.beginPath();ctx.arc(x,y,r*.9,0,Math.PI*2);ctx.clip();ctx.drawImage(image,x-r,y-r,r*2,r*2);
     const shade=ctx.createLinearGradient(x-r,y-r,x+r,y+r);shade.addColorStop(0,'#ffffff20');shade.addColorStop(.5,'#00000000');shade.addColorStop(1,'#00000065');
     ctx.fillStyle=shade;ctx.fillRect(x-r,y-r,r*2,r*2);ctx.restore();
@@ -36,7 +36,7 @@ export function createNodeSprite(network:CascadeNetwork,id:number,theme:'dark'|'
 
 // Bounded concurrency avoids issuing hundreds of image requests at once. Failed images keep initials.
 export async function loadPortraits(network:CascadeNetwork,signal:AbortSignal,onImage:(id:number,image:HTMLImageElement)=>void){
-  const queue=[...network.nodes.map(n=>({id:n.id,src:n.avatar})),{id:network.sourceId,src:network.source.avatar}].filter(n=>n.src);
+  const queue=network.nodes.map(n=>({id:n.id,src:n.avatar})).filter(n=>n.src);
   let cursor=0;
   await Promise.all(Array.from({length:Math.min(8,queue.length)},async()=>{
     while(cursor<queue.length&&!signal.aborted){

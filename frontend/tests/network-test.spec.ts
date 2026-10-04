@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { audienceFixture } from './audience-fixture';
 
 test('/test renders the same live audience as the dashboard', async ({ page }) => {
+  await audienceFixture(page, 80);
   await page.goto('/test');
   const canvas = page.getByRole('img', { name: /Three-dimensional audience network/ });
   await expect(canvas).toBeVisible({ timeout: 20000 });

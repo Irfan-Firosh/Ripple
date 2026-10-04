@@ -21,6 +21,9 @@ class Asi1Error(RuntimeError):
     pass
 
 
+ASPECT_CHOICES = ("1:1", "3:4", "4:3", "9:16", "16:9")
+
+
 class CampaignPlan(BaseModel):
     action: Literal["react", "audience", "create", "help"]
     brand: str = DEFAULT_BRAND
@@ -37,6 +40,24 @@ class CampaignPlan(BaseModel):
     @classmethod
     def _brand(cls, value):
         return (value or DEFAULT_BRAND).strip().lstrip("@")
+
+    @field_validator("goal", "offer", mode="before")
+    @classmethod
+    def _text_or_empty(cls, value):
+        return value or ""
+
+    @field_validator("n", mode="before")
+    @classmethod
+    def _ad_count(cls, value):  # unused for non-create actions, where ASI:One often sends 0 or null
+        try:
+            return min(4, max(2, int(value))) if value else 3
+        except (TypeError, ValueError):
+            return 3
+
+    @field_validator("aspect_ratio", mode="before")
+    @classmethod
+    def _aspect(cls, value):
+        return value if value in ASPECT_CHOICES else "1:1"
 
     @field_validator("niches")
     @classmethod

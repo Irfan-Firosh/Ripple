@@ -7,7 +7,8 @@ test('labData lists experiments and loads niches and counts for raycast.com', as
     const lab = await import('/src/lab/labData.ts');
     const list = await lab.listExperiments('raycast.com');
     const niches = await lab.loadLabNiches('raycast.com');
-    const first = list[0] ? await lab.loadExperiment(list[0].id) : null;
+    const completed = list.find(e => e.status === 'done');
+    const first = completed ? await lab.loadExperiment(completed.id) : null;
     const counts = first?.a ? lab.countsAt(first.a) : null;
     return { n: list.length, sorted: list.every((e, i) => i === 0 || list[i - 1].createdAt >= e.createdAt),
              niches: niches.length, other: niches.some(n => /other/i.test(n.label)),

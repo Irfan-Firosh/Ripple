@@ -204,6 +204,25 @@ export const Niche = __t.object("Niche", {
 });
 export type Niche = __Infer<typeof Niche>;
 
+export const Onboarding = __t.object("Onboarding", {
+  onboardingId: __t.u64(),
+  handle: __t.string(),
+  brandUserId: __t.string(),
+  status: __t.string(),
+  ingestionRunId: __t.string(),
+  twinRunId: __t.string(),
+  ownerName: __t.string(),
+  role: __t.string(),
+  campaignName: __t.string(),
+  campaignNews: __t.string(),
+  goal: __t.string(),
+  error: __t.option(__t.string()),
+  requestedBy: __t.identity(),
+  createdAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+});
+export type Onboarding = __Infer<typeof Onboarding>;
+
 export const SignalProbInput = __t.object("SignalProbInput", {
   userId: __t.string(),
   pLike: __t.f64(),

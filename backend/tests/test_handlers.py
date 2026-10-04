@@ -146,3 +146,27 @@ def test_orchestrator_simulate_errors_travel_in_error():
     ctx = FakeCtx()
     run(handle_orchestrator_simulate(ctx, "orch", OrchSimulate(brand="nike", draft="Hi"), deps()))
     assert "nike" in ctx.sent[0][1].error and ctx.sent[0][1].reach_high == 0
+
+
+def test_orchestrator_lab_request_returns_winner_lift_and_per_draft_counts():
+    from types import SimpleNamespace
+    from ripple_agents.messages import LabRequest, LabResult
+    from agents.handlers import handle_orchestrator_lab
+    ctx = FakeCtx()
+    row = {"experiment_id": 9, "winner": "B", "lift": 0.58, "status": "done"}
+    out = SimpleNamespace(run_a=summary("a", 3), run_b=summary("b", 7))
+    run(handle_orchestrator_lab(ctx, "orch", LabRequest(brand="@Raycast.com", draft_a="A", draft_b="B"),
+                                deps(lab=lambda b, a, bb: (row, out))))
+    res = ctx.sent[0][1]
+    assert isinstance(res, LabResult) and res.experiment_id == "9" and res.winner == "B" and res.lift == 0.58
+    assert res.brand == "raycast.com" and res.summary_a.startswith("Likely ~") and not res.error
+
+
+def test_orchestrator_lab_failure_travels_in_error():
+    from ripple_agents.messages import LabRequest
+    from agents.handlers import handle_orchestrator_lab
+    ctx = FakeCtx()
+    row = {"experiment_id": 3, "winner": "", "lift": 0.0, "status": "failed", "error": "Claude scored only 10 twins"}
+    run(handle_orchestrator_lab(ctx, "orch", LabRequest(brand="raycast.com", draft_a="A", draft_b="B"),
+                                deps(lab=lambda b, a, bb: (row, None))))
+    assert "scored only" in ctx.sent[0][1].error

@@ -20,6 +20,7 @@ export const platformOf = (userId: string, handle: string): Platform =>
 export const profileUrl = (userId: string, handle: string): string =>
   platformOf(userId, handle) === 'bluesky' ? `https://bsky.app/profile/${handle}` : `https://x.com/${handle}`;
 export type AudienceMember = {
+  pending?: boolean;
   userId: string; username: string; name: string; avatar: string; followers: number; profileUrl: string;
   postCount: number; engagementRate: number; replyShare: number;
   tone: string; personaSummary: string; hotButtons: string[];
@@ -63,22 +64,40 @@ export async function sql<T = Record<string, any>>(query: string, signal?: Abort
 
 const biggerAvatar = (url: string | null) => (url ?? '').replace('_normal.', '_200x200.');
 
-export async function loadAudience(brandHandle: string, signal?: AbortSignal): Promise<Audience> {
-  const [nicheRows, twins, twinNiches, users, links, posts, mentions] = await Promise.all([
+async function archivedAudience(brand: string, signal: AbortSignal | undefined, error: string): Promise<Audience> {
+  const safe = `'${brand.replace(/'/g, "''")}'`;
+  const versions = await sql<{ payload: string; created_at: number }>(`SELECT payload, created_at FROM audience_snapshot WHERE brand = ${safe}`, signal);
+  const latest = versions.sort((a, b) => Number(b.created_at) - Number(a.created_at))[0];
+  if (!latest) throw new Error(error);
+  return JSON.parse(latest.payload) as Audience;
+}
+
+export async function loadAudience(brandHandle: string, signal?: AbortSignal, includeScraped = false): Promise<Audience> {
+  const [nicheRows, twins, twinNiches, users, links, posts, mentions, memberships] = await Promise.all([
     sql('SELECT * FROM niche', signal),
     sql('SELECT * FROM twin', signal),
     sql('SELECT user_id, niche, affinity FROM twin_niche', signal),
-    sql('SELECT user_id, username, name, profile_image_url, followers_count FROM x_user', signal),
+    sql('SELECT user_id, username, name, profile_image_url, followers_count, post_count FROM x_user', signal),
     sql('SELECT brand_user_id, user_id FROM twin_audience', signal),
     sql('SELECT post_id, author_user_id, in_reply_to_user_id FROM x_post', signal),
     sql("SELECT post_id, mentioned_user_id FROM x_post_entity WHERE entity_type = 'mention'", signal),
+    includeScraped ? sql('SELECT brand_user_id, follower_user_id FROM audience_membership', signal) : Promise.resolve([]),
   ]);
   const labels = new Map(nicheRows.map(n => [n.slug as string, n.label as string]));
   const userById = new Map(users.map(u => [u.user_id as string, u]));
   const brandUser = users.find(u => String(u.username).toLowerCase() === brandHandle.toLowerCase());
-  if (!brandUser) throw new Error(`@${brandHandle} has not been scraped into SpacetimeDB yet.`);
+  if (!brandUser) {
+    const message = `@${brandHandle} has not been scraped into SpacetimeDB yet.`;
+    if (!includeScraped) return archivedAudience(brandHandle, signal, message);
+    throw new Error(message);
+  }
   const inBrand = new Set(links.filter(l => l.brand_user_id === brandUser.user_id).map(l => l.user_id as string));
-  if (!inBrand.size) throw new Error(`No twins have been built for @${brandHandle} yet. Run: python -m twins build --brand ${brandHandle}`);
+  if (includeScraped) memberships.filter(r => r.brand_user_id === brandUser.user_id).forEach(r => inBrand.add(r.follower_user_id));
+  if (!inBrand.size) {
+    const message = `No followers have been scraped for @${brandHandle} yet.`;
+    if (!includeScraped) return archivedAudience(brandHandle, signal, message);
+    throw new Error(message);
+  }
 
   const nichesByUser = new Map<string, AudienceNiche[]>();
   for (const r of twinNiches) {
@@ -97,6 +116,15 @@ export async function loadAudience(brandHandle: string, signal?: AbortSignal): P
       niches, primaryNiche: niches[0]?.slug ?? 'other',
     };
   });
+  if (includeScraped) {
+    const built = new Set(members.map(m => m.userId));
+    for (const id of inBrand) {
+      const u = userById.get(id); if (!u || built.has(id)) continue;
+      members.push({ userId: id, username: u.username, name: u.name, avatar: biggerAvatar(u.profile_image_url), followers: u.followers_count ?? 0,
+        profileUrl: profileUrl(id, u.username), postCount: u.post_count ?? 0, engagementRate: 0, replyShare: 0, tone: '', personaSummary: 'This profile is still being built.', hotButtons: [],
+        niches: [{ slug: 'pending-twins', label: 'Building profiles', affinity: 0 }], primaryNiche: 'pending-twins', pending: true });
+    }
+  }
 
   const inAudience = new Set(members.map(m => m.userId));
   const authorOf = new Map(posts.map(p => [p.post_id as string, p.author_user_id as string]));
@@ -113,7 +141,7 @@ export async function loadAudience(brandHandle: string, signal?: AbortSignal): P
       avatar: biggerAvatar(brandUser.profile_image_url), platform: platformOf(brandUser.user_id, brandUser.username),
     },
     members,
-    niches: nicheRows.map(n => ({ slug: n.slug, label: n.label })),
+    niches: [...nicheRows.map(n => ({ slug: n.slug, label: n.label })), ...(members.some(m => m.pending) ? [{ slug: 'pending-twins', label: 'Building profiles' }] : [])],
     links: [...pairs].map(p => p.split('|') as [string, string]),
   };
 }

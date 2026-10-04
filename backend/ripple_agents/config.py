@@ -10,9 +10,29 @@ BUREAU_PORT = int(os.environ.get("RIPPLE_AGENTS_PORT", "8100"))
 HANDLE = os.environ.get("RIPPLE_AGENT_HANDLE", "ripple")
 AVATAR_URL = os.environ.get(
     "RIPPLE_AVATAR_URL", "https://raw.githubusercontent.com/Irfan-Firosh/Ripple/main/frontend/public/favicon.svg")
+APP_URL = os.environ.get("RIPPLE_APP_URL", "http://localhost:5173").rstrip("/")
 DASHBOARD_URL = os.environ.get("RIPPLE_DASHBOARD_URL", "")
-# The Simulation agent (reach / cascade) runs elsewhere; set its address to have the orchestrator call it.
-SIMULATOR_ADDRESS = os.environ.get("RIPPLE_SIMULATOR_ADDRESS", "")
+
+
+def _local_simulator() -> str:
+    """Address of our own Simulation agent (backend/agents), which `python -m ripple_agents` runs in the Bureau."""
+    try:
+        return Identity.from_seed(load_secret("RIPPLE_SIMULATION_SEED"), 0).address
+    except MissingSecret:
+        return ""
+
+
+# RIPPLE_SIMULATOR_ADDRESS points at a Simulation agent running elsewhere; unset = the one in this Bureau.
+SIMULATOR_EXTERNAL = os.environ.get("RIPPLE_SIMULATOR_ADDRESS", "").strip()
+SIMULATOR_ADDRESS = SIMULATOR_EXTERNAL or _local_simulator()
+
+
+def lab_url(brand: str, experiment_id: str) -> str:
+    return f"{APP_URL}/lab?brand={brand}&exp={experiment_id}"
+
+
+def dashboard_url(brand: str) -> str:
+    return DASHBOARD_URL or f"{APP_URL}/dashboard?brand={brand}"
 
 
 @dataclass(frozen=True)
@@ -44,5 +64,7 @@ def asi1_api_key() -> str:
     return load_secret("ASI_ONE_API_KEY")
 
 
-def agentverse_api_key() -> str:
-    return load_secret("AGENTVERSE_API_KEY")
+def agentverse_api_key(env_name: str = "AGENTVERSE_API_KEY") -> str:
+    """Each agent registers with the Agentverse account that owns it: AGENTVERSE_API_KEY for the ripple agents,
+    AGENTVERSE_API_KEY_SIMULATION for the Simulation agent when it belongs to a different account."""
+    return load_secret(env_name)

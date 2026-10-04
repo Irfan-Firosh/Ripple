@@ -11,6 +11,7 @@ const AuthPage = lazy(() => import("./components/ui/auth-07"));
 const NetworkTestPage = lazy(() => import("./NetworkTestPage"));
 const LabPage = lazy(() => import("./lab/LabPage"));
 const LabGamePage = lazy(() => import("./lab-game/LabGamePage"));
+const OnboardingPage = lazy(() => import("./onboarding/OnboardingPage"));
 const CampaignStudio = lazy(() => import("./CampaignStudio"));
 const LabV2 = lazy(() => import("./LabV2"));
 const LogsPage = lazy(() => import("./LogsPage").then(module => ({ default: module.LogsPage })));
@@ -18,7 +19,9 @@ const path = location.pathname.replace(/\/$/, "");
 const params = new URLSearchParams(location.search);
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {path === "/test" ? (
+    {path === "/onboarding" ? (
+      <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening onboarding…</div>}><OnboardingPage /></Suspense>
+    ) : path === "/test" ? (
       <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening the network…</div>}><NetworkTestPage /></Suspense>
     ) : path === "/lab-game" ? (
       <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening the islands…</div>}><LabGamePage /></Suspense>
@@ -35,7 +38,7 @@ createRoot(document.getElementById("root")!).render(
     ) : params.has("film") ? (
       <DemoFilm theme={params.get("theme") === "light" ? "light" : "dark"} />
     ) : (
-      <ClerkProvider afterSignOutUrl="/" signInUrl="/auth/sign-in" signUpUrl="/auth" appearance={{ theme: shadcn }}>
+      <ClerkProvider afterSignOutUrl="/" signInUrl="/auth/sign-in" signUpUrl="/auth" signInForceRedirectUrl="/onboarding" signUpForceRedirectUrl="/onboarding" appearance={{ theme: shadcn }}>
         {path === "/auth" || path === "/auth/sign-in" ? (
           <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening your account…</div>}>
             <AuthPage signIn={path === "/auth/sign-in"} />

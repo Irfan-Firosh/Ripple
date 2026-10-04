@@ -139,9 +139,16 @@ test("mobile navigation works without horizontal overflow", async ({
   ).toBe(true);
 });
 
-test("walkthrough uses the actual live audience and Lab screens", async ({ page }) => {
+test("walkthrough uses a saved real audience and preserved Lab screens", async ({ page }) => {
   test.setTimeout(90000);
-  await page.goto("/?film=1&theme=light&brand=spacetimedb");
+  await page.goto('/');
+  const snapshot = await page.evaluate(async () => {
+    const { listHistory } = await import('/src/history/historyData.ts');
+    const versions = await listHistory('audience', new AbortController().signal);
+    return versions.find(entry => entry.brand === 'spacetimedb')?.id;
+  });
+  expect(snapshot).toBeTruthy();
+  await page.goto(`/?film=1&theme=light&brand=spacetimedb&snapshot=${encodeURIComponent(snapshot!)}`);
   await page.waitForFunction(() => typeof window.__setDemoTime === "function");
   await expect(page.locator(".nt-stage>canvas")).toBeVisible({ timeout: 45000 });
   await expect(page.getByLabel("Niche index")).toBeVisible();

@@ -496,6 +496,28 @@ const simComment = table(
   }
 );
 
+// Onboarding: a browser enters its brand's X handle; the backend worker scrapes followers (Scweet), builds twins and
+// the audience graph, advancing `status` so the form can show live progress. The brief fields are the user's answers.
+const onboarding = table(
+  { name: 'onboarding', public: true },
+  {
+    onboardingId: t.u64().primaryKey().autoInc(),
+    handle: t.string(),
+    brandUserId: t.string(), // '' until the brand profile is scraped
+    status: t.string().index('btree'), // queued | scraping | twins | graph | ready | failed
+    ingestionRunId: t.string(), // x_ingestion_run row with live follower/post counters
+    twinRunId: t.string(), // twin_build_run row with live ready/failed counters
+    ownerName: t.string(),
+    role: t.string(),
+    campaignName: t.string(),
+    campaignNews: t.string(),
+    goal: t.string(), // '' | reposts | likes | replies | views
+    error: str(),
+    requestedBy: t.identity().index('btree'),
+    createdAt: t.timestamp(),
+    updatedAt: t.timestamp(),
+  }
+);
 // ---------- Creative: campaign generation, written by backend/creative (Grok). ----------
 const BriefTheme = t.object('BriefTheme', {
   text: t.string(), support: t.f64(), twinIds: t.array(t.string()),
@@ -546,7 +568,20 @@ const creativeJob = table({ name: 'creative_job', public: true }, {
   createdAt: t.timestamp(), finishedAt: t.option(t.timestamp()),
 });
 
+// Immutable audience versions survive replacement of active imported data.
+const audienceSnapshot = table({ name: 'audience_snapshot', public: true }, {
+  snapshotId: t.string().primaryKey(), brand: t.string().index('btree'), brandUserId: t.string(),
+  title: t.string(), sourceRunId: t.string(), people: t.u32(), niches: t.u32(),
+  payload: t.string(), createdAt: t.u64(), archivedAt: t.timestamp(),
+});
+const archivedProfile = table({ name: 'archived_profile', public: true }, {
+  userId: t.string().primaryKey(), username: t.string(), name: t.string(),
+  profileImageUrl: t.string(), verified: t.bool(),
+});
+
 const spacetimedb = schema({
+  audienceSnapshot,
+  archivedProfile,
   admin,
   xUser,
   audienceMembership,
@@ -578,6 +613,7 @@ const spacetimedb = schema({
   simSignalSource,
   simOutsideTick,
   simComment,
+  onboarding,
   brandKit,
   campaign,
   creativeBrief,
@@ -594,6 +630,62 @@ type Row<K extends keyof Ctx['db']> = Ctx['db'][K] extends { insert(row: infer R
 function requireAdmin(ctx: Ctx) {
   if (!ctx.db.admin.identity.find(ctx.sender)) throw new SenderError('not authorized');
 }
+
+export const archiveAudience = spacetimedb.reducer({ snapshotId: t.string(), brand: t.string(), brandUserId: t.string(),
+  title: t.string(), sourceRunId: t.string(), people: t.u32(), niches: t.u32(), payload: t.string(), createdAt: t.u64() }, (ctx, a) => {
+  requireAdmin(ctx);
+  if (a.payload.length > 20_000_000) throw new SenderError('audience snapshot is too large');
+  const data = JSON.parse(a.payload);
+  if (data.brand?.userId !== a.brandUserId || data.members?.length !== a.people) throw new SenderError('invalid audience snapshot');
+  if (!ctx.db.audienceSnapshot.snapshotId.find(a.snapshotId)) ctx.db.audienceSnapshot.insert({ ...a, archivedAt: ctx.timestamp });
+});
+
+export const archiveProfiles = spacetimedb.reducer({}, ctx => {
+  requireAdmin(ctx);
+  for (const u of ctx.db.xUser.iter()) {
+    const row = { userId: u.userId, username: u.username, name: u.name, profileImageUrl: u.profileImageUrl ?? '', verified: u.verified ?? false };
+    if (!ctx.db.archivedProfile.userId.find(u.userId)) ctx.db.archivedProfile.insert(row);
+  }
+});
+
+// One atomic reset, guarded against dropping unarchived data or active worker inputs.
+export const resetImportedAudiences = spacetimedb.reducer({}, ctx => {
+  requireAdmin(ctx);
+  if ([...ctx.db.labExperiment.iter()].some(r => ['queued', 'running'].includes(r.status))
+    || [...ctx.db.onboarding.iter()].some(r => !['ready', 'failed'].includes(r.status))
+    || [...ctx.db.twinBuildRun.iter()].some(r => ['pending', 'running'].includes(r.status))
+    || [...ctx.db.xIngestionRun.iter()].some(r => ['pending', 'running'].includes(r.status))) {
+    throw new SenderError('wait for active audience builds and Lab experiments to finish before resetting imports');
+  }
+  const brands = new Set([...ctx.db.twinAudience.iter(), ...ctx.db.audienceMembership.iter()].map(r => r.brandUserId));
+  const archived = new Set([...ctx.db.audienceSnapshot.iter()].map(r => r.brandUserId));
+  if ([...brands].some(id => !archived.has(id))) throw new SenderError('archive every audience before resetting imports');
+  if ([...ctx.db.xUser.iter()].some(u => !ctx.db.archivedProfile.userId.find(u.userId))) throw new SenderError('archive profiles before resetting imports');
+  // Restart the X brands that Scweet was already scraping, keeping their campaign briefs.
+  const refresh = new Map<string, Row<'onboarding'>>();
+  for (const r of ctx.db.onboarding.iter()) {
+    if (!brands.has(r.brandUserId) || !/^[a-z0-9_]{1,15}$/.test(r.handle)) continue;
+    const previous = refresh.get(r.handle);
+    if (!previous || previous.onboardingId < r.onboardingId) refresh.set(r.handle, r);
+  }
+  for (const r of [...ctx.db.audienceMembership.iter()]) ctx.db.audienceMembership.membershipId.delete(r.membershipId);
+  for (const r of [...ctx.db.twinAudience.iter()]) ctx.db.twinAudience.twinAudienceId.delete(r.twinAudienceId);
+  for (const r of [...ctx.db.twinNiche.iter()]) ctx.db.twinNiche.twinNicheId.delete(r.twinNicheId);
+  for (const r of [...ctx.db.audienceEdge.iter()]) ctx.db.audienceEdge.edgeId.delete(r.edgeId);
+  for (const r of [...ctx.db.twin.iter()]) ctx.db.twin.userId.delete(r.userId);
+  for (const r of [...ctx.db.xPostReference.iter()]) ctx.db.xPostReference.id.delete(r.id);
+  for (const r of [...ctx.db.xPostEntity.iter()]) ctx.db.xPostEntity.entityId.delete(r.entityId);
+  for (const r of [...ctx.db.xContextAnnotation.iter()]) ctx.db.xContextAnnotation.annotationId.delete(r.annotationId);
+  for (const r of [...ctx.db.xPostMedia.iter()]) ctx.db.xPostMedia.id.delete(r.id);
+  for (const r of [...ctx.db.xPost.iter()]) ctx.db.xPost.postId.delete(r.postId);
+  for (const r of [...ctx.db.xUser.iter()]) ctx.db.xUser.userId.delete(r.userId);
+  for (const r of [...ctx.db.xIngestionRun.iter()]) ctx.db.xIngestionRun.ingestionRunId.delete(r.ingestionRunId);
+  for (const r of [...ctx.db.backtestResult.iter()]) ctx.db.backtestResult.backtestResultId.delete(r.backtestResultId);
+  for (const r of [...ctx.db.twinBuildJob.iter()]) ctx.db.twinBuildJob.jobId.delete(r.jobId);
+  for (const r of [...ctx.db.twinBuildRun.iter()]) ctx.db.twinBuildRun.runId.delete(r.runId);
+  for (const r of refresh.values()) ctx.db.onboarding.insert({ ...r, onboardingId: 0n, brandUserId: '', status: 'queued',
+    ingestionRunId: '', twinRunId: '', error: undefined, createdAt: ctx.timestamp, updatedAt: ctx.timestamp });
+});
 
 const RUN_STATUSES = ['pending', 'running', 'completed', 'partial', 'failed'];
 
@@ -1304,6 +1396,91 @@ export const addSimComments = spacetimedb.reducer(
     }
   }
 );
+
+// ---------- Onboarding reducers ----------
+const HANDLE_RE = /^[A-Za-z0-9_]{1,15}$/;
+const ONBOARDING_GOALS = ['', 'reposts', 'likes', 'replies', 'views'];
+const ONBOARDING_STAGES = ['scraping', 'twins', 'graph', 'ready'];
+const MAX_BRIEF_SHORT = 80;
+const MAX_BRIEF_NEWS = 600;
+
+function onboardingRow(ctx: Ctx, onboardingId: bigint) {
+  const row = ctx.db.onboarding.onboardingId.find(onboardingId);
+  if (!row) throw new SenderError(`unknown onboarding ${onboardingId}`);
+  return row;
+}
+
+export const requestOnboarding = spacetimedb.reducer({ handle: t.string() }, (ctx, { handle }) => {
+  const clean = handle.trim().replace(/^@/, '');
+  if (!HANDLE_RE.test(clean)) throw new SenderError('enter a valid X handle');
+  const open = [...ctx.db.onboarding.requestedBy.filter(ctx.sender)]
+    .filter(o => o.status !== 'ready' && o.status !== 'failed');
+  if (open.length) throw new SenderError('an onboarding is already running');
+  ctx.db.onboarding.insert({
+    onboardingId: 0n, handle: clean.toLowerCase(), brandUserId: '', status: 'queued', ingestionRunId: '', twinRunId: '',
+    ownerName: '', role: '', campaignName: '', campaignNews: '', goal: '', error: undefined,
+    requestedBy: ctx.sender, createdAt: ctx.timestamp, updatedAt: ctx.timestamp,
+  } as Row<'onboarding'>);
+});
+
+export const updateOnboardingBrief = spacetimedb.reducer(
+  { onboardingId: t.u64(), ownerName: t.string(), role: t.string(), campaignName: t.string(),
+    campaignNews: t.string(), goal: t.string() },
+  (ctx, a) => {
+    const row = onboardingRow(ctx, a.onboardingId);
+    if (!row.requestedBy.equals(ctx.sender)) throw new SenderError('not your onboarding');
+    if (!ONBOARDING_GOALS.includes(a.goal)) throw new SenderError('unknown goal');
+    for (const v of [a.ownerName, a.role, a.campaignName]) {
+      if (v.length > MAX_BRIEF_SHORT) throw new SenderError(`answers must be at most ${MAX_BRIEF_SHORT} characters`);
+    }
+    if (a.campaignNews.length > MAX_BRIEF_NEWS) throw new SenderError(`the news must be at most ${MAX_BRIEF_NEWS} characters`);
+    ctx.db.onboarding.onboardingId.update({
+      ...row, ownerName: a.ownerName.trim(), role: a.role.trim(), campaignName: a.campaignName.trim(),
+      campaignNews: a.campaignNews.trim(), goal: a.goal, updatedAt: ctx.timestamp,
+    });
+  }
+);
+
+export const claimOnboarding = spacetimedb.reducer({ onboardingId: t.u64() }, (ctx, { onboardingId }) => {
+  requireAdmin(ctx);
+  const row = onboardingRow(ctx, onboardingId);
+  if (row.status !== 'queued') throw new SenderError(`onboarding ${onboardingId} already claimed`);
+  ctx.db.onboarding.onboardingId.update({ ...row, status: 'scraping', updatedAt: ctx.timestamp });
+});
+
+export const setOnboardingProgress = spacetimedb.reducer(
+  { onboardingId: t.u64(), status: t.string(), brandUserId: t.string(), ingestionRunId: t.string(), twinRunId: t.string() },
+  (ctx, a) => {
+    requireAdmin(ctx);
+    if (!ONBOARDING_STAGES.includes(a.status)) throw new SenderError(`status must be one of ${ONBOARDING_STAGES.join(', ')}`);
+    const row = onboardingRow(ctx, a.onboardingId);
+    ctx.db.onboarding.onboardingId.update({
+      ...row, status: a.status, brandUserId: a.brandUserId || row.brandUserId,
+      ingestionRunId: a.ingestionRunId || row.ingestionRunId, twinRunId: a.twinRunId || row.twinRunId,
+      updatedAt: ctx.timestamp,
+    });
+  }
+);
+
+export const failOnboarding = spacetimedb.reducer(
+  { onboardingId: t.u64(), error: t.string() },
+  (ctx, { onboardingId, error }) => {
+    requireAdmin(ctx);
+    const row = onboardingRow(ctx, onboardingId);
+    ctx.db.onboarding.onboardingId.update({ ...row, status: 'failed', error: error.slice(0, 300), updatedAt: ctx.timestamp });
+  }
+);
+// Administrative retry keeps the failed attempt in history and starts a fresh Scweet cache.
+export const retryOnboarding = spacetimedb.reducer({ onboardingId: t.u64() }, (ctx, { onboardingId }) => {
+  requireAdmin(ctx);
+  const row = onboardingRow(ctx, onboardingId);
+  if (row.status !== 'failed') throw new SenderError('only failed onboardings can be retried');
+  if ([...ctx.db.onboarding.iter()].some(r => r.handle === row.handle && !['ready', 'failed'].includes(r.status))) {
+    throw new SenderError('an onboarding is already running');
+  }
+  ctx.db.onboarding.insert({ ...row, onboardingId: 0n, brandUserId: '', status: 'queued',
+    ingestionRunId: '', twinRunId: '', error: undefined, createdAt: ctx.timestamp, updatedAt: ctx.timestamp });
+});
 // ---------- Creative reducers ----------
 const CREATIVE_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9', '2:3', '3:2', '9:19.5', '19.5:9', '9:20', '20:9', '1:2', '2:1', '21:9', '5:2', 'auto'];
 const CREATIVE_FORMATS = ['product_ui', 'lifestyle', 'typographic', 'illustration', 'meme'];
