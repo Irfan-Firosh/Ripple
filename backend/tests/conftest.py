@@ -61,7 +61,8 @@ class FakeStdb:
 
 def user_row(user_id, username, **kw):
     return {"user_id": user_id, "username": username, "name": username.title(), "description": None,
-            "location": None, "followers_count": 10, "following_count": 5, "verified": False, **kw}
+            "location": None, "followers_count": 10, "following_count": 5, "verified": False,
+            "profile_image_url": None, **kw}
 
 
 def post_row(post_id, author_user_id, text="hello", **kw):
