@@ -1,42 +1,88 @@
 import { useEffect, useRef } from 'react';
 import type { CascadeNetwork, Vec3 } from './liveNetwork';
+import { createNodeSprite, loadPortraits } from './nodeSprites';
 
-type Props={network:CascadeNetwork;elapsed:number;theme:'dark'|'light';selected:number|null;focus:number|null;zoomStep:number;reset:number;onSelect:(id:number)=>void};
+type Props={network:CascadeNetwork;elapsed:number;theme:'dark'|'light';selected:number|null;focus:number|null;zoomStep:number;reset:number;onSelect:(id:number)=>void;onPrepared:(ready:boolean)=>void};
 export function CascadeCanvas(props:Props) {
   const canvas=useRef<HTMLCanvasElement>(null);
   const latest=useRef(props);latest.current=props;
   const lastZoomStep=useRef(props.zoomStep);
-  const images=useRef(new Map<number,HTMLImageElement>());
+  const images=useRef(new Map<number,HTMLCanvasElement>());
+  const sprites=useRef(new Map<number,HTMLCanvasElement>());
+  const glows=useRef<HTMLCanvasElement[]>([]);
+  const revision=useRef(0);
   const hits=useRef<{id:number;x:number;y:number;r:number}[]>([]);
-  const camera=useRef({yaw:.12,pitch:-.18,zoom:1,targetZoom:1,center:[0,0,0] as number[],target:[0,0,0] as number[]});
+  const camera=useRef({yaw:.45,pitch:-.3,zoom:1,targetZoom:1,center:[0,0,0] as number[],target:[0,0,0] as number[]});
   const drag=useRef<{x:number;y:number;moved:boolean}|null>(null);
   const {network}=props;
+  useEffect(()=>{
+    const el=canvas.current;if(!el)return;
+    const zoom=(event:WheelEvent)=>{
+      event.preventDefault();
+      const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?el.clientHeight:1);
+      camera.current.targetZoom=Math.max(.55,Math.min(4,camera.current.targetZoom-delta*.001));
+    };
+    el.addEventListener('wheel',zoom,{passive:false});
+    return()=>el.removeEventListener('wheel',zoom);
+  },[]);
   useEffect(()=>{camera.current.target=props.focus===null?[0,0,0]:[...network.communities[props.focus].center];camera.current.targetZoom=props.focus===null?1:2.2;},[props.focus,network]);
   useEffect(()=>{camera.current.targetZoom=Math.max(.55,Math.min(4,camera.current.targetZoom+(props.zoomStep-lastZoomStep.current)*.15));lastZoomStep.current=props.zoomStep;},[props.zoomStep]);
-  useEffect(()=>{camera.current.target=[0,0,0];camera.current.targetZoom=1;camera.current.yaw=.12;camera.current.pitch=-.18;},[props.reset]);
+  useEffect(()=>{camera.current.target=[0,0,0];camera.current.targetZoom=1;camera.current.yaw=.45;camera.current.pitch=-.3;},[props.reset]);
   useEffect(()=>{
-    // Profile pictures scraped from X; a missing or blocked image falls back to initials.
-    images.current=new Map();
-    const load=(id:number,src:string)=>{if(!src)return;const img=new Image();img.referrerPolicy='no-referrer';img.src=src;img.onload=()=>images.current.set(id,img);};
-    network.nodes.forEach(n=>load(n.id,n.avatar));load(network.sourceId,network.source.avatar);
+    images.current=new Map();const controller=new AbortController();
+    void loadPortraits(network,controller.signal,(id,image)=>{
+      // Keep a small decoded portrait for theme changes rather than the full source image.
+      const thumbnail=document.createElement('canvas');thumbnail.width=96;thumbnail.height=96;
+      thumbnail.getContext('2d')!.drawImage(image,0,0,96,96);images.current.set(id,thumbnail);
+      sprites.current.set(id,createNodeSprite(network,id,latest.current.theme,thumbnail));revision.current++;
+    });
+    return()=>controller.abort();
   },[network]);
   useEffect(()=>{
+    let cancelled=false;props.onPrepared(false);sprites.current=new Map();revision.current++;
+    glows.current=network.communities.map(community=>{
+      const tile=document.createElement('canvas');tile.width=128;tile.height=128;
+      const ctx=tile.getContext('2d')!,gradient=ctx.createRadialGradient(64,64,0,64,64,64);
+      gradient.addColorStop(0,community.color+'18');gradient.addColorStop(1,community.color+'00');
+      ctx.fillStyle=gradient;ctx.fillRect(0,0,128,128);return tile;
+    });
+    const prepare=async()=>{
+      for(let id=0;id<=network.sourceId;id++){
+        if(cancelled)return;
+        sprites.current.set(id,createNodeSprite(network,id,props.theme,images.current.get(id)));
+        // Yield between batches so the preparation loader remains responsive.
+        if(id%32===31)await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+      }
+      if(!cancelled){revision.current++;props.onPrepared(true);}
+    };
+    void prepare();return()=>{cancelled=true;};
+  },[network,props.theme,props.onPrepared]);
+  useEffect(()=>{
     const el=canvas.current;if(!el)return;const ctx=el.getContext('2d');if(!ctx)return;
-    let width=1,height=1,frame=0,previous=0;
+    let width=1,height=1,frame=0,previous=0,lastSignature='',drawCount=0,angleKey='';
+    let order:number[]=[];
+    const motion=matchMedia('(prefers-reduced-motion: reduce)');
     const resize=new ResizeObserver(([entry])=>{width=entry.contentRect.width;height=entry.contentRect.height;const dpr=Math.min(devicePixelRatio,2);el.width=width*dpr;el.height=height*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);});resize.observe(el);
     const render=(now:number)=>{
       const c=camera.current,p=latest.current,n=p.network;
       const dt=previous?Math.min((now-previous)/1000,.05):.016;previous=now;
-      const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const reduced=motion.matches;
       const ease=reduced?1:1-Math.exp(-dt*7);
       c.center=c.center.map((v,i)=>v+(c.target[i]-v)*ease);c.zoom+=(c.targetZoom-c.zoom)*ease;
+      c.center=c.center.map((v,i)=>Math.abs(v-c.target[i])<.001?c.target[i]:v);
+      if(Math.abs(c.zoom-c.targetZoom)<.0001)c.zoom=c.targetZoom;
+      const signature=[width,height,c.yaw,c.pitch,c.zoom,...c.center,p.elapsed,p.selected,p.theme,revision.current].join('|');
+      if(document.hidden||signature===lastSignature){frame=requestAnimationFrame(render);return;}
+      lastSignature=signature;drawCount++;el.dataset.drawCount=String(drawCount);
       ctx.clearRect(0,0,width,height);
-      const scale=Math.min(width/(n.extent*2+120),height/(n.extent*1.5+120))*c.zoom;
+      const scale=Math.min(width/(n.extent*2+120),height/(n.extent*2+120))*c.zoom;
+      const cosYaw=Math.cos(c.yaw),sinYaw=Math.sin(c.yaw),cosPitch=Math.cos(c.pitch),sinPitch=Math.sin(c.pitch);
       const projectPoint=(point:Vec3)=>{
         const [x,y,z]=point.map((v,i)=>v-c.center[i]);
-        const rx=x*Math.cos(c.yaw)+z*Math.sin(c.yaw),rz=-x*Math.sin(c.yaw)+z*Math.cos(c.yaw);
-        const ry=y*Math.cos(c.pitch)-rz*Math.sin(c.pitch),depth=y*Math.sin(c.pitch)+rz*Math.cos(c.pitch);
-        const perspective=1000/(1000+depth);
+        const rx=x*cosYaw+z*sinYaw,rz=-x*sinYaw+z*cosYaw;
+        const ry=y*cosPitch-rz*sinPitch,depth=y*sinPitch+rz*cosPitch;
+        const focalLength=Math.max(800,n.extent*2.6);
+        const perspective=focalLength/Math.max(focalLength*.25,focalLength+depth);
         return {x:width/2+rx*scale*perspective,y:height/2+ry*scale*perspective,perspective,depth};
       };
       const project=(id:number)=>{
@@ -44,55 +90,56 @@ export function CascadeCanvas(props:Props) {
         return {id,x:pt.x,y:pt.y,depth:pt.depth,r:(source?n.nodeRadius*1.6:n.nodeRadius)*scale*pt.perspective,active:(n.arrivalById.get(id)?.at??Infinity)<=p.elapsed};
       };
       const points=[...n.nodes.map(node=>project(node.id)),project(n.sourceId)];
-      const byId=new Map(points.map(point=>[point.id,point]));
-      n.communities.forEach(community=>{
-        const center=projectPoint(community.center),r=(40+Math.sqrt(community.size)*22)*scale;
-        const gradient=ctx.createRadialGradient(center.x,center.y,0,center.x,center.y,r);
-        gradient.addColorStop(0,community.color+'14');gradient.addColorStop(1,community.color+'00');ctx.fillStyle=gradient;ctx.fillRect(center.x-r,center.y-r,r*2,r*2);
+      const byId=points;
+      n.communities.forEach((community,index)=>{
+        const center=projectPoint(community.center),r=(community.radius+16)*scale*center.perspective;
+        const glow=glows.current[index];if(glow)ctx.drawImage(glow,center.x-r,center.y-r,r*2,r*2);
       });
+      const edgePaths=new Map<string,{path:Path2D;bridge:boolean}>();
       for(const edge of n.edges){
-        const a=byId.get(edge.a)!,b=byId.get(edge.b)!;const active=a.active&&b.active;
+        const a=byId[edge.a],b=byId[edge.b];const active=a.active&&b.active;
         const fromSource=edge.a===n.sourceId||edge.b===n.sourceId;
         if(fromSource){
           // The brand reaches everyone; only draw the links the post actually travelled along.
           const target=edge.a===n.sourceId?edge.b:edge.a;
           if(!active||n.arrivalById.get(target)?.from!==n.sourceId)continue;
-          ctx.strokeStyle='#e6bc8826';
-        }else ctx.strokeStyle=edge.bridge?(active?'#e6bc8899':'#e6bc8830'):(p.theme==='dark'?(active?'#9caec34a':'#9caec315'):(active?'#4b658b50':'#4b658b18'));
-        ctx.lineWidth=(edge.bridge?1.3:.6)*Math.max(.8,scale);ctx.setLineDash(edge.bridge?[3,7]:[]);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
+        }
+        const color=fromSource?'#e6bc8826':edge.bridge?(active?'#e6bc8899':'#e6bc8830'):(p.theme==='dark'?(active?'#9caec34a':'#9caec315'):(active?'#4b658b50':'#4b658b18'));
+        let group=edgePaths.get(color);if(!group){group={path:new Path2D(),bridge:edge.bridge};edgePaths.set(color,group);}
+        group.path.moveTo(a.x,a.y);group.path.lineTo(b.x,b.y);
       }
+      edgePaths.forEach(({path,bridge},color)=>{ctx.strokeStyle=color;ctx.lineWidth=(bridge?1.3:.6)*Math.max(.8,scale);ctx.setLineDash(bridge?[3,7]:[]);ctx.stroke(path);});ctx.setLineDash([]);
       for(const arrival of n.arrivals){
         if(arrival.from===null)continue;
-        const from=byId.get(arrival.from)!,to=byId.get(arrival.id)!;
+        const from=byId[arrival.from],to=byId[arrival.id];
         const start=n.arrivalById.get(arrival.from)!.at,f=(p.elapsed-start)/(arrival.at-start);
         if(f>=0&&f<1&&!reduced){ctx.beginPath();ctx.arc(from.x+(to.x-from.x)*f,from.y+(to.y-from.y)*f,2.4*scale,0,Math.PI*2);ctx.fillStyle='#e6bc88';ctx.shadowColor='#e6bc88';ctx.shadowBlur=12;ctx.fill();ctx.shadowBlur=0;}
       }
-      for(const node of points.sort((a,b)=>b.depth-a.depth)){
+      // Depth order changes with orbit, but not with zoom or camera translation.
+      const angles=`${c.yaw}|${c.pitch}|${n.nodes.length}`;
+      if(angleKey!==angles){order=points.map(point=>point.id).sort((a,b)=>points[b].depth-points[a].depth);angleKey=angles;}
+      const bounds=n.communities.map(()=>({left:Infinity,right:-Infinity,bottom:-Infinity}));
+      for(const id of order){
+        const node=points[id];
         const source=node.id===n.sourceId,color=source?'#e6bc88':n.communities[n.nodes[node.id].community].color;
         ctx.globalAlpha=node.active?1:.24;
-        ctx.shadowColor='#000000';ctx.shadowBlur=10*scale;ctx.shadowOffsetY=3*scale;
-        const sphere=ctx.createRadialGradient(node.x-node.r*.4,node.y-node.r*.5,0,node.x,node.y,node.r*1.15);
-        sphere.addColorStop(0,p.theme==='dark'?'#35475e':'#ffffff');sphere.addColorStop(.6,p.theme==='dark'?'#142439':'#dbe2e9');sphere.addColorStop(1,p.theme==='dark'?'#050e1b':'#a7b6c7');
-        ctx.fillStyle=sphere;ctx.beginPath();ctx.arc(node.x,node.y,node.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.shadowOffsetY=0;
-        const img=images.current.get(node.id);
-        if(img){ctx.save();ctx.beginPath();ctx.arc(node.x,node.y,node.r*.9,0,Math.PI*2);ctx.clip();ctx.drawImage(img,node.x-node.r,node.y-node.r,node.r*2,node.r*2);const shade=ctx.createLinearGradient(node.x-node.r,node.y-node.r,node.x+node.r,node.y+node.r);shade.addColorStop(0,'#ffffff20');shade.addColorStop(.5,'#00000000');shade.addColorStop(1,'#00000065');ctx.fillStyle=shade;ctx.fillRect(node.x-node.r,node.y-node.r,node.r*2,node.r*2);ctx.restore();}
-        else{ctx.fillStyle=color;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`500 ${node.r*.7}px "DM Sans"`;ctx.fillText(source?'✳':n.nodes[node.id].initials,node.x,node.y);}
-        ctx.strokeStyle=color;ctx.globalAlpha=node.active? .85:.12;ctx.lineWidth=node.id===p.selected?2.5:1;ctx.beginPath();ctx.arc(node.x,node.y,node.r+3*scale,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
+        if(!source){const b=bounds[n.nodes[id].community];b.left=Math.min(b.left,node.x-node.r);b.right=Math.max(b.right,node.x+node.r);b.bottom=Math.max(b.bottom,node.y+node.r);}
+        const sprite=sprites.current.get(id),size=node.r*128/48;
+        if(sprite&&node.x+size>0&&node.x-size<width&&node.y+size>0&&node.y-size<height)ctx.drawImage(sprite,node.x-size/2,node.y-size/2,size,size);
+        ctx.globalAlpha=1;
+        if(node.id===p.selected){ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(node.x,node.y,node.r+3*scale,0,Math.PI*2);ctx.stroke();}
         if(source){ctx.strokeStyle=color+'30';ctx.beginPath();ctx.arc(node.x,node.y,node.r+11*scale,0,Math.PI*2);ctx.stroke();ctx.fillStyle=p.theme==='dark'?'#e6bc88':'#805322';ctx.font=`${Math.max(8,9*scale)}px "Space Mono"`;ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillText(`@${n.source.handle.toUpperCase()} POST`,node.x,node.y+node.r+26*scale);}
         if(node.id===p.selected){ctx.fillStyle=p.theme==='dark'?'#f3f1ed':'#1d2d40';ctx.font=`${Math.max(10,11*scale)}px "DM Sans"`;ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillText(`@${n.nodes[node.id].handle}`,node.x,node.y+node.r+18*scale);}
       }
       n.communities.forEach((community,index)=>{
-        const cluster=points.filter(node=>node.id!==n.sourceId&&n.nodes[node.id].community===index);
-        if(!cluster.length)return;
-        const left=Math.min(...cluster.map(node=>node.x-node.r)),right=Math.max(...cluster.map(node=>node.x+node.r));
-        const bottom=Math.max(...cluster.map(node=>node.y+node.r));
+        const {left,right,bottom}=bounds[index];if(!Number.isFinite(left))return;
         ctx.font=`500 ${Math.max(9,Math.min(13,11*scale))}px "DM Sans"`;
         ctx.textAlign='center';ctx.textBaseline='top';
         ctx.fillStyle=p.theme==='dark'?community.color:'#43566e';
         ctx.fillText(community.name,(left+right)/2,bottom+10);
       });
-      hits.current=points.filter(q=>q.id!==n.sourceId).map(({id,x,y,r})=>({id,x,y,r}));
-      el.dataset.cameraX=c.center[0].toFixed(1);el.dataset.cameraY=c.center[1].toFixed(1);
+      hits.current=order.filter(id=>id!==n.sourceId).map(id=>points[id]);
+      el.dataset.cameraX=c.center[0].toFixed(1);el.dataset.cameraY=c.center[1].toFixed(1);el.dataset.cameraZoom=c.zoom.toFixed(2);el.dataset.spriteCount=String(sprites.current.size);
       frame=requestAnimationFrame(render);
     };frame=requestAnimationFrame(render);
     return()=>{cancelAnimationFrame(frame);resize.disconnect();};
@@ -104,6 +151,5 @@ export function CascadeCanvas(props:Props) {
     onPointerMove={e=>{const d=drag.current;if(!d)return;const dx=e.clientX-d.x,dy=e.clientY-d.y;if(Math.abs(dx)+Math.abs(dy)>2)d.moved=true;camera.current.yaw+=dx*.005;camera.current.pitch=Math.max(-.9,Math.min(.9,camera.current.pitch+dy*.004));d.x=e.clientX;d.y=e.clientY;}}
     onPointerUp={e=>{if(drag.current&&!drag.current.moved){const rect=e.currentTarget.getBoundingClientRect();const found=hits.current.slice().reverse().find(h=>Math.hypot(h.x-(e.clientX-rect.left),h.y-(e.clientY-rect.top))<h.r+4);if(found)latest.current.onSelect(found.id);}drag.current=null;}}
     onPointerCancel={()=>{drag.current=null;}}
-    onWheel={e=>{camera.current.targetZoom=Math.max(.55,Math.min(4,camera.current.targetZoom-e.deltaY*.001));}}
     onKeyDown={e=>{if(['+','-','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();if(e.key==='+')camera.current.targetZoom=Math.min(4,camera.current.targetZoom+.15);if(e.key==='-')camera.current.targetZoom=Math.max(.55,camera.current.targetZoom-.15);if(e.key==='ArrowLeft')camera.current.yaw-=.12;if(e.key==='ArrowRight')camera.current.yaw+=.12;if(e.key==='ArrowUp')camera.current.pitch-=.08;if(e.key==='ArrowDown')camera.current.pitch+=.08;}}}/>;
 }

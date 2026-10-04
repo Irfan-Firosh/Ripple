@@ -6,14 +6,27 @@ type AlgebraicType = Record<string, any>;
 type Statement = { schema: { elements: { name: { some: string }; algebraic_type: AlgebraicType }[] }; rows: unknown[][] };
 
 export type AudienceNiche = { slug: string; label: string; affinity: number };
+export type Platform = 'x' | 'bluesky';
+// Brands whose audiences have been scraped and twinned. maxNiches caps the niche groups drawn on the dashboard.
+export const BRANDS = [
+  { handle: 'spacetimedb', label: '@spacetimedb', platform: 'x' as Platform, maxNiches: 10 },
+  { handle: 'raycast.com', label: 'Raycast', platform: 'bluesky' as Platform, maxNiches: 7 },
+] as const;
+export type BrandHandle = (typeof BRANDS)[number]['handle'];
+
+// Bluesky handles are domains (alice.bsky.social) and its ids are DIDs; X handles have no dots.
+export const platformOf = (userId: string, handle: string): Platform =>
+  userId.startsWith('did:') || handle.includes('.') ? 'bluesky' : 'x';
+export const profileUrl = (userId: string, handle: string): string =>
+  platformOf(userId, handle) === 'bluesky' ? `https://bsky.app/profile/${handle}` : `https://x.com/${handle}`;
 export type AudienceMember = {
-  userId: string; username: string; name: string; avatar: string; followers: number;
+  userId: string; username: string; name: string; avatar: string; followers: number; profileUrl: string;
   postCount: number; engagementRate: number; replyShare: number;
   tone: string; personaSummary: string; hotButtons: string[];
   niches: AudienceNiche[]; primaryNiche: string;
 };
 export type Audience = {
-  brand: { userId: string; username: string; name: string; avatar: string };
+  brand: { userId: string; username: string; name: string; avatar: string; platform: Platform };
   members: AudienceMember[];
   niches: { slug: string; label: string }[];
   links: [string, string][]; // real reply/mention links between audience members
@@ -50,7 +63,7 @@ export async function sql<T = Record<string, any>>(query: string, signal?: Abort
 
 const biggerAvatar = (url: string | null) => (url ?? '').replace('_normal.', '_200x200.');
 
-export async function loadAudience(signal?: AbortSignal): Promise<Audience> {
+export async function loadAudience(brandHandle: string, signal?: AbortSignal): Promise<Audience> {
   const [nicheRows, twins, twinNiches, users, links, posts, mentions] = await Promise.all([
     sql('SELECT * FROM niche', signal),
     sql('SELECT * FROM twin', signal),
@@ -62,11 +75,10 @@ export async function loadAudience(signal?: AbortSignal): Promise<Audience> {
   ]);
   const labels = new Map(nicheRows.map(n => [n.slug as string, n.label as string]));
   const userById = new Map(users.map(u => [u.user_id as string, u]));
-  const brandCounts = new Map<string, number>();
-  for (const l of links) brandCounts.set(l.brand_user_id, (brandCounts.get(l.brand_user_id) ?? 0) + 1);
-  const brandId = [...brandCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const brandUser = brandId ? userById.get(brandId) : undefined;
-  if (!brandUser) throw new Error('No twins have been built yet. Run: python -m twins build --brand <username>');
+  const brandUser = users.find(u => String(u.username).toLowerCase() === brandHandle.toLowerCase());
+  if (!brandUser) throw new Error(`@${brandHandle} has not been scraped into SpacetimeDB yet.`);
+  const inBrand = new Set(links.filter(l => l.brand_user_id === brandUser.user_id).map(l => l.user_id as string));
+  if (!inBrand.size) throw new Error(`No twins have been built for @${brandHandle} yet. Run: python -m twins build --brand ${brandHandle}`);
 
   const nichesByUser = new Map<string, AudienceNiche[]>();
   for (const r of twinNiches) {
@@ -74,12 +86,13 @@ export async function loadAudience(signal?: AbortSignal): Promise<Audience> {
     list.push({ slug: r.niche, label: labels.get(r.niche) ?? r.niche, affinity: r.affinity });
     nichesByUser.set(r.user_id, list);
   }
-  const members: AudienceMember[] = twins.map(t => {
+  const members: AudienceMember[] = twins.filter(t => inBrand.has(t.user_id)).map(t => {
     const u = userById.get(t.user_id);
     const niches = (nichesByUser.get(t.user_id) ?? []).sort((a, b) => b.affinity - a.affinity);
     return {
       userId: t.user_id, username: t.username, name: u?.name ?? t.username, avatar: biggerAvatar(u?.profile_image_url),
-      followers: u?.followers_count ?? 0, postCount: t.post_count, engagementRate: t.engagement_rate,
+      followers: u?.followers_count ?? 0, profileUrl: profileUrl(t.user_id, t.username),
+      postCount: t.post_count, engagementRate: t.engagement_rate,
       replyShare: t.reply_share, tone: t.tone, personaSummary: t.persona_summary, hotButtons: t.hot_buttons ?? [],
       niches, primaryNiche: niches[0]?.slug ?? 'other',
     };
@@ -95,7 +108,10 @@ export async function loadAudience(signal?: AbortSignal): Promise<Audience> {
   for (const m of mentions) addPair(authorOf.get(m.post_id), m.mentioned_user_id);
 
   return {
-    brand: { userId: brandUser.user_id, username: brandUser.username, name: brandUser.name, avatar: biggerAvatar(brandUser.profile_image_url) },
+    brand: {
+      userId: brandUser.user_id, username: brandUser.username, name: brandUser.name,
+      avatar: biggerAvatar(brandUser.profile_image_url), platform: platformOf(brandUser.user_id, brandUser.username),
+    },
     members,
     niches: nicheRows.map(n => ({ slug: n.slug, label: n.label })),
     links: [...pairs].map(p => p.split('|') as [string, string]),

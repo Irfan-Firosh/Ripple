@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // These tests read the real scraped audience from SpacetimeDB (no mock data), so they need network access.
 const SQL = '**/v1/database/ripple-mhacks/sql';
+test.describe.configure({timeout:60000});
 
 test('dashboard shows the loader, then the live audience with real counts and niches', async ({ page }) => {
   await page.route(SQL, async route => { await new Promise(r => setTimeout(r, 800)); await route.continue(); });
@@ -13,7 +14,7 @@ test('dashboard shows the loader, then the live audience with real counts and ni
   const canvas = page.getByRole('img', { name: /Three-dimensional audience network/ });
   await expect(canvas).toBeVisible({ timeout: 20000 });
   const people = Number(await canvas.getAttribute('data-node-count'));
-  expect(people).toBeGreaterThan(50); // every scraped person is rendered, no cap
+  expect(people).toBeGreaterThan(50); // every person is retained within the interactive size budget
   await expect(page.getByText(`${people} people`)).toBeVisible();
   await expect.poll(async () => Number(await canvas.getAttribute('data-active-count'))).toBeGreaterThan(0);
 
@@ -22,7 +23,10 @@ test('dashboard shows the loader, then the live audience with real counts and ni
   expect(await groups.count()).toBeLessThanOrEqual(10);
   const sizes = await page.getByLabel('Niche index').locator('.nt-index-count').allTextContents();
   expect(sizes.reduce((sum, n) => sum + Number(n), 0)).toBe(people);
+  await expect(page.getByLabel('Niche index')).not.toContainText(/other/i); // every group is a real niche
 
+  // Start a fresh run: slow live-data assertions may outlast the first autoplay.
+  await page.getByRole('button', { name: 'Replay', exact: true }).click();
   await page.getByRole('button', { name: 'Pause cascade' }).click();
   const count = await canvas.getAttribute('data-active-count');
   await page.waitForTimeout(500);
@@ -60,4 +64,18 @@ test('dashboard says so when SpacetimeDB cannot be reached, and retries', async 
   fail = false;
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByRole('img', { name: /Three-dimensional audience network/ })).toBeVisible({ timeout: 20000 });
+});
+
+test('Raycast (Bluesky) audience renders every twin in at most 7 niche groups', async ({ page }) => {
+  await page.goto('/dashboard?brand=raycast.com');
+  await expect(page.getByRole('link', { name: /Raycast/ })).toHaveAttribute('aria-current', 'page');
+  const canvas = page.getByRole('img', { name: /Three-dimensional audience network/ });
+  await expect(canvas).toBeVisible({ timeout: 45000 });
+  const people = Number(await canvas.getAttribute('data-node-count'));
+  expect(people).toBeGreaterThan(900);
+  const index = page.getByLabel('Niche index');
+  expect(await index.locator('.nt-community-index button').count()).toBeLessThanOrEqual(7);
+  const sizes = await index.locator('.nt-index-count').allTextContents();
+  expect(sizes.reduce((sum, n) => sum + Number(n), 0)).toBe(people);
+  await expect(index).not.toContainText(/other/i); // no catch-all bucket: each person sits in a real niche
 });
