@@ -167,6 +167,7 @@ html[data-theme="light"] .flow-cloud{background-image:linear-gradient(90deg,var(
 .flow-still{display:block;width:100%;border-radius:12px;margin-top:12px;aspect-ratio:16/9;object-fit:cover}
 .flow-launch-preview{max-width:600px;margin-bottom:18px}
 .flow-launch .flow-post{display:flex;flex-direction:column;gap:8px}
-.flow-project{display:flex;flex-direction:column;gap:8px;max-width:360px;margin:0 0 16px}
-.flow-project select{background:var(--panel,var(--soft));border:1px solid var(--line);border-radius:10px;color:var(--fg);padding:11px 12px;font:14px "DM Sans",sans-serif}
+.flow-project{display:flex;flex-direction:column;gap:8px;max-width:360px;margin:0}
+.flow-project select{height:38px;background:var(--panel,var(--soft));border:1px solid var(--line);border-radius:10px;color:var(--fg);padding:0 32px 0 12px;font:14px "DM Sans",sans-serif}
+.flow-setup-row .flow-choice{height:38px;padding-top:0;padding-bottom:0}
 .flow-project select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

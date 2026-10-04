@@ -143,7 +143,7 @@ export default function CampaignStudio() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    document.title = 'Campaigns — Ripple';
+    document.title = 'Ripple';
     try { localStorage.setItem('ripple-theme', theme); } catch { /* optional */ }
   }, [theme]);
   useEffect(() => {

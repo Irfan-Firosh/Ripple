@@ -1720,6 +1720,16 @@ export const finishLabExperiment = spacetimedb.reducer(
   }
 );
 
+export const renameLabExperiment = spacetimedb.reducer(
+  { experimentId: t.u64(), title: t.string() },
+  (ctx, { experimentId, title }) => {
+    requireAdmin(ctx);
+    const clean = title.trim();
+    if (!clean || clean.length > MAX_LAB_TITLE) throw new SenderError(`title must be 1..${MAX_LAB_TITLE} characters`);
+    ctx.db.labExperiment.experimentId.update({ ...labRow(ctx, experimentId), title: clean });
+  }
+);
+
 export const failLabExperiment = spacetimedb.reducer(
   { experimentId: t.u64(), error: t.string() },
   (ctx, { experimentId, error }) => {

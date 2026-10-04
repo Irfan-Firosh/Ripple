@@ -26,6 +26,7 @@ async function setup(page: Page) {
     }
     const query = req.postData() ?? '', table = query.match(/FROM\s+(\w+)/i)?.[1];
     const rows: Row[] = table === 'x_user' ? [{ user_id: 'brand', username: 'raycast', name: 'Raycast', profile_image_url: '' }]
+      : table === 'audience_membership' ? [{ brand_user_id: 'brand', follower_user_id: 'u1' }]
       : table === 'x_post' ? [{ post_id: 'p1', text: 'Your existing launch post.', created_at: '2026-10-04' }]
       : table === 'campaign_flow' && state.flow ? [state.flow] : [];
     return route.fulfill({ json: wire(rows) });
@@ -34,7 +35,25 @@ async function setup(page: Page) {
 }
 
 test('Campaign offers generation and import under themed cloud artwork without creating work on load', async ({ page }) => {
-  const state = await setup(page); await page.goto('/campaign?brand=raycast');
+  const state = await setup(page); await page.goto('/home');
+  const homeBanner = (await page.locator('.home-hero').boundingBox())!;
+  await page.goto('/campaign?brand=raycast');
+  const campaignBanner = (await page.locator('.flow-hero').boundingBox())!;
+  expect(campaignBanner.width).toBe(homeBanner.width);
+  expect(campaignBanner.height).toBe(homeBanner.height);
+  await expect(page.getByRole('combobox', { name: 'Project' })).toHaveValue('raycast');
+  await expect(page.getByRole('heading', { name: 'Campaign history' })).toBeInViewport();
+  const activity = (await page.getByLabel('Campaign activity').boundingBox())!, main = (await page.locator('.flow-workspace-main').boundingBox())!;
+  expect(activity.x).toBeGreaterThan(main.x + main.width);
+  expect(activity.width).toBeGreaterThanOrEqual(390);
+  const action = (await page.getByRole('button', { name: 'Generate new campaign' }).boundingBox())!;
+  expect(action.height).toBeLessThan(48);
+  const project = (await page.getByRole('combobox', { name: 'Project' }).boundingBox())!;
+  const importAction = (await page.getByRole('button', { name: 'Import drafts' }).boundingBox())!;
+  expect(action.y).toBe(project.y);
+  expect(importAction.y).toBe(project.y);
+  expect(action.height).toBe(project.height);
+  await expect(page.getByText('Your next campaign starts here.')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Make your next move.' })).toBeVisible();
   await expect(page.locator('.flow-cloud')).toHaveCSS('background-image', /login-dark\.png/);
   await expect(page.getByRole('button', { name: /Generate new campaign/ })).toBeVisible();
@@ -64,6 +83,12 @@ test('Campaign mobile is polished in light mode and workspace nav is white', asy
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('button', { name: 'Close navigation' }).click();
   await expect(page.locator('.fd-mobile-menu')).toHaveCount(0);
+  const project = (await page.getByRole('combobox', { name: 'Project' }).boundingBox())!;
+  for (const name of ['Generate new campaign', 'Import drafts']) {
+    const action = (await page.getByRole('button', { name }).boundingBox())!;
+    expect(action.y).toBe(project.y);
+    expect(action.height).toBe(project.height);
+  }
   await page.getByRole('button', { name: 'Import drafts' }).click();
   await expect(page.getByLabel('Draft B')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -77,6 +102,7 @@ test('workspace logos share geometry and desktop nav uses white only in light mo
     const logo = page.getByRole('link', { name: 'Ripple home' }); await expect(logo).toHaveText('Ripple');
     await expect(logo).toHaveCSS('gap', '9px'); await expect(logo.locator('svg')).toHaveCSS('width', '24px');
     await page.evaluate(() => document.fonts.ready);
+    await expect(logo).toBeVisible();
     positions.push((await logo.boundingBox())!);
     const nav = page.getByRole('navigation', { name: 'Workspace navigation' });
     await expect(nav).toHaveCSS('background-color', 'rgba(36, 36, 36, 0.93)');

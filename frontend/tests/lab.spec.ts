@@ -14,11 +14,12 @@ test('lab shows two tweets whose interactions play out live, in whole numbers, w
   await expect(page.getByRole('button', { name: 'Replay', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Resimulate', exact: true })).toBeVisible();
   const likes = a.locator('[data-metric="likes"] [data-count]');
-  const median = await page.evaluate(async () => {
+  const finalLikes = await page.evaluate(async () => {
     const data = await import('/src/lab/labData.ts');
-    return (await data.loadExperiment('7')).a?.signals?.like.p50;
+    const run = (await data.loadExperiment('7')).a;
+    return run ? data.finalCounts(run).like : null;
   });
-  await expect.poll(async () => Number(await likes.getAttribute('data-count')), { timeout: 30000 }).toBe(median);
+  await expect.poll(async () => Number(await likes.getAttribute('data-count')), { timeout: 30000 }).toBe(finalLikes);
   // Every visible count is a whole number.
   for (const text of await page.locator('[data-count]').allTextContents()) expect(text).toMatch(/^\d{1,3}(,\d{3})*$/);
   // Comments show up under the tweets as replies.

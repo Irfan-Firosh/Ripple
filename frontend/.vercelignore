@@ -1,0 +1,11 @@
+# The static deploy ships the recorded snapshot (snapshot/) and never the local renders or secrets.
+.env*
+node_modules
+dist
+public/generated
+test-results
+tests
+.playwright-mcp
+.agents
+.claude
+docs

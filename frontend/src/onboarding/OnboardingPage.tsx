@@ -44,7 +44,7 @@ export default function OnboardingPage() {
   const valid = step === 1 ? Boolean(handle.trim()) && (!campaignFlow || brief.campaign.length <= 80) : step === 2 ? Boolean(brief.name.trim()) && brief.name.length <= 80 && brief.role.length <= 80
     : step === 3 ? Boolean(brief.campaign.trim() && brief.news.trim()) && brief.campaign.length <= 80 && brief.news.length <= 600 : step === 4 ? brief.goal !== null : false;
 
-  useEffect(() => { document.title = 'Onboarding — Ripple'; }, []);
+  useEffect(() => { document.title = 'Ripple'; }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#080808' : '#f8f7f3');

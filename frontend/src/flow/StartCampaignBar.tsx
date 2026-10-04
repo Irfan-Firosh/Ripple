@@ -1,10 +1,11 @@
 import { ArrowRight, Import, Sparkles } from 'lucide-react';
 import './start-bar.css';
+import { DEFAULT_BRAND } from '../snapshot';
 
 /** Shown on the finished audience map: the next step is always a campaign (Generate or Import). */
 export function StartCampaignBar() {
   if (location.pathname.replace(/\/$/, '') !== '/dashboard') return null;
-  const brand = new URLSearchParams(location.search).get('brand') || 'raycast';
+  const brand = new URLSearchParams(location.search).get('brand') || DEFAULT_BRAND;
   const href = (start: string) => `/campaign?${new URLSearchParams({ brand, start })}`;
   return <nav className="start-bar" aria-label="Start a campaign">
     <span>Audience ready. <b>Start a campaign</b><ArrowRight size={14} /></span>

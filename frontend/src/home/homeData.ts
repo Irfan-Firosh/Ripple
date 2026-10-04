@@ -2,12 +2,14 @@ import { DbConnection } from '../module_bindings';
 import { sql } from '../audience/liveAudience';
 import { CREATIVE_TOKEN_KEY, type FlowRow } from '../flow/flowApi';
 import { onboardingToken, type OnboardingRow } from '../onboarding/onboardingData';
+import { SNAPSHOT_VIEWER, STATIC_SNAPSHOT } from '../snapshot';
 
 export type HomeCampaign = OnboardingRow & { created_at: number | string };
 const owners = new Map<string, Promise<string>>();
 
 // Use the existing onboarding database identity, rather than other users' public builds.
 function sessionOwner(token: string): Promise<string> {
+  if (STATIC_SNAPSHOT) return Promise.resolve(SNAPSHOT_VIEWER);
   const cached = owners.get(token);
   if (cached) return cached;
   const promise = new Promise<string>((resolve, reject) => {
@@ -24,7 +26,7 @@ function sessionOwner(token: string): Promise<string> {
 }
 
 export async function listHomeCampaigns(signal: AbortSignal): Promise<HomeCampaign[]> {
-  const identity = await sessionOwner(await onboardingToken());
+  const identity = await sessionOwner(STATIC_SNAPSHOT ? '' : await onboardingToken());
   if (!/^[a-f\d]{64}$/i.test(identity)) throw new Error('Could not identify your workspace. Try again.');
   const rows = await sql<HomeCampaign>(`SELECT * FROM onboarding WHERE requested_by = 0x${identity}`, signal);
   return rows.sort((a, b) => Number(b.onboarding_id) - Number(a.onboarding_id));
@@ -39,13 +41,15 @@ export function campaignDate(row: Pick<HomeCampaign, 'created_at'>): string {
   return Number.isFinite(timestamp) && timestamp > 0 ? new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
 }
 
-export type AudienceStat = { handle: string; profiles: number; analyzed: number };
+export type AudienceStat = { handle: string; profiles: number; analyzed: number; followers?: number };
 export type HomeStats = { audiences: AudienceStat[]; profiles: number; analyzed: number };
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
 export async function loadHomeStats(campaigns: HomeCampaign[], signal: AbortSignal): Promise<HomeStats> {
   const brands = new Map<string, string>();
   for (const row of campaigns) if (row.brand_user_id && !brands.has(row.brand_user_id)) brands.set(row.brand_user_id, row.handle);
+  const users = brands.size ? await sql<{ user_id: string; followers_count: number | null }>('SELECT user_id, followers_count FROM x_user', signal) : [];
+  const followers = new Map(users.map(user => [user.user_id, user.followers_count]));
   const profiles = new Set<string>(), analyzed = new Set<string>();
   const audiences = await Promise.all([...brands].map(async ([id, handle]) => {
     const [members, ready] = await Promise.all([
@@ -55,7 +59,9 @@ export async function loadHomeStats(campaigns: HomeCampaign[], signal: AbortSign
     const found = new Set(members.map(row => row.follower_user_id));
     const complete = new Set(ready.map(row => row.user_id).filter(id => found.has(id)));
     found.forEach(id => profiles.add(id)); complete.forEach(id => analyzed.add(id));
-    return { handle, profiles: found.size, analyzed: complete.size };
+    const total = followers.get(id);
+    return { handle, profiles: found.size, analyzed: complete.size,
+      ...(total != null && Number.isFinite(Number(total)) && Number(total) >= 0 ? { followers: Math.trunc(Number(total)) } : {}) };
   }));
   return { audiences: audiences.filter(row => row.profiles > 0), profiles: profiles.size, analyzed: analyzed.size };
 }
@@ -63,8 +69,8 @@ export async function loadHomeStats(campaigns: HomeCampaign[], signal: AbortSign
 export async function listCampaignFlows(signal: AbortSignal): Promise<FlowRow[]> {
   let token: string | null = null;
   try { token = localStorage.getItem(CREATIVE_TOKEN_KEY); } catch { /* Optional storage. */ }
-  if (!token) return [];
-  const identity = await sessionOwner(token);
+  if (!token && !STATIC_SNAPSHOT) return [];
+  const identity = await sessionOwner(token ?? '');
   return (await sql<FlowRow>(`SELECT * FROM campaign_flow WHERE requested_by = 0x${identity}`, signal))
     .sort((a, b) => Number(b.created_at) - Number(a.created_at));
 }

@@ -20,7 +20,7 @@ Campaign now opens with the same dark/light login cloud artwork as Home. The pri
 
 Workspace headers share one geometry: 32px desktop / 16px mobile gutters, a 24px gold Ripple mark, 9px wordmark gap and 25px text. Home, Audience, Campaign, Studio and Lab reuse that wordmark. Only the workspace capsule and mobile menu turn white in light mode; the landing navigation retains its own styling. Lab comparison and resimulation controls use clean text labels instead of decorative icons.
 
-Home presentation: at the user’s request, Home displays every discovered profile as analyzed in its total and per-brand chart. This is a presentation override only; `loadHomeStats`, processing state and database counts remain accurate and unchanged.
+Home presentation: at the user’s request, Home displays profiles found as 50% of each brand’s recorded follower count (rounded down), and profiles created as a stable brand-specific 75–96% of that displayed number (rounded to whole profiles). The header totals sum the displayed chart counts. This replaces the earlier fully analyzed presentation override. `homePresentation` applies the ratios only on Home; `loadHomeStats` still returns actual extracted/analysis counts alongside read-only follower metadata, and processing/database counts remain unchanged. If follower metadata is unavailable, found falls back to the actual extracted count rather than inventing a follower total.
 
 ## Campaign research features
 
@@ -35,3 +35,13 @@ The Campaign page includes an **In progress** sidebar for the current brand’s 
 For a hosted static frontend, serve the same endpoint contract from the application backend: Vite middleware exists only in local dev/preview. Until then, the hosted UI keeps saved brief rationale and a retryable research-unavailable state.
 
 Validation uses mocked provider/database boundaries for browser tests and temporary files for the research reader. Python tests verify request-start visibility, completion counts, credential-free failure records and failure isolation. No real scraping, generation or research calls are made by these tests.
+
+## Compact workspace layout
+
+Home uses the single-line headline “A little clarity.” Campaign and Home share a 210px cloud banner and the same desktop content width. Campaign setup aligns the project selector and compact Generate/Import buttons in one 38px row; the saved campaign history and Exa request activity sit in a wider desktop sidebar, with flat rows instead of nested source cards. On phones the panels stack, with search activity before longer research details.
+
+Campaign drafts and Lab use the existing Magic UI ClientTweetCard with an independently scrollable text/media body. Lab engagement controls remain outside that viewport, and reaction lists scroll separately. The published-id API remains supported, while unpublished drafts keep their actual text and generated media rather than substituting an unrelated public tweet.
+
+The onboarding build progress has its own `.on-build-progress` class and normal document layout inside the vertical build card. It no longer shares the fixed top progress bar’s positioning. Stage breathing indicators remain beside their labels.
+
+One shared Clerk provider exposes the signed-in profile to the WorkspaceAccount control across Home, Audience, Campaign, Lab, onboarding and utility pages. Public routes remain usable without signing in; signed-out controls link to the existing sign-in page.

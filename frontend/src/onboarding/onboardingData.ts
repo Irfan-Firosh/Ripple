@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { sql } from '../audience/liveAudience';
+import { assertLive } from '../snapshot';
 
 const BASE = 'https://maincloud.spacetimedb.com';
 const TOKEN_KEY = 'ripple-onboarding-token';
@@ -32,6 +33,7 @@ export async function onboardingToken(): Promise<string> {
 }
 
 async function call(reducer: string, args: (string | number)[]): Promise<void> {
+  assertLive();
   const response = await fetch(`${BASE}/v1/database/ripple-mhacks/call/${reducer}`, {
     method: 'POST', headers: { Authorization: `Bearer ${await onboardingToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(args),
   });

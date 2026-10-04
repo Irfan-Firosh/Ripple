@@ -48,7 +48,7 @@ export function LogsPage() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = initialTheme();
-    document.title = "Server logs · Ripple";
+    document.title = 'Ripple';
     void refresh();
     const timer = window.setInterval(() => {
       if (!pausedRef.current) void refresh();

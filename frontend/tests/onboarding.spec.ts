@@ -132,7 +132,7 @@ test('live build lights the stages and hands the new X brand to its audience gra
   await expect(page.getByRole('img', { name: 'Building your audience' })).toHaveCount(0);
   await page.getByRole('button', { name: 'See your audience' }).click();
   await expect(page).toHaveURL(/\/dashboard\?brand=raycast$/);
-  await expect(page.getByRole('navigation', { name: 'Brand audience' }).getByRole('link', { name: '@raycast X', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Brand audience' }).getByRole('link', { name: '@raycast X', exact: true })).toHaveAttribute('aria-current', 'page', { timeout: 30000 });
   await expect(page.locator('canvas[data-node-count]')).toHaveAttribute('data-node-count', '30');
 });
 

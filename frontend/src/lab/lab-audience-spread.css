@@ -1,0 +1,11 @@
+.lab-spread-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:20px}
+.lab-spread-graph{--spread-color:var(--accent);position:relative;min-width:0;margin:0;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
+.lab-spread-graph.spread-B{--spread-color:#5ec8f2}html[data-theme=light] .lab-spread-graph.spread-B{--spread-color:#1f77b4}
+.lab-spread-graph figcaption{position:absolute;z-index:1;top:16px;left:18px;color:var(--spread-color);font:13px "Space Mono",monospace}
+.lab-audience-spread>footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;font-size:10px;color:var(--muted)}
+.lab-audience-spread>footer>div{display:flex;gap:8px}.lab-audience-spread .lab-icon{width:30px;height:30px}
+.lab-spread-state{min-height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;font-size:12px;color:var(--muted)}
+.lab-audience-spread button:focus-visible,.lab-audience-spread a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:640px){.lab-analysis.lab-analysis-with-audience{padding:18px}.lab-spread-pair{grid-template-columns:1fr;gap:12px}.lab-spread-graph{padding:8px}.lab-spread-state{min-height:280px}.lab-spread-graph figcaption{top:12px;left:14px}}
+@media(prefers-reduced-motion:reduce){.lab-audience-spread *{animation:none!important;transition:none!important}}
+.lab-analysis.lab-analysis-with-audience{width:min(1160px,100%);max-height:94svh;padding:32px}

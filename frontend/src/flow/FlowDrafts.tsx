@@ -35,7 +35,7 @@ function VideoEditor({ video, onClose, onSaved }: { video: VideoRow; onClose: ()
   </div>;
 }
 
-function DraftColumn({ campaignId, draft, copy, video, author, onSaved, videoOff }: { campaignId: string; draft: Draft; copy: DraftCopy; video: VideoRow | null; author: TweetAuthor; onSaved: () => void; videoOff: boolean }) {
+function DraftColumn({ campaignId, draft, copy, video, author, onSaved, videoOff, imagePreview = false }: { campaignId: string; draft: Draft; copy: DraftCopy; video: VideoRow | null; author: TweetAuthor; onSaved: () => void; videoOff: boolean; imagePreview?: boolean }) {
   const [editing, setEditing] = useState(false);
   const retry = () => void requestDraftVideo(campaignId, draft, copy.text).then(onSaved).catch(() => undefined);
   return <section className="flow-draft">
@@ -43,7 +43,7 @@ function DraftColumn({ campaignId, draft, copy, video, author, onSaved, videoOff
     <ClientTweetCard className="flow-tweet" label={`Draft ${draft}`} scrollable busy={copy.writing}
       draft={{ author, text: copy.text }}>
       {copy.writing && <span className="flow-writing" role="status">Writing the tweet…</span>}
-      {videoOff && !video ? copy.image && <img className="flow-still" src={copy.image} alt="" /> : <VideoCard video={video} poster={copy.image} />}
+      {imagePreview && copy.image ? <img className="flow-still" src={copy.image} alt="" /> : videoOff && !video ? copy.image && <img className="flow-still" src={copy.image} alt="" /> : <VideoCard video={video} poster={copy.image} />}
     </ClientTweetCard>
     {video?.status === 'failed' && <button className="flow-secondary flow-edit" onClick={retry}>Try again</button>}
     {video?.status === 'done' && !editing && <button className="flow-secondary flow-edit" onClick={() => setEditing(true)}><PenLine size={14} />Edit video</button>}
@@ -51,15 +51,15 @@ function DraftColumn({ campaignId, draft, copy, video, author, onSaved, videoOff
   </section>;
 }
 
-export function DraftsStep({ brand, brandId, campaignId, a, b, videos, busy, waiting, onTest, onSaved }: {
-  brand: string; brandId: string; campaignId: string; a: DraftCopy | null; b: DraftCopy | null; videos: DraftVideos; busy: boolean; waiting: string; onTest: () => void; onSaved: () => void;
+export function DraftsStep({ brand, brandId, campaignId, a, b, videos, busy, waiting, onTest, onSaved, preview = false }: {
+  brand: string; brandId: string; campaignId: string; a: DraftCopy | null; b: DraftCopy | null; videos: DraftVideos; busy: boolean; waiting: string; onTest: () => void; onSaved: () => void; preview?: boolean;
 }) {
   const author = useBrandAuthor(brand, brandId);
   const videoOff = useVideoOff();
   return <div className="flow-drafts-step">
     {waiting && <p className="flow-waiting" role="status">{waiting}</p>}
     <div className="flow-pair">
-      {a && <DraftColumn campaignId={campaignId} draft="A" copy={a} video={videos.A} author={author} onSaved={onSaved} videoOff={videoOff} />}
+      {a && <DraftColumn campaignId={campaignId} draft="A" copy={a} video={videos.A} author={author} onSaved={onSaved} videoOff={videoOff} imagePreview={preview} />}
       {b && <DraftColumn campaignId={campaignId} draft="B" copy={b} video={videos.B} author={author} onSaved={onSaved} videoOff={videoOff} />}
     </div>
     <button className="flow-primary" disabled={busy || !a || !b || a.writing || b.writing} onClick={onTest}><FlaskConical size={15} />Test A vs B</button>

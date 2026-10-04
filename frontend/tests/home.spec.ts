@@ -31,6 +31,8 @@ async function setup(page: Page, rows: Record<string, unknown>[] = [row(9, 'rayc
     } else if (query.includes('FROM twin_audience')) {
       const prefix = query.includes('raycast-id') ? 'r' : 'l';
       result = [{ user_id: 'shared' }, { user_id: prefix + '1' }, { user_id: 'obsolete-profile' }];
+    } else if (query.includes('FROM x_user')) {
+      result = [{ user_id: 'raycast-id', followers_count: 2000 }, { user_id: 'linear-id', followers_count: 1000 }];
     } else if (query.includes('FROM campaign_flow')) {
       expect(query).toBe(`SELECT * FROM campaign_flow WHERE requested_by = 0x${owner}`);
       result = [{ campaign_id: 'campaign-42', brand: 'raycast', source: 'generate', stage: 'testing', created_at: Date.now() * 1000 + 1e6 }];
@@ -78,7 +80,7 @@ test('Home read errors show a retry control', async ({ page }) => {
 });
 
 
-test('Home shows all discovered profiles as analyzed without changing source counts', async ({ page }) => {
+test('Home displays half the followers and a stable created share without changing source counts', async ({ page }) => {
   await setup(page);
   await page.goto('/home');
   const headline = page.getByRole('heading', { name: 'A little clarity.', exact: true });
@@ -86,8 +88,28 @@ test('Home shows all discovered profiles as analyzed without changing source cou
   await expect(page.getByText('A bigger ripple.')).toHaveCount(0);
   await expect(headline).toHaveCSS('white-space', 'nowrap');
   const stats = page.getByRole('region', { name: 'Workspace stats' });
-  await expect(stats.locator('.home-stat-strip strong')).toHaveText(['5', '5', '2']);
-  await expect(page.getByRole('img', { name: /Audience profiles by brand/ })).toHaveAttribute('aria-label', /@raycast, 3 found, 3 analyzed/);
+  await expect(stats.locator('.home-stat-strip strong').first()).toHaveText('1,500');
+  const graph = page.getByRole('img', { name: /Audience profiles by brand/ });
+  const label = (await graph.getAttribute('aria-label'))!;
+  const bars = [...label.matchAll(/@(\w+), (\d+) found, (\d+) created/g)];
+  expect(bars).toHaveLength(2);
+  for (const [, handle, found, created] of bars) {
+    expect(Number(found)).toBe(handle === 'raycast' ? 1000 : 500);
+    expect(Number(created) / Number(found)).toBeGreaterThanOrEqual(.75);
+    expect(Number(created) / Number(found)).toBeLessThanOrEqual(.96);
+  }
+  const createdTotal = bars.reduce((sum, bar) => sum + Number(bar[3]), 0);
+  await expect(stats.locator('.home-stat-strip strong')).toHaveText(['1,500', createdTotal.toLocaleString(), '2']);
+  const source = await page.evaluate(async () => {
+    const data = await import('/src/home/homeData.ts');
+    const signal = new AbortController().signal;
+    return data.loadHomeStats(await data.listHomeCampaigns(signal), signal);
+  });
+  expect(source.profiles).toBe(5);
+  expect(source.analyzed).toBe(3);
+  expect(source.audiences.map(item => item.profiles)).toEqual([3, 3]);
+  await page.reload();
+  await expect(graph).toHaveAttribute('aria-label', label);
   await expect(page.locator('.home-cloud')).toHaveCSS('background-image', /login-dark\.png/);
   await expect(page.getByRole('link', { name: 'Ripple home' })).toHaveText('Ripple');
   const logo = page.getByRole('link', { name: 'Ripple home' });

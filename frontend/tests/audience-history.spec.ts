@@ -61,7 +61,7 @@ test('audience is fully visible in 3D without a source node, post edges, or casc
   await page.screenshot({ path: '/tmp/ripple-audience-connectivity-light.png' });
   await expect(page.getByRole('group', { name: 'Network dimension' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Replay|Pause cascade|Play cascade/ })).toHaveCount(0);
-  await expect(page.getByLabel('Niche index')).not.toContainText('Building profiles'); // unanalysed followers join real niches
+  await expect(page.getByLabel('Interest index')).not.toContainText('Building profiles'); // unanalysed followers join real niches
   await page.getByRole('button', { name: 'Zoom in' }).click();
   await expect.poll(async () => Number(await canvas.getAttribute('data-camera-zoom'))).toBeGreaterThan(1);
 });

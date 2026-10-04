@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { listCampaignFlows } from '../home/homeData';
 import type { FlowRow } from './flowApi';
 import type { ResearchSnapshot } from './researchTypes';
+import { STATIC_SNAPSHOT } from '../snapshot';
 
 export function useCampaignResearch(brand: string, campaignId: string | null) {
   const [flows, setFlows] = useState<FlowRow[] | null>(null);
@@ -19,7 +20,8 @@ export function useCampaignResearch(brand: string, campaignId: string | null) {
         }).catch(() => { if (!abort.signal.aborted) setFlowError('Could not read your campaigns.'); }),
         (async () => {
           try {
-            const response = await fetch(`/api/campaign-research?${new URLSearchParams({ brand })}`, { signal: abort.signal });
+            const response = await fetch(STATIC_SNAPSHOT ? `/research-snapshot/${encodeURIComponent(brand)}.json`
+              : `/api/campaign-research?${new URLSearchParams({ brand })}`, { signal: abort.signal });
             if (!response.ok) throw new Error('Research unavailable');
             const snapshot: ResearchSnapshot = await response.json();
             if (!Array.isArray(snapshot.sources) || !Array.isArray(snapshot.calls)) throw new Error('Research unavailable');

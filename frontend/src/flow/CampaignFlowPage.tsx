@@ -12,13 +12,14 @@ import { DraftsStep, type DraftCopy } from './FlowDrafts';
 import { useFlowData } from './useFlowData';
 import { CampaignResearch } from './CampaignResearch';
 import './flow.css';
+import { DEFAULT_BRAND } from '../snapshot';
 
 const params = () => new URLSearchParams(location.search);
 const STEPS = ['Audience', 'Concepts', 'Test', 'Launch'] as const;
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export default function CampaignFlowPage() {
-  const brand = (params().get('brand') || 'raycast').toLowerCase().replace(/^@/, '');
+export default function CampaignFlowPage({ preview = false }: { preview?: boolean }) {
+  const brand = (params().get('brand') || DEFAULT_BRAND).toLowerCase().replace(/^@/, '');
   const [campaignId, setCampaignId] = useState<string | null>(params().get('id'));
   const [mode, setMode] = useState<'choose' | 'import'>(params().get('start') === 'import' ? 'import' : 'choose');
   const [theme, setTheme] = useState(initialTheme);
@@ -36,7 +37,7 @@ export default function CampaignFlowPage() {
   const [retryTick, setRetryTick] = useState(0);
   const [waitingAudience, setWaitingAudience] = useState(false);
 
-  useEffect(() => { document.title = 'Campaign · Ripple'; }, []);
+  useEffect(() => { document.title = 'Ripple'; }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; try { localStorage.setItem('ripple-theme', theme); } catch { /* optional */ } }, [theme]);
   useEffect(() => {
     const abort = new AbortController();
@@ -50,6 +51,7 @@ export default function CampaignFlowPage() {
   }, [brand, campaignId]);
 
   const act = async (fn: () => Promise<void>) => {
+    if (preview) return;
     setBusy(true); setError('');
     try { await fn(); setRevision(r => r + 1); } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
   };
@@ -80,7 +82,7 @@ export default function CampaignFlowPage() {
   });
 
   useEffect(() => {
-    if (!autoStart.current || campaignId || !brandId || !creative.ready || busy || Date.now() < nextTry.current) return;
+    if (preview || !autoStart.current || campaignId || !brandId || !creative.ready || busy || Date.now() < nextTry.current) return;
     autoStart.current = false;
     void generate();
   }, [brandId, creative.ready, campaignId, busy, retryTick]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -88,7 +90,7 @@ export default function CampaignFlowPage() {
   // Once the brief lands, ask for the two concepts (once).
   const brief = creative.briefs[0];
   useEffect(() => {
-    if (!brief || requested.current || creative.variants.length || creative.jobs.some(j => j.kind === 'generate')) return;
+    if (preview || !brief || requested.current || creative.variants.length || creative.jobs.some(j => j.kind === 'generate')) return;
     requested.current = true;
     void creative.run(conn => conn.reducers.requestCreative({ campaignId: brief.campaignId, kind: 'generate', targetId: brief.briefId }))
       .catch(e => setError(errorText(e)));
@@ -108,7 +110,7 @@ export default function CampaignFlowPage() {
   const copyB: DraftCopy | null = flow?.source === 'import' ? { text: flow.draft_b } : generatedCopy('B', 1);
   const askedCopy = useRef('');
   useEffect(() => {
-    if (!campaignId || flow?.source !== 'generate' || ready.length < 2) return;
+    if (preview || !campaignId || flow?.source !== 'generate' || ready.length < 2) return;
     const key = `${campaignId}:${ready[0].variantId}:${ready[1].variantId}:${copies.A?.status}:${copies.B?.status}`;
     if (askedCopy.current === key) return;
     const need = (['A', 'B'] as const).filter(d => !copies[d] || copies[d]?.status === 'failed');
@@ -121,7 +123,7 @@ export default function CampaignFlowPage() {
   // Every draft gets its own video, written from its own copy (requested once; edits make new versions).
   const askedFor = useRef('');
   useEffect(() => {
-    if (!campaignId || !flow || !copyA || !copyB || copyA.writing || copyB.writing || flow.stage === 'shipped') return;
+    if (preview || !campaignId || !flow || !copyA || !copyB || copyA.writing || copyB.writing || flow.stage === 'shipped') return;
     const key = `${campaignId}:${drafts.A ? 1 : 0}${drafts.B ? 1 : 0}`;
     if (drafts.A && drafts.B) return;
     if (askedFor.current === key) return;
@@ -152,7 +154,7 @@ export default function CampaignFlowPage() {
   const attached = useRef(new Set<string>());
   useEffect(() => {
     const exp = Number(flow?.experiment_id ?? 0);
-    if (!exp) return;
+    if (preview || !exp) return;
     for (const d of ['A', 'B'] as const) {
       const v = drafts[d];
       const key = `${exp}:${d}:${v?.video_id}`;
@@ -164,7 +166,7 @@ export default function CampaignFlowPage() {
   const winnerVideo = flow?.video_id ? [drafts.A, drafts.B, video].find(v => v?.video_id === flow.video_id) ?? null : null;
 
   const stage = flow?.stage ?? null;
-  const step = !campaignId ? 1 : stage === 'testing' ? 2 : stage === 'approved' || stage === 'shipped' ? 3 : 1;
+  const step = preview || !campaignId ? 1 : stage === 'testing' ? 2 : stage === 'approved' || stage === 'shipped' ? 3 : 1;
   const waiting = flow?.source === 'generate' && (!copyA || !copyB)
     ? (creative.briefs.length ? 'Grok is painting two concepts…' : 'Reading your audience and writing the brief…') : '';
 
@@ -194,7 +196,7 @@ export default function CampaignFlowPage() {
       {!campaignId && (busy || waitingAudience) && <><h1>Starting your campaign…</h1><p className="flow-waiting" role="status">Reading @{brand}'s audience.</p></>}
       {!campaignId && !busy && !waitingAudience && mode === 'import' && <><div className="flow-section-heading"><h2>Bring your drafts.</h2><button className="flow-text-button" onClick={() => setMode('choose')}><ArrowLeft size={14} />Back</button></div><ImportStep brand={brand} posts={posts} busy={busy} onSubmit={importDrafts} /></>}
       {campaignId && step === 1 && <><h1>Your two drafts.</h1>
-        <DraftsStep brand={brand} brandId={brandId} campaignId={campaignId} a={copyA} b={copyB} videos={drafts} busy={busy} waiting={waiting} onTest={() => void test()} onSaved={() => setRevision(r => r + 1)} /></>}
+        <DraftsStep brand={brand} brandId={brandId} campaignId={campaignId} a={copyA} b={copyB} videos={drafts} busy={busy} waiting={waiting} preview={preview} onTest={() => void test()} onSaved={() => setRevision(r => r + 1)} /></>}
       {campaignId && step === 2 && <><h1>{experiment?.status === 'done' ? 'Results are in.' : 'Testing on your audience.'}</h1>
         <TestStep experiment={experiment} labHref={`/lab?brand=${brand}&exp=${flow?.experiment_id}`} busy={busy} onApprove={d => void approve(d)} /></>}
       {campaignId && step === 3 && <><h1>{stage === 'shipped' ? 'Shipped.' : 'Ready to ship.'}</h1>

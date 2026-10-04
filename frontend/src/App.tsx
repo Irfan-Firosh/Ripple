@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { LandingLoader } from "./LandingLoader";
+import { STATIC_SNAPSHOT } from "./snapshot";
 import { ClerkLoading, Show, UserButton } from "@clerk/react";
 import {
   ArrowUpRight,
@@ -7,17 +9,14 @@ import {
   Moon,
   Play,
   Pause,
-  RotateCcw,
-  Maximize,
   Menu,
   X,
-  Network,
-  GitBranch,
   ChevronDown,
 } from "lucide-react";
 
 import { WordRotate } from "./components/ui/word-rotate";
 import { Footer } from "./Footer";
+import { FeatureVisual } from "./landing/FeatureVisuals";
 
 const HERO_WORDS = ["ripple.", "reach.", "signal."];
 
@@ -53,14 +52,11 @@ function DemoVideo({ theme }: { theme: Theme }) {
   const ref = useRef<HTMLVideoElement>(null);
   const userPaused = useRef(false);
   const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(28);
   const [error, setError] = useState(false);
   useEffect(() => {
     const video = ref.current;
     if (!video) return;
     setError(false);
-    setProgress(0);
     setPlaying(false);
     userPaused.current = false;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -93,12 +89,6 @@ function DemoVideo({ theme }: { theme: Theme }) {
       }
     }
   };
-  const seek = (value: number) => {
-    if (ref.current && Number.isFinite(ref.current.duration)) {
-      ref.current.currentTime = value;
-      setProgress(value);
-    }
-  };
   return (
     <div className="demo-player">
       <div className="player-top">
@@ -108,7 +98,7 @@ function DemoVideo({ theme }: { theme: Theme }) {
           <i />
         </span>
         <span className="player-address">
-          <RippleMark size={12} /> ripple / watch-it-spread
+          <RippleMark size={12} /> ripple / in action
         </span>
         <span className="player-version">PRODUCT PREVIEW</span>
       </div>
@@ -122,15 +112,14 @@ function DemoVideo({ theme }: { theme: Theme }) {
           muted
           playsInline
           preload="metadata"
-          aria-label="Ripple product walkthrough: compare drafts, watch a cascade, inspect a bridge, and rewrite a hook"
+          aria-label="Ripple product walkthrough: audience map, generated campaign media, and side-by-side Lab analysis"
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
-          onTimeUpdate={() => setProgress(ref.current?.currentTime ?? 0)}
-          onLoadedMetadata={() => {
-            setDuration(ref.current?.duration || 28);
-          }}
           onError={() => setError(true)}
         />
+        {!error && <button className="demo-toggle" aria-label={playing ? "Pause demo" : "Play demo"} onClick={toggle}>
+          {playing ? <Pause size={16} /> : <Play size={16} />}
+        </button>}
         {error && (
           <div className="video-error">
             The preview could not load.{" "}
@@ -144,45 +133,6 @@ function DemoVideo({ theme }: { theme: Theme }) {
             </button>
           </div>
         )}
-      </div>
-      <div className="player-controls">
-        <button
-          aria-label={playing ? "Pause demo" : "Play demo"}
-          onClick={toggle}
-        >
-          {playing ? <Pause size={15} /> : <Play size={15} />}
-        </button>
-        <button
-          aria-label="Restart demo"
-          onClick={() => {
-            userPaused.current = false;
-            seek(0);
-            ref.current?.play().catch(() => {});
-          }}
-        >
-          <RotateCcw size={14} />
-        </button>
-        <span className="time-code">
-          {Math.floor(progress).toString().padStart(2, "0")} /{" "}
-          {Math.floor(duration)}s
-        </span>
-        <input
-          aria-label="Demo video progress"
-          type="range"
-          min="0"
-          max={duration}
-          step="0.1"
-          value={progress}
-          onInput={(e) => seek(Number(e.currentTarget.value))}
-        />
-        <button
-          aria-label="Fullscreen demo"
-          onClick={() => {
-            ref.current?.requestFullscreen?.().catch(() => {});
-          }}
-        >
-          <Maximize size={15} />
-        </button>
       </div>
     </div>
   );
@@ -221,6 +171,7 @@ export function App() {
   };
   return (
     <div className="site-shell" data-theme={theme}>
+      {STATIC_SNAPSHOT && <LandingLoader theme={theme} />}
       <div className="hero-backdrop" aria-hidden="true">
         <div className="sky sky-night" />
         <div className="sky sky-day" />
@@ -247,14 +198,8 @@ export function App() {
               <a href="/visuals" onClick={closeMenu}>Visual playground</a>
             </div>
           </details>
-          <details className="nav-dropdown">
-            <summary>Project <ChevronDown size={16} /></summary>
-            <div className="nav-menu">
-              <a href="#about" onClick={closeMenu}>About Ripple</a>
-              <a href="/research/ripple-design.md" onClick={closeMenu}>Project design</a>
-            </div>
-          </details>
-          <a href="/research/ripple-fact-check.md" onClick={closeMenu}>Research</a>
+          <a href="#about" onClick={closeMenu}>About</a>
+          <a href="#faq" onClick={closeMenu}>FAQ</a>
         </nav>
         <div className="nav-actions">
           <button
@@ -331,96 +276,53 @@ export function App() {
             <span>
               <span className="live-dot" /> A look inside Ripple
             </span>
-            <span>Product walkthrough · Real audience and recorded Lab results</span>
+            <span>Real audience. Generated media. Recorded Lab results.</span>
           </div>
         </section>
         <section className="features container" id="how-it-works">
           <div className="features-heading">
-            <span className="eyebrow">BEYOND THE FOLLOWER COUNT</span>
-            <h2>Make a little less of a guess.</h2>
-            <p>
-              Your network is more than a number. Ripple helps you see the paths
-              an idea might take.
-            </p>
+            <span className="eyebrow">FROM AUDIENCE TO LAUNCH</span>
+            <h2>Know who. Create what. Test first.</h2>
           </div>
           <div className="feature-grid">
             <article>
-              <div className="feature-visual network-visual" aria-hidden="true">
-                <Network size={70} strokeWidth={0.8} />
-                <span className="visual-ring" />
-                <span className="visual-ring ring-two" />
-                <small>YOUR AUDIENCE, CONNECTED</small>
-              </div>
+              <FeatureVisual kind="audience" />
               <span className="feature-number">01 / MAP</span>
-              <h3>Analyzing your audience.</h3>
-              <p>
-                Start with a Bluesky handle. Build a picture of the communities
-                and connections around you, using public behavior.
-              </p>
+              <h3>Meet your audience.</h3>
+              <p>Connect your X handle. Explore the people and interests behind your following.</p>
             </article>
             <article>
-              <div className="feature-visual chart-visual" aria-hidden="true">
-                <div className="mini-chart">
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </div>
-                <span className="chart-axis">possible reach →</span>
-                <small>RANGES, NOT PROMISES</small>
-              </div>
-              <span className="feature-number">02 / SIMULATE</span>
-              <h3>Give every draft a chance.</h3>
-              <p>
-                Run many possible cascades. Compare reach distributions and see
-                which draft has a better chance of leaving its niche.
-              </p>
+              <FeatureVisual kind="creative" />
+              <span className="feature-number">02 / CREATE</span>
+              <h3>Make it worth sharing.</h3>
+              <p>Turn audience insights into campaign ideas, images and videos.</p>
             </article>
             <article>
-              <div className="feature-visual bridge-visual" aria-hidden="true">
-                <GitBranch size={66} strokeWidth={0.9} />
-                <span className="bridge-pulse" />
-                <small>FIND THE WAY THROUGH</small>
-              </div>
-              <span className="feature-number">03 / UNDERSTAND</span>
-              <h3>See what makes it travel.</h3>
-              <p>
-                Explore the bridges between communities. Change a hook, replay
-                the cascade, and understand what changed.
-              </p>
+              <FeatureVisual kind="lab" />
+              <span className="feature-number">03 / TEST</span>
+              <h3>Find your first signal.</h3>
+              <p>Compare two drafts in Lab. See engagement and how each could spread.</p>
             </article>
+          </div>
+        </section>
+        <section className="faq container" id="faq" aria-label="Frequently asked questions">
+          <div className="faq-list">
+            <details><summary>What do I need to start?<ChevronDown size={16} /></summary><p>Your brand’s X handle. Ripple builds an audience map from public profiles.</p></details>
+            <details><summary>Can Ripple create campaign media?<ChevronDown size={16} /></summary><p>Yes. Generate campaign ideas, images and videos, or bring your own drafts.</p></details>
+            <details><summary>Are Lab results guaranteed?<ChevronDown size={16} /></summary><p>No. They’re simulated estimates. Use them to compare drafts before posting.</p></details>
+            <details><summary>Does Ripple post for me?<ChevronDown size={16} /></summary><p>You choose the draft and publish it yourself.</p></details>
           </div>
         </section>
         <section className="closing container" id="about">
           <div className="closing-orbit" aria-hidden="true">
             <RippleMark size={64} />
           </div>
-          <span className="eyebrow">A LITTLE CLARITY BEFORE YOU POST</span>
           <h2>
             Good ideas deserve
             <br />a better first signal.
           </h2>
-          <p>
-            Agent-powered simulations. Public Bluesky behavior.
-            <br />A little more clarity before you hit publish.
-          </p>
           <a className="button primary" href="#demo">
             Meet your possible audience <ArrowUpRight size={16} />
-          </a>
-          <a
-            className="research-link"
-            href="/research/ripple-design.md"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Read the project design <ArrowUpRight size={13} />
           </a>
         </section>
       </main>

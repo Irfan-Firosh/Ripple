@@ -15,7 +15,7 @@ export default function Auth7({ signIn = false }: { signIn?: boolean }) {
   }, [isLoaded, isSignedIn]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    document.title = `${signIn ? "Sign in" : "Get started"} — Ripple`;
+    document.title = 'Ripple';
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#080808" : "#f8f7f3");
     try { localStorage.setItem("ripple-theme", theme); } catch { /* Optional storage. */ }
   }, [theme, signIn]);

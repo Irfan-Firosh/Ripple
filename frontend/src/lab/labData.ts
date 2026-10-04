@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { BRANDS, loadAudience, sql } from '../audience/liveAudience';
 import { groupByNiche } from '../visuals/liveNetwork';
 import { loadAudienceSnapshot } from '../history/historyData';
+import { assertLive } from '../snapshot';
 
 const DB = 'https://maincloud.spacetimedb.com';
 const DB_NAME = 'ripple-mhacks';
@@ -179,6 +180,7 @@ async function token(): Promise<string> {
 }
 
 export async function requestExperiment(input: { brand: string; title: string; draftA: string; draftB: string }): Promise<void> {
+  assertLive();
   if ([input.draftA, input.draftB].some(draft => !draft.trim() || draft.length > 1000)) {
     throw new Error('drafts must be 1..1000 characters');
   }

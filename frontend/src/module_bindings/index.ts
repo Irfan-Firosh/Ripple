@@ -71,6 +71,7 @@ import PublishBriefReducer from "./publish_brief_reducer";
 import PublishTwinReducer from "./publish_twin_reducer";
 import PurgeBrandReducer from "./purge_brand_reducer";
 import RemoveOpsAdminReducer from "./remove_ops_admin_reducer";
+import RenameLabExperimentReducer from "./rename_lab_experiment_reducer";
 import ReplaceAudienceEdgesReducer from "./replace_audience_edges_reducer";
 import RequestCampaignVideoReducer from "./request_campaign_video_reducer";
 import RequestCreativeReducer from "./request_creative_reducer";
@@ -961,6 +962,7 @@ const reducersSchema = __reducers(
   __reducerSchema("publish_twin", PublishTwinReducer),
   __reducerSchema("purge_brand", PurgeBrandReducer),
   __reducerSchema("remove_ops_admin", RemoveOpsAdminReducer),
+  __reducerSchema("rename_lab_experiment", RenameLabExperimentReducer),
   __reducerSchema("replace_audience_edges", ReplaceAudienceEdgesReducer),
   __reducerSchema("request_campaign_video", RequestCampaignVideoReducer),
   __reducerSchema("request_creative", RequestCreativeReducer),

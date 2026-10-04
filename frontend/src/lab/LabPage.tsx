@@ -15,10 +15,12 @@ import { LabDock } from './LabDock';
 import { Tweet } from './Tweet';
 import { useReplayTick } from './useReplayTick';
 import './lab.css';
+import './lab-history.css';
 import { HistoryDrawer } from '../history/HistoryDrawer';
+import { DEFAULT_BRAND } from '../snapshot';
 
 const params = () => new URLSearchParams(location.search);
-const initialBrand = () => params().get('brand')?.toLowerCase() || 'raycast';
+const initialBrand = () => params().get('brand')?.toLowerCase() || DEFAULT_BRAND;
 
 function useExperiments(brand: string, refreshKey: number) {
   const [list, setList] = useState<LabExperimentSummary[] | null>(null);
@@ -71,7 +73,7 @@ export default function LabPage() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme; document.title = 'Lab — Ripple';
+    document.documentElement.dataset.theme = theme; document.title = 'Ripple';
     try { localStorage.setItem('ripple-theme', theme); } catch { /* optional */ }
   }, [theme]);
   useEffect(() => {
@@ -138,7 +140,9 @@ export default function LabPage() {
       <WorkspaceAccount /></div>
     </header>
 
-    {listError || error ? <div className="lab-state" role="alert">{listError ?? error}<button className="lab-secondary" onClick={() => setRefresh(n => n + 1)}><RotateCcw size={14} /> Try again</button></div>
+    <div className="lab-workspace">
+    <LabDock experiments={list ?? []} activeId={expId} onSelect={setExpId} onCampaigns={openCampaigns} campaignAction={campaignAction} loadingCampaigns={campaigns === null && !campaignError} />
+    <div className="lab-workspace-content">{listError || error ? <div className="lab-state" role="alert">{listError ?? error}<button className="lab-secondary" onClick={() => setRefresh(n => n + 1)}><RotateCcw size={14} /> Try again</button></div>
       : list === null || (expId && !experiment) ? <div className="lab-state" role="status"><Loader shape="ripple" variant="dither" size="lg" color="var(--accent)" aria-hidden="true" /><p>Opening the Lab…</p></div>
       : !list.length ? <div className="lab-state"><h2>No experiments for @{brand} yet</h2><a className="lab-primary" href={createCampaignHref}>Create new campaign</a></div>
       : experiment && profile && <>
@@ -157,10 +161,9 @@ export default function LabPage() {
           <Tweet label="A" brand={profile} draft={experiment.draftA} run={experiment.a} tick={a.tick} finished={a.finished} winner={Boolean(bothDone && experiment.winner === 'A')} />
           <Tweet label="B" brand={profile} draft={experiment.draftB} run={experiment.b} tick={b.tick} finished={b.finished} winner={Boolean(bothDone && experiment.winner === 'B')} />
         </div>}
-      </>}
+      </>}</div></div>
 
     {analyzing && experiment && <LabAnalysis experiment={experiment} tickA={a.tick} tickB={b.tick} onClose={closeAnalysis} />}
-    <LabDock experiments={list ?? []} activeId={expId} onSelect={setExpId} onCampaigns={openCampaigns} campaignAction={campaignAction} loadingCampaigns={campaigns === null && !campaignError} />
     {showHistory && <HistoryDrawer kind="lab" activeId={expId} onClose={() => setShowHistory(false)} onSelect={entry => {
       if (entry.kind === 'audience') location.assign(`/dashboard?brand=${encodeURIComponent(entry.brand)}&snapshot=${encodeURIComponent(entry.id)}`);
       else { setBrand(entry.brand); setExpId(entry.id); setShowHistory(false); }

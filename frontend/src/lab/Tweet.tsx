@@ -74,7 +74,6 @@ export function Tweet({ label, brand, draft, run, tick, finished, winner }: Prop
       {latest.map((e: LabEvent) => <li key={`${e.userId}:${e.signal}`} className="lab-activity-row">
         <Avatar src={e.avatar} name={e.name || e.handle} size={20} /><span><b>@{e.handle}</b> {VERB[e.signal]}</span>
       </li>)}
-      {run && finished && run.projection?.mode === 'linear' && <li className="lab-activity-row lab-outside">Projected to {run.projection.audience.toLocaleString()} followers from {run.projection.simulated} simulated (×{Math.round(run.projection.factor).toLocaleString()})</li>}
       {run && finished && run.projection?.mode !== 'linear' && run.outsideShare > 0 && <li className="lab-activity-row lab-outside">{Math.round(run.outsideShare * 100)}% of engagement came from reposts reaching people beyond @{brand.handle}'s followers</li>}
     </ul>
     <LabReactions draft={label} handle={brand.handle} run={run} tick={tick} view={view} onView={setView} />

@@ -1,6 +1,7 @@
 // The campaign flow (Audience -> Campaign -> Lab -> Launch) talks to SpacetimeDB with ONE browser identity: the
 // creative token Campaign Studio already uses, so the campaign, its Lab experiment and its video share an owner.
 import { sql } from '../audience/liveAudience';
+import { SNAPSHOT_VIEWER, STATIC_SNAPSHOT, assertLive } from '../snapshot';
 
 const DB = 'https://maincloud.spacetimedb.com';
 const DB_NAME = import.meta.env.VITE_SPACETIMEDB_DATABASE || 'ripple-mhacks';
@@ -31,6 +32,7 @@ async function token(): Promise<string> {
 }
 
 export async function call(reducer: string, args: unknown[]): Promise<void> {
+  assertLive();
   const res = await fetch(`${DB}/v1/database/${DB_NAME}/call/${reducer}`, {
     method: 'POST', headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(args, (_k, v) => (typeof v === 'bigint' ? Number(v) : v)),
@@ -130,6 +132,7 @@ export const requestDraftCopy = (campaignId: string, draft: Draft, headline: str
 
 // The hex identity of this browser's creative token (SpacetimeDB tokens are JWTs carrying `hex_identity`).
 export async function myIdentity(): Promise<string> {
+  if (STATIC_SNAPSHOT) return SNAPSHOT_VIEWER;
   const payload = (await token()).split('.')[1] ?? '';
   const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { hex_identity?: string };
   return json.hex_identity ?? '';

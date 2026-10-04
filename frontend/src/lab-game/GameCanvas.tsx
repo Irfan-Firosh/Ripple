@@ -19,7 +19,7 @@ export function GameCanvas(props: Props) {
     let game: ex.Engine | null = null;
     const media = matchMedia('(prefers-reduced-motion: reduce)');
     const canvas = document.createElement('canvas');
-    canvas.setAttribute('aria-label', 'Audience islands. Choose a niche or person using the controls.');
+    canvas.setAttribute('aria-label', 'Audience islands. Choose an interest or person using the controls.');
     canvas.setAttribute('role', 'img');
     container.appendChild(canvas);
     const network = props.network;

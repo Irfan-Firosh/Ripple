@@ -69,7 +69,7 @@
 @media(max-width:500px){.flow-workspace>.flow-intelligence{grid-template-columns:1fr;gap:12px}.flow-intelligence .research-campaign-list{max-height:90px;flex-direction:row;overflow-x:auto}.flow-intelligence .research-campaign-list button{min-width:170px;max-width:190px}.flow-intelligence .research-log ol{max-height:100px}}
 .flow-intelligence .research-heading{padding:20px 22px}
 .flow-intelligence .research-heading h2{font-size:16px}
-.flow-intelligence .research-campaign-list{padding:0 10px;max-height:156px}
+.flow-intelligence .research-campaign-list{padding:0 10px;max-height:132px}
 .flow-intelligence .research-campaign-list button{border:0;border-radius:0;padding:14px 12px;font-size:13px}
 .flow-intelligence .research-campaign-list button+button{border-top:1px solid var(--line)}
 .flow-intelligence .research-campaign-list button[aria-current=true]{background:color-mix(in srgb,var(--accent) 5%,transparent);border-radius:6px}

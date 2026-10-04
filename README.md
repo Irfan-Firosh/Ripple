@@ -1,5 +1,23 @@
 # Ripple
 
+## Run the frontend at ripple.test
+
+From this directory, with Node.js 24 or newer:
+
+```bash
+./ripple.sh
+```
+
+Open **https://ripple.test**. The launcher uses the pinned frontend Portless
+dependency, installing frontend dependencies if needed. Run it without `sudo`;
+Portless requests administrator access when needed for port 443, local HTTPS
+trust, and its managed `/etc/hosts` entries. The frontend runs as your normal user.
+
+Ctrl+C stops the frontend. `./ripple.sh --doctor` checks the proxy, certificate,
+and hostname; `./ripple.sh --stop` stops the shared proxy. If another Portless
+proxy has a different configuration, stop that proxy before starting this one.
+The launcher starts only the frontend; backend workers run separately.
+
 ![tag:innovationlab](https://img.shields.io/badge/innovationlab-3D8BD3)
 ![tag:hackathon](https://img.shields.io/badge/hackathon-5F43F1)
 

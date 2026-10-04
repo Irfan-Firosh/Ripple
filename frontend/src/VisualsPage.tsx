@@ -14,7 +14,7 @@ export default function VisualsPage(){
   const [concept,setConcept]=useState<Concept>('constellation');
   const [playing,setPlaying]=useState(true),[theme,setTheme]=useState<'dark'|'light'>('dark'),[selected,setSelected]=useState(12),[replay,setReplay]=useState(0);
   const chosen=concepts.find(c=>c.id===concept)!,profile=profiles[selected];
-  useEffect(()=>{document.documentElement.dataset.theme=theme;document.title='Ripple — Visual playground';},[theme]);
+  useEffect(()=>{document.documentElement.dataset.theme=theme;document.title = 'Ripple';},[theme]);
   return <div className="visuals-page"><header className="visuals-header"><a className="brand" href="/"><RippleMark size={26}/><span>Ripple</span></a><span className="visuals-kicker">VISUAL PLAYGROUND / 001</span><div><a href="/"><ArrowLeft size={14}/> Landing page</a><button aria-label={theme==='dark'?'Switch to light mode':'Switch to dark mode'} onClick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?<Sun size={17}/>:<Moon size={17}/>}</button></div><WorkspaceAccount /></header>
     <main className="visuals-main"><div className="visuals-intro"><div><span className="eyebrow"><Sparkles size={11}/> A FEW POSSIBLE FUTURES</span><h1>A network.<br/><span>With people in it.</span></h1></div><p>Less chart. More living constellation.<br/>Three directions for watching an idea find its people.</p></div>
       <div className="concept-tabs" role="tablist" aria-label="Network visual concepts">{concepts.map(c=><button key={c.id} role="tab" id={`tab-${c.id}`} aria-controls="network-panel" aria-selected={concept===c.id} className={concept===c.id?'active':''} onClick={()=>setConcept(c.id)}><span>{c.label}</span>{c.name}<ArrowUpRight size={15}/></button>)}</div>

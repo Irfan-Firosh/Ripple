@@ -188,7 +188,7 @@ export function CascadeCanvas(props:Props) {
   },[]);
   const reached=props.audienceOnly?network.nodes.length:network.arrivals.filter(a=>a.id!==network.sourceId&&a.at<=props.elapsed).length;
   const engagedCount=props.replay?network.nodes.filter(node=>{const sim=props.replay!.run.nodes.get(node.member.userId);return sim?.engagedTick!=null&&sim.engagedTick<=props.replay!.tick;}).length:undefined;
-  return <canvas ref={canvas} role="img" aria-label={props.view==='2d'?'Two-dimensional audience network. Drag to pan, scroll to zoom, or choose a niche to focus it.':'Three-dimensional audience network. Drag to orbit, scroll to zoom, or choose a niche to fly to it.'} tabIndex={0} data-view={props.view}
+  return <canvas ref={canvas} role="img" aria-label={props.view==='2d'?'Two-dimensional audience network. Drag to pan, scroll to zoom, or choose an interest to focus it.':'Three-dimensional audience network. Drag to orbit, scroll to zoom, or choose an interest to fly to it.'} tabIndex={0} data-view={props.view}
     data-source-node-count={props.audienceOnly?0:1} data-node-count={network.nodes.length} data-active-count={reached} data-focus-community={props.focus??'all'} data-complete={props.elapsed>=network.duration} data-run={props.replay?.run.runId} data-engaged-count={engagedCount}
     data-post-edge-count={clusterEdges.filter(edge=>edge.kind==='post').length} data-bridge-edge-count={clusterEdges.filter(edge=>edge.kind==='bridge').length}
     onPointerEnter={()=>{interaction.current.hovered=true;}}

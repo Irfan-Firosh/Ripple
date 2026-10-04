@@ -5,7 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 async function clerkSession(page: Page, initiallySignedIn = false) {
   await page.route('**/node_modules/.vite/deps/@clerk_react.js*', route => route.fulfill({
     contentType: 'application/javascript', body: `
-      import React from '/node_modules/.vite/deps/react.js';
+      import React from '/node_modules/.vite/deps/react.js${new URL(route.request().url()).search}';
       let signedIn = ${initiallySignedIn};
       const listeners = new Set();
       const subscribe = callback => { listeners.add(callback); return () => listeners.delete(callback); };

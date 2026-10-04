@@ -20,7 +20,7 @@ test('islands retain real people, focus niches, and replay real Lab counts', asy
   await page.getByLabel('Play replay').click();
   await expect.poll(async () => Number(await canvas.getAttribute('data-tick')), { timeout: 20000 }).toBeGreaterThan(0);
   const zoom = Number(await canvas.getAttribute('data-zoom'));
-  await page.getByLabel('Niche index').getByRole('button').nth(1).click();
+  await page.getByLabel('Interest index').getByRole('button').nth(1).click();
   await expect.poll(async () => Number(await canvas.getAttribute('data-zoom'))).toBeGreaterThan(zoom);
   await page.getByLabel('Audience person').selectOption({ index: 1 });
   await expect(page.getByLabel('Selected person')).toBeVisible();
@@ -41,7 +41,7 @@ test('mobile islands support light theme and reduced motion without overflow', a
   await page.getByRole('button', { name: 'Use light theme' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByLabel('Niche index').getByRole('button').nth(1).click();
+  await page.getByLabel('Interest index').getByRole('button').nth(1).click();
   await page.getByLabel('Audience person').selectOption({ index: 1 });
   await expect(page.getByLabel('Selected person')).toBeVisible();
   await expect(page.locator('.lg-canvas canvas')).toHaveCount(1);

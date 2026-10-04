@@ -19,7 +19,7 @@ export async function listActiveBrands(signal: AbortSignal): Promise<ActiveBrand
 export async function listHistory(kind: HistoryKind, signal: AbortSignal): Promise<HistoryEntry[]> {
   if (kind === 'audience') {
     const rows = await sql<SnapshotRow>('SELECT snapshot_id, brand, title, people, niches, created_at FROM audience_snapshot', signal);
-    return rows.filter(r => Number(r.people) > 0).map(r => ({ id: r.snapshot_id, kind, brand: r.brand, title: r.title, createdAt: Number(r.created_at), status: 'saved', detail: `${r.people} people · ${r.niches} niches` })).sort((a, b) => b.createdAt - a.createdAt);
+    return rows.filter(r => Number(r.people) > 0).map(r => ({ id: r.snapshot_id, kind, brand: r.brand, title: r.title, createdAt: Number(r.created_at), status: 'saved', detail: `${r.people} people · ${r.niches} interests` })).sort((a, b) => b.createdAt - a.createdAt);
   }
   const [rows, snapshots, active] = await Promise.all([
     sql<ExperimentRow>('SELECT experiment_id, brand, title, status, winner, lift, created_at FROM lab_experiment', signal),

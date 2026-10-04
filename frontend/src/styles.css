@@ -418,39 +418,9 @@ html[data-theme="light"] .hero p {
   border: 1px solid var(--line);
   padding: 8px;
 }
-.player-controls {
-  height: 39px;
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  padding: 0 16px;
-  background: var(--frame);
-  border-top: 1px solid var(--line);
-}
-.player-controls button {
-  display: flex;
-  align-items: center;
-  background: none;
-  border: 0;
-  padding: 4px;
-  color: var(--muted);
-}
-.player-controls button:hover {
-  color: var(--fg);
-}
-.time-code {
-  font-family: "Space Mono";
-  font-size: 8px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.player-controls input {
-  flex: 1;
-  min-width: 0;
-  height: 2px;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
+.demo-toggle { position: absolute; right: 16px; bottom: 16px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(12px); color: var(--fg); }
+.demo-toggle:hover { color: var(--accent); }
+.demo-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .demo-caption {
   display: flex;
   justify-content: space-between;
@@ -499,7 +469,7 @@ html[data-theme="light"] .hero p {
 }
 .feature-visual {
   position: relative;
-  height: 164px;
+  height: 210px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -507,6 +477,32 @@ html[data-theme="light"] .hero p {
   overflow: hidden;
   margin-bottom: 27px;
 }
+.feature-art { color: var(--fg); margin-inline: -18px; height: 250px; mask-image: linear-gradient(to bottom, transparent, black 12%, black 85%, transparent); }
+.feature-art>svg { width: 100%; height: 100%; overflow: visible; }
+.feature-orbit { transform-origin: 180px 134px; animation: feature-orbit 12s ease-in-out infinite alternate; }
+.feature-star { animation: feature-glint 5s ease-in-out infinite; }
+.feature-pulse { transform-box: fill-box; transform-origin: center; animation: feature-breathe 5s ease-in-out infinite; }
+.feature-card-float { animation: feature-float 7s ease-in-out infinite; }
+.feature-card-second { animation-delay: -3.5s; }
+.feature-signal-line { stroke-dasharray: 1; stroke-dashoffset: 0; animation: feature-trace 10s ease-in-out infinite; }
+.feature-signal-b { animation-delay: -1.8s; }
+@keyframes feature-orbit { from { transform: rotate(32deg); } to { transform: rotate(45deg); } }
+@keyframes feature-glint { 0%,100% { opacity: .6; } 50% { opacity: 1; } }
+@keyframes feature-breathe { 0%,100% { transform: scale(.92); opacity: .5; } 50% { transform: scale(1.12); opacity: 1; } }
+@keyframes feature-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes feature-trace { 0%,15% { stroke-dashoffset: 1; } 50%,100% { stroke-dashoffset: 0; } }
+@media(prefers-reduced-motion:reduce) { .feature-art * { animation: none!important; } }
+.faq { padding-top: 100px; }
+.faq-list { border-top: 1px solid var(--line); }
+.faq details { border-bottom: 1px solid var(--line); }
+.faq summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 22px 0; font-size: 14px; list-style: none; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary svg { flex-shrink: 0; color: var(--muted); }
+.faq details[open] summary svg { transform: rotate(180deg); }
+.faq p { font-size: 13px; line-height: 1.7; color: var(--muted); margin: -4px 32px 22px 0; }
+.faq summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.footer-heart { color: var(--accent); }
+@media (max-width: 640px) { .faq { padding-top: 68px; } .feature-visual { height: 240px; } }
 .feature-visual small {
   position: absolute;
   bottom: 3px;
@@ -869,14 +865,6 @@ html[data-theme="light"] .footer-landscape { background-image: url('/liight_back
   }
   .demo-player {
     border-radius: 7px;
-  }
-  .player-controls {
-    padding: 0 9px;
-    gap: 7px;
-    height: 34px;
-  }
-  .time-code {
-    font-size: 7px;
   }
   .demo-caption {
     font-size: 8px;

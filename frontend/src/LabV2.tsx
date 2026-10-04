@@ -46,7 +46,7 @@ export default function LabV2() {
     || drafts.some(d => comparison.results.find(r => r.id === d.id)?.text !== d.text))), [comparison, drafts, runs]);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme; document.title = 'Lab v2 — Ripple';
+    document.documentElement.dataset.theme = theme; document.title = 'Ripple';
     try { localStorage.setItem('ripple-theme', theme); } catch { /* optional */ }
   }, [theme]);
   const reset = (nextBrand = brand) => {

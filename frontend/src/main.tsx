@@ -20,6 +20,7 @@ const OpsPage = lazy(() => import("./ops/OpsPage"));
 const LogsPage = lazy(() => import("./LogsPage").then(module => ({ default: module.LogsPage })));
 const path = location.pathname.replace(/\/$/, "");
 const params = new URLSearchParams(location.search);
+document.title = "Ripple";
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ClerkProvider afterSignOutUrl="/" signInUrl="/auth/sign-in" signUpUrl="/auth" signInForceRedirectUrl="/onboarding" signUpForceRedirectUrl="/onboarding" appearance={{ theme: shadcn }}>

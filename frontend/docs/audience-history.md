@@ -72,3 +72,5 @@ Backfill continues under the scraper's account budgets and rate limits.
 Onboarding uses one small breathing orb on the right of the currently active
 Followers, Twins or Audience map row. Completed and waiting stages have no orb;
 ready/failed states stop loading, and reduced motion freezes the orb.
+
+Cluster badges show each niche’s percentage of the whole audience. The badges and niche index share the same largest-remainder percentage calculation so displayed shares sum to 100%. The index uses larger type inside a bordered panel; connectivity remains aggregated by cluster pair.
