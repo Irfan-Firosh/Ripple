@@ -1,3 +1,4 @@
+import { audienceFixture as fixture } from './audience-fixture';
 import { test, expect } from '@playwright/test';
 import { buildLiveNetwork, MAX_GRAPH_NODES, MAX_GRAPH_LINKS, NetworkSizeError } from '../src/visuals/liveNetwork';
 import type { Audience } from '../src/audience/liveAudience';
@@ -96,31 +97,15 @@ test('oversized node and edge inputs are rejected before geometry is built',()=>
   expect(buildLiveNetwork(audience(MAX_GRAPH_NODES)).nodes).toHaveLength(MAX_GRAPH_NODES);
 });
 
-async function fixture(page:import('@playwright/test').Page,count:number){
-  const data=audience(count);
-  const tables:Record<string,Record<string,unknown>[]>= {
-    niche:data.niches,
-    twin:data.members.map(m=>({user_id:m.userId,username:m.username,post_count:m.postCount,engagement_rate:m.engagementRate,reply_share:m.replyShare,tone:m.tone,persona_summary:m.personaSummary,hot_buttons:[]})),
-    twin_niche:data.members.map(m=>({user_id:m.userId,niche:m.primaryNiche,affinity:.8})),
-    x_user:[{user_id:'brand',username:'spacetimedb',name:'SpacetimeDB',profile_image_url:'',followers_count:10000},...data.members.map(m=>({user_id:m.userId,username:m.username,name:m.name,profile_image_url:'',followers_count:m.followers}))],
-    twin_audience:data.members.map(m=>({brand_user_id:'brand',user_id:m.userId})),x_post:[],x_post_entity:[],
-  };
-  await page.route('**/v1/database/ripple-mhacks/sql',route=>{
-    const table=/FROM\s+(\w+)/i.exec(route.request().postData()??'')?.[1]??'';
-    const records=tables[table]??[],keys=Object.keys(records[0]??{});
-    return route.fulfill({json:[{schema:{elements:keys.map(name=>({name:{some:name},algebraic_type:{String:{}}}))},rows:records.map(r=>keys.map(k=>r[k]))}]});
-  });
-}
-
 test('500-person graph prepares cached sprites, stops drawing when idle, and keeps zoom responsive',async({page})=>{
   await fixture(page,500);await page.emulateMedia({reducedMotion:'reduce'});
   await page.goto('/dashboard');
   const stage=page.getByRole('region',{name:'Network visualization'});
   const canvas=page.getByRole('img',{name:/Three-dimensional audience network/});
   await expect(stage).toHaveAttribute('aria-busy','false');
-  await expect(canvas).toHaveAttribute('data-sprite-count','501');
+  await expect(canvas).toHaveAttribute('data-sprite-count','500');
   await expect(canvas).toHaveAttribute('data-active-count','500');
-  await expect(canvas).toHaveAttribute('data-post-edge-count','4');
+  await expect(canvas).toHaveAttribute('data-post-edge-count','0');
   await expect(canvas).toHaveAttribute('data-bridge-edge-count','0');
   await page.waitForTimeout(150);
   const frames=await canvas.getAttribute('data-draw-count');
@@ -128,54 +113,41 @@ test('500-person graph prepares cached sprites, stops drawing when idle, and kee
   await expect(canvas).toHaveAttribute('data-draw-count',frames!);
   await canvas.hover();await page.mouse.wheel(0,-500);
   await expect.poll(async()=>Number(await canvas.getAttribute('data-camera-zoom'))).toBeGreaterThan(1);
-  await expect(canvas).toHaveAttribute('data-sprite-count','501');
+  await expect(canvas).toHaveAttribute('data-sprite-count','500');
   await page.getByRole('button',{name:'Switch to light mode'}).click();
   await expect(stage).toHaveAttribute('aria-busy','false');
-  await expect(canvas).toHaveAttribute('data-sprite-count','501');
+  await expect(canvas).toHaveAttribute('data-sprite-count','500');
 });
 
 test('oversized audience shows a size message without mounting the graph',async({page})=>{
   await fixture(page,MAX_GRAPH_NODES+1);await page.goto('/dashboard');
   await expect(page.getByRole('status')).toContainText('too large to display');
   await expect(page.getByRole('img',{name:/Three-dimensional audience network/})).toHaveCount(0);
-  await expect(page.getByRole('link',{name:/Raycast/})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Open history'})).toBeVisible();
 });
 
-test('2D view preserves playback and cached assets, and supports pan, focus and account selection',async({page})=>{
-  await fixture(page,120);
-  let queries=0;page.on('request',request=>{if(request.url().endsWith('/sql'))queries++;});
+test('3D inspection preserves cached sprites and supports orbit and niche focus',async({page})=>{
+  await fixture(page,120);await page.emulateMedia({reducedMotion:'reduce'});
   await page.goto('/dashboard');
   const canvas=page.locator('.nt-stage>canvas');
-  await expect(canvas).toHaveAttribute('data-sprite-count','121');
-  await expect.poll(async()=>Number(await canvas.getAttribute('data-active-count'))).toBeGreaterThan(0);
-  await page.getByRole('button',{name:'Replay',exact:true}).click();
-  await page.getByRole('button',{name:'Pause cascade'}).click();
-  const count=await canvas.getAttribute('data-active-count'),loadedQueries=queries;
-  await page.getByRole('button',{name:'2D',exact:true}).click();
-  await expect(canvas).toHaveAttribute('data-view','2d');
-  await expect(canvas).toHaveAccessibleName(/Two-dimensional audience network/);
-  await expect(page).toHaveURL(/view=2d/);
-  await expect(page.getByRole('button',{name:'2D',exact:true})).toHaveAttribute('aria-pressed','true');
-  await expect(canvas).toHaveAttribute('data-sprite-count','121');
+  await expect(canvas).toHaveAttribute('data-sprite-count','120');
+  await expect(canvas).toHaveAttribute('data-active-count','120');
+  await expect(canvas).toHaveAttribute('data-source-node-count','0');
+  const initial=Number(await canvas.getAttribute('data-camera-yaw'));
   const box=(await canvas.boundingBox())!;
   await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
   await page.mouse.down();await page.mouse.move(box.x+box.width/2+70,box.y+box.height/2+30,{steps:5});await page.mouse.up();
-  await expect.poll(async()=>Math.abs(Number(await canvas.getAttribute('data-camera-x')))).toBeGreaterThan(1);
+  await expect.poll(async()=>Number(await canvas.getAttribute('data-camera-yaw'))).not.toBe(initial);
   await page.getByRole('button',{name:/^01 /}).click();
   await expect(canvas).toHaveAttribute('data-focus-community','0');
-  await expect.poll(async()=>Math.hypot(Number(await canvas.getAttribute('data-camera-x')),Number(await canvas.getAttribute('data-camera-y')))).toBeGreaterThan(100);
   await expect(canvas).toHaveAttribute('data-camera-zoom','2.20');
-  await canvas.click({position:{x:box.width/2,y:box.height/2}});
-  await expect(page.getByRole('complementary',{name:'Selected account'})).toBeVisible();
-  await page.getByRole('button',{name:'Close account details'}).click();
-  await page.getByRole('button',{name:'3D',exact:true}).click();
-  await expect(canvas).toHaveAttribute('data-view','3d');
-  await expect(canvas).toHaveAttribute('data-active-count',count!);
-  await expect(canvas).toHaveAttribute('data-sprite-count','121');
-  expect(queries).toBe(loadedQueries);
+  await expect(canvas).toHaveAttribute('data-sprite-count','120');
+  await expect(canvas).toHaveAttribute('data-active-count','120');
+  await page.getByRole('button',{name:'Reset network view'}).click();
+  await expect(canvas).toHaveAttribute('data-focus-community','all');
 });
 
-test('direct 2D playground works on mobile and lays out separated cluster discs',async({page})=>{
+test('mobile ignores obsolete 2D URLs and supports 3D keyboard navigation',async({page})=>{
   const network=buildLiveNetwork(audience(120)),layout=buildPlanarLayout(network);
   expect(layout.positions.every(p=>p[2]===0)).toBe(true);
   for(let i=0;i<layout.centers.length;i++)for(let j=i+1;j<layout.centers.length;j++){
@@ -184,18 +156,19 @@ test('direct 2D playground works on mobile and lays out separated cluster discs'
   }
   await fixture(page,120);await page.setViewportSize({width:390,height:844});await page.emulateMedia({reducedMotion:'reduce'});
   await page.goto('/test?view=2d');
-  const canvas=page.getByRole('img',{name:/Two-dimensional audience network/});
+  const canvas=page.getByRole('img',{name:/Three-dimensional audience network/});
   await expect(canvas).toHaveAttribute('data-active-count','120');
   await page.getByRole('button',{name:/^02 /}).click();
   await expect(canvas).toHaveAttribute('data-focus-community','1');
   await page.getByRole('button',{name:'Reset network view'}).click();
   await expect(canvas).toHaveAttribute('data-focus-community','all');
   await canvas.focus();await page.keyboard.press('ArrowRight');
-  await expect(canvas).toHaveAttribute('data-camera-x','30.0');
+  await expect(canvas).toHaveAttribute('data-view','3d');
+  await expect(canvas).toHaveAttribute('data-source-node-count','0');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-test('3D overview drifts gently but stays still during inspection, in 2D and with reduced motion',async({page})=>{
+test('3D overview drifts gently but stays still during inspection and with reduced motion',async({page})=>{
   await fixture(page,36);await page.goto('/dashboard');
   const canvas=page.locator('.nt-stage>canvas');
   await expect(canvas).toHaveAttribute('data-idle-orbit','true');
@@ -221,8 +194,4 @@ test('3D overview drifts gently but stays still during inspection, in 2D and wit
   const reduced=await canvas.getAttribute('data-camera-yaw');
   await page.waitForTimeout(300);
   await expect(canvas).toHaveAttribute('data-camera-yaw',reduced!);
-  await page.getByRole('button',{name:'2D',exact:true}).click();
-  await page.emulateMedia({reducedMotion:'no-preference'});
-  await expect(canvas).toHaveAttribute('data-view','2d');
-  await expect(canvas).toHaveAttribute('data-idle-orbit','false');
 });

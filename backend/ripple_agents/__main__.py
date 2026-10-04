@@ -12,13 +12,21 @@ from .config import (AUDIENCE, BUREAU_PORT, CREATIVE_DIRECTOR, IMAGE_GEN, ORCHES
 from .registration import connect_mailbox
 
 
-def _register_on_startup(agent: Agent, starter_prompts: list[str] | None = None) -> None:
+SIMULATION_KEY = "AGENTVERSE_API_KEY_SIMULATION"
+
+
+def _register_on_startup(agent: Agent, starter_prompts: list[str] | None = None,
+                         key_env: str = "AGENTVERSE_API_KEY") -> None:
     @agent.on_event("startup")
     async def register(ctx: Context):
         try:
-            ok, detail = await connect_mailbox(agent, agentverse_api_key(), starter_prompts)
+            ok, detail = await connect_mailbox(agent, agentverse_api_key(key_env), starter_prompts)
         except MissingSecret:
-            ctx.logger.warning("AGENTVERSE_API_KEY not set: connect the mailbox from the Agent Inspector link above")
+            if key_env == SIMULATION_KEY:
+                ctx.logger.info(f"{SIMULATION_KEY} not set: the orchestrator still reaches this agent inside the "
+                                "Bureau; set it (the owning account's key) to also list it on Agentverse")
+            else:
+                ctx.logger.warning(f"{key_env} not set: connect the mailbox from the Agent Inspector link above")
             return
         if ok:
             ctx.logger.info(f"on Agentverse: https://agentverse.ai/agents/details/{agent.address}")
@@ -43,7 +51,7 @@ def main(argv: list[str]) -> int:
     agents = [orchestrator, audience, director, image_gen]
     if SIMULATOR_ADDRESS and not SIMULATOR_EXTERNAL:  # our Simulation agent (backend/agents) runs alongside
         from agents.simulation_agent import agent as simulator
-        _register_on_startup(simulator)
+        _register_on_startup(simulator, key_env=SIMULATION_KEY)
         agents.append(simulator)
     bureau = Bureau(agents=agents, port=BUREAU_PORT,
                     endpoint=[f"http://127.0.0.1:{BUREAU_PORT}/submit"])

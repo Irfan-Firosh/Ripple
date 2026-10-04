@@ -64,5 +64,7 @@ def asi1_api_key() -> str:
     return load_secret("ASI_ONE_API_KEY")
 
 
-def agentverse_api_key() -> str:
-    return load_secret("AGENTVERSE_API_KEY")
+def agentverse_api_key(env_name: str = "AGENTVERSE_API_KEY") -> str:
+    """Each agent registers with the Agentverse account that owns it: AGENTVERSE_API_KEY for the ripple agents,
+    AGENTVERSE_API_KEY_SIMULATION for the Simulation agent when it belongs to a different account."""
+    return load_secret(env_name)

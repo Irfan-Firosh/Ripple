@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { BRANDS, loadAudience, sql } from '../audience/liveAudience';
 import { groupByNiche } from '../visuals/liveNetwork';
+import { loadAudienceSnapshot } from '../history/historyData';
 
 const DB = 'https://maincloud.spacetimedb.com';
 const DB_NAME = 'ripple-mhacks';
@@ -44,10 +45,13 @@ export async function listExperiments(brand: string, signal?: AbortSignal): Prom
 
 // x_user rows are cached per session: every poll would otherwise re-download the whole table.
 let userCache: Map<string, Record<string, any>> | null = null;
-async function users(ids: string[], signal?: AbortSignal): Promise<Map<string, Record<string, any>>> {
-  if (!userCache || ids.some(id => !userCache!.has(id))) {
-    const rows = await sql('SELECT user_id, username, name, profile_image_url, verified FROM x_user', signal);
-    userCache = new Map(rows.map(u => [u.user_id as string, u]));
+async function users(ids: string[], signal?: AbortSignal, refresh = false): Promise<Map<string, Record<string, any>>> {
+  if (refresh || !userCache || ids.some(id => !userCache!.has(id))) {
+    const [rows, archived] = await Promise.all([
+      sql('SELECT user_id, username, name, profile_image_url, verified FROM x_user', signal),
+      sql('SELECT user_id, username, name, profile_image_url, verified FROM archived_profile', signal),
+    ]);
+    userCache = new Map([...archived, ...rows].map(u => [u.user_id as string, u]));
   }
   return userCache;
 }
@@ -86,7 +90,7 @@ async function loadRun(runId: string, draft: 'A' | 'B', signal?: AbortSignal): P
 }
 
 export async function loadBrand(brand: string, signal?: AbortSignal): Promise<LabBrand> {
-  const all = await users([], signal);
+  const all = await users([], signal, true);
   const u = [...all.values()].find(r => String(r.username).toLowerCase() === brand.toLowerCase());
   return { handle: u?.username ?? brand, name: u?.name ?? brand, avatar: bigger(u?.profile_image_url), verified: Boolean(u?.verified) };
 }
@@ -100,7 +104,13 @@ export async function loadExperiment(id: string, signal?: AbortSignal): Promise<
 }
 
 export async function loadLabNiches(brand: string, signal?: AbortSignal): Promise<LabNiche[]> {
-  const audience = await loadAudience(brand, signal);
+  const audience = await loadAudience(brand, signal).catch(async error => {
+    if (signal?.aborted) throw error;
+    const versions = await sql<{ snapshot_id: string; created_at: number }>(`SELECT snapshot_id, created_at FROM audience_snapshot WHERE brand = ${q(brand)}`, signal);
+    const latest = versions.sort((a, b) => Number(b.created_at) - Number(a.created_at))[0];
+    if (!latest) throw error;
+    return loadAudienceSnapshot(latest.snapshot_id, signal);
+  });
   const cap = BRANDS.find(b => b.handle === brand)?.maxNiches ?? 7;
   const labels = new Map(audience.niches.map(n => [n.slug, n.label]));
   return groupByNiche(audience.members, cap).map(([slug, ms]) => ({ slug, label: labels.get(slug) ?? slug, members: new Set(ms.map(m => m.userId)) }));
@@ -125,6 +135,9 @@ async function token(): Promise<string> {
 }
 
 export async function requestExperiment(input: { brand: string; title: string; draftA: string; draftB: string }): Promise<void> {
+  if ([input.draftA, input.draftB].some(draft => !draft.trim() || draft.length > 1000)) {
+    throw new Error('drafts must be 1..1000 characters');
+  }
   const res = await fetch(`${DB}/v1/database/${DB_NAME}/call/request_lab_experiment`, {
     method: 'POST', headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify([input.brand, input.title, input.draftA, input.draftB]),

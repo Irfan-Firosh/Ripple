@@ -8,6 +8,7 @@ x_ingestion_run counters live so the onboarding screen can show progress while i
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -28,10 +29,29 @@ class RateLimited(Exception):
 def scweet_client():
     from Scweet import Scweet
 
-    token = os.environ.get("X_AUTH_TOKEN", "").strip()
-    if not token:
-        sys.exit("Missing X_AUTH_TOKEN in .env (the auth_token cookie from a logged-in x.com session).")
-    return Scweet(auth_token=token)
+    import hashlib
+    import tempfile
+
+    from scweet_accounts import auth_accounts, working_accounts
+
+    accounts = auth_accounts(os.environ)  # X_AUTH_TOKEN, X_AUTH_TOKEN_2, ...: Scweet rotates on rate limits
+    if not accounts:
+        raise RuntimeError("Missing X_AUTH_TOKEN in .env (the auth_token cookie from a logged-in x.com session).")
+
+    def probe(account: dict) -> bool:  # one profile read on a throwaway state file
+        with tempfile.TemporaryDirectory() as d:
+            return bool(Scweet(cookies=[account], db_path=f"{d}/probe.db").get_user_info(["x"]))
+
+    kept, dropped = working_accounts(accounts, probe)
+    if dropped:
+        print(f"X rejected {', '.join(dropped)} (refresh that auth_token cookie); using {len(kept)} account(s)")
+    if not kept:
+        raise RuntimeError("X rejected every X_AUTH_TOKEN; copy a fresh auth_token cookie from a logged-in browser")
+    # Scweet persists accounts in its state file: one file per working set, so a dead session never comes back.
+    digest = hashlib.sha256("".join(a["cookies"]["auth_token"] for a in kept).encode()).hexdigest()[:12]
+    state = ROOT / "data" / "scweet_state" / f"pool-{digest}.db"
+    state.parent.mkdir(parents=True, exist_ok=True)
+    return Scweet(cookies=kept, db_path=str(state))
 
 
 def cached(path: Path, offline: bool, fetch: Callable[[], list]) -> list:
@@ -79,7 +99,8 @@ def ingest(username: str, followers: int, posts: int, min_posts: int = 10, offli
     """
     username = username.lstrip("@").strip()
     run_id = run_id or f"scweet-{username}-{followers}"
-    cache = ROOT / "data" / "scweet_raw" / username
+    # A new ingestion run must read X again. Backfill of the same run may reuse its own cache.
+    cache = ROOT / "data" / "scweet_raw" / username / re.sub(r'[^A-Za-z0-9_-]', '_', run_id)
     s = None if offline else scweet_client()
 
     call("start_ingestion_run", run_id, username, followers)

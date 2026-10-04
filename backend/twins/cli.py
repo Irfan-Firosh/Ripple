@@ -72,8 +72,9 @@ def main(argv: list[str] | None = None, *, stdb=None, client=None) -> int:
         from .onboarding import run_onboarding_worker
         from .graph import publish_edges
         from .onboarding_deps import backfill, scweet_ingest
+        from .audience_history import capture_audience
         ingest = scweet_ingest()
         run_onboarding_worker(stdb, client, poll_seconds=args.poll, ingest=ingest, build=run_build,
-                              edges=publish_edges, after_ready=backfill(stdb, client, ingest))
+                              edges=publish_edges, after_ready=backfill(stdb, client, ingest), archive=capture_audience)
         return 0
     return _ask(args, stdb, client)

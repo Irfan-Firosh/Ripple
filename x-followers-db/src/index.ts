@@ -661,6 +661,13 @@ export const resetImportedAudiences = spacetimedb.reducer({}, ctx => {
   const archived = new Set([...ctx.db.audienceSnapshot.iter()].map(r => r.brandUserId));
   if ([...brands].some(id => !archived.has(id))) throw new SenderError('archive every audience before resetting imports');
   if ([...ctx.db.xUser.iter()].some(u => !ctx.db.archivedProfile.userId.find(u.userId))) throw new SenderError('archive profiles before resetting imports');
+  // Restart the X brands that Scweet was already scraping, keeping their campaign briefs.
+  const refresh = new Map<string, Row<'onboarding'>>();
+  for (const r of ctx.db.onboarding.iter()) {
+    if (!brands.has(r.brandUserId) || !/^[a-z0-9_]{1,15}$/.test(r.handle)) continue;
+    const previous = refresh.get(r.handle);
+    if (!previous || previous.onboardingId < r.onboardingId) refresh.set(r.handle, r);
+  }
   for (const r of [...ctx.db.audienceMembership.iter()]) ctx.db.audienceMembership.membershipId.delete(r.membershipId);
   for (const r of [...ctx.db.twinAudience.iter()]) ctx.db.twinAudience.twinAudienceId.delete(r.twinAudienceId);
   for (const r of [...ctx.db.twinNiche.iter()]) ctx.db.twinNiche.twinNicheId.delete(r.twinNicheId);
@@ -674,6 +681,10 @@ export const resetImportedAudiences = spacetimedb.reducer({}, ctx => {
   for (const r of [...ctx.db.xUser.iter()]) ctx.db.xUser.userId.delete(r.userId);
   for (const r of [...ctx.db.xIngestionRun.iter()]) ctx.db.xIngestionRun.ingestionRunId.delete(r.ingestionRunId);
   for (const r of [...ctx.db.backtestResult.iter()]) ctx.db.backtestResult.backtestResultId.delete(r.backtestResultId);
+  for (const r of [...ctx.db.twinBuildJob.iter()]) ctx.db.twinBuildJob.jobId.delete(r.jobId);
+  for (const r of [...ctx.db.twinBuildRun.iter()]) ctx.db.twinBuildRun.runId.delete(r.runId);
+  for (const r of refresh.values()) ctx.db.onboarding.insert({ ...r, onboardingId: 0n, brandUserId: '', status: 'queued',
+    ingestionRunId: '', twinRunId: '', error: undefined, createdAt: ctx.timestamp, updatedAt: ctx.timestamp });
 });
 
 const RUN_STATUSES = ['pending', 'running', 'completed', 'partial', 'failed'];
@@ -1459,6 +1470,17 @@ export const failOnboarding = spacetimedb.reducer(
     ctx.db.onboarding.onboardingId.update({ ...row, status: 'failed', error: error.slice(0, 300), updatedAt: ctx.timestamp });
   }
 );
+// Administrative retry keeps the failed attempt in history and starts a fresh Scweet cache.
+export const retryOnboarding = spacetimedb.reducer({ onboardingId: t.u64() }, (ctx, { onboardingId }) => {
+  requireAdmin(ctx);
+  const row = onboardingRow(ctx, onboardingId);
+  if (row.status !== 'failed') throw new SenderError('only failed onboardings can be retried');
+  if ([...ctx.db.onboarding.iter()].some(r => r.handle === row.handle && !['ready', 'failed'].includes(r.status))) {
+    throw new SenderError('an onboarding is already running');
+  }
+  ctx.db.onboarding.insert({ ...row, onboardingId: 0n, brandUserId: '', status: 'queued',
+    ingestionRunId: '', twinRunId: '', error: undefined, createdAt: ctx.timestamp, updatedAt: ctx.timestamp });
+});
 // ---------- Creative reducers ----------
 const CREATIVE_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9', '2:3', '3:2', '9:19.5', '19.5:9', '9:20', '20:9', '1:2', '2:1', '21:9', '5:2', 'auto'];
 const CREATIVE_FORMATS = ['product_ui', 'lifestyle', 'typographic', 'illustration', 'meme'];

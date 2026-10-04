@@ -29,6 +29,8 @@ def backfill(stdb, client, ingest):
                 ingest(handle, followers=LIVE_FOLLOWERS, posts=LIVE_POSTS, run_id=run_id_for(row), wait_seconds=RATE_WAIT)
             run_build(stdb, client, handle, run_id=f"twins-{run_id_for(row)}-backfill", skip_existing=True)
             publish_edges(stdb, handle)
+            from .audience_history import capture_audience
+            capture_audience(stdb, handle, f'twins-{run_id_for(row)}-backfill', 'ready')
         except Exception:  # noqa: BLE001 - the brand is already usable; log and move on
             log.exception("backfill for @%s failed", handle)
 

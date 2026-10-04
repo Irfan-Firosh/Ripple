@@ -23,9 +23,11 @@ def run_id_for(row: dict) -> str:
     return f"onboard-{row['onboarding_id']}-{row['handle']}"
 
 
-def _onboard(stdb, client, row: dict, ingest: Callable, build: Callable, edges: Callable) -> dict:
+def _onboard(stdb, client, row: dict, ingest: Callable, build: Callable, edges: Callable, archive: Callable | None = None) -> dict:
     oid, handle, run_id = row["onboarding_id"], row["handle"], run_id_for(row)
     twin_run = f"twins-{run_id}"
+    if archive:
+        archive(stdb, handle, run_id, 'before')
     stdb.call("set_onboarding_progress", oid, "scraping", "", run_id, "")
     summary = ingest(handle, followers=LIVE_FOLLOWERS, posts=LIVE_POSTS, run_id=run_id,
                      max_new_timelines=LIVE_TIMELINES)
@@ -36,11 +38,13 @@ def _onboard(stdb, client, row: dict, ingest: Callable, build: Callable, edges: 
     stdb.call("set_onboarding_progress", oid, "graph", brand_id, run_id, twin_run)
     edges(stdb, handle)
     stdb.call("set_onboarding_progress", oid, "ready", brand_id, run_id, twin_run)
+    if archive:
+        archive(stdb, handle, run_id, 'ready')
     return summary
 
 
 def run_pending_onboardings(stdb, client, *, ingest: Callable, build: Callable, edges: Callable,
-                            after_ready: Callable[[dict, dict], None] | None = None) -> int:
+                            after_ready: Callable[[dict, dict], None] | None = None, archive: Callable | None = None) -> int:
     handled = 0
     for row in stdb.sql("SELECT * FROM onboarding WHERE status = 'queued'"):
         oid = row["onboarding_id"]
@@ -49,7 +53,7 @@ def run_pending_onboardings(stdb, client, *, ingest: Callable, build: Callable, 
         except StdbError:
             continue  # another worker took it
         try:
-            summary = _onboard(stdb, client, row, ingest, build, edges)
+            summary = _onboard(stdb, client, row, ingest, build, edges, archive)
         except Exception as exc:  # noqa: BLE001 - every failure is shown to the user on the form
             log.exception("onboarding %s failed", oid)
             try:
