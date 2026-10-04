@@ -11,6 +11,7 @@ from .models import Action, Items, Text
 
 log = logging.getLogger(__name__)
 
+NO_PREDICTION = "no prediction"
 IGNORE_LEAK = 0.25  # an "ignore" still engages occasionally: (1 - confidence) * IGNORE_LEAK
 
 SYSTEM = """You predict how each of several real social media accounts would react to one draft post.
@@ -78,5 +79,5 @@ def score_twins(client, twins: list[BrandTwin], draft: str, *, batch_size: int =
         for part in pool.map(lambda b: _score_batch_safely(client, b, draft), batches):
             found.update(part)
     return [found.get(t.user_id) or TwinScore(user_id=t.user_id, action="ignore", confidence=1.0, p_engage=0.0,
-                                               reason="no prediction")
+                                               reason=NO_PREDICTION)
             for t in twins]
