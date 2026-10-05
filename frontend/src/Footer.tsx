@@ -13,7 +13,6 @@ export function Footer() {
           </div>
           <nav className="footer-links" aria-label="Footer navigation">
             <a href="#demo">The demo <ArrowUpRight size={13} /></a>
-            <a href="/visuals">Visual playground <ArrowUpRight size={13} /></a>
             <a href="#how-it-works">Features <ArrowUpRight size={13} /></a>
             <a href="#faq">FAQ <ArrowUpRight size={13} /></a>
           </nav>

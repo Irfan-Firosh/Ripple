@@ -125,26 +125,6 @@ test("mobile navigation works without horizontal overflow", async ({
   ).toBe(true);
 });
 
-test("walkthrough uses the current real audience and preserved Lab screens", async ({ page }) => {
-  test.setTimeout(90000);
-  await page.goto('/');
-  const experiment = await page.evaluate(async () => {
-    const { listExperiments } = await import('/src/lab/labData.ts');
-    return (await listExperiments('trycua')).find(entry => entry.status === 'done')?.id;
-  });
-  expect(experiment).toBeTruthy();
-  await page.goto(`/?film=1&theme=light&brand=trycua&exp=${encodeURIComponent(experiment!)}`);
-  await page.waitForFunction(() => typeof window.__setDemoTime === "function");
-  await expect(page.locator(".nt-stage>canvas")).toBeVisible({ timeout: 45000 });
-  await expect(page.getByLabel("Interest index")).toBeVisible();
-  expect(Number(await page.locator(".nt-stage>canvas").getAttribute("data-node-count"))).toBeGreaterThan(50);
-  await page.evaluate(() => window.__setDemoTime(20));
-  await expect(page.locator(".lab-post-column, .lab-column")).toHaveCount(2, { timeout: 45000 });
-  await expect(page.locator(".lab-summary, .lab-verdict").first()).toContainText(/A wins|B wins|Too close to call/);
-  await expect(page.locator(".lab-post-column article, .lab-column>article")).toHaveCount(2);
-  await expect(page.locator("body")).not.toContainText(/Illustrative data|counterfactual|New comparison queued/);
-});
-
 test("animated feature illustrations, short FAQ and creator credit work in both themes", async ({ page }) => {
   await page.goto('/#how-it-works');
   const pictures = page.locator('.feature-visual svg');

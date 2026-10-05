@@ -69,7 +69,7 @@ export function LogsPage() {
 
   return (
     <main className="logs-page">
-      <a className="logs-back" href="/dashboard?view=studio">← Back to studio</a>
+      <a className="logs-back" href="/home">← Back to home</a>
       <header className="logs-heading">
         <div>
           <h1>Server logs</h1>

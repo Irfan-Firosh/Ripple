@@ -197,7 +197,6 @@ export function App() {
             <div className="nav-menu">
               <a href="#demo" onClick={closeMenu}>The demo</a>
               <a href="#how-it-works" onClick={closeMenu}>How it works</a>
-              <a href="/visuals" onClick={closeMenu}>Visual playground</a>
             </div>
           </details>
           <a href="#about" onClick={closeMenu}>About</a>

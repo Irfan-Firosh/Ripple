@@ -1,1 +1,1 @@
-"""Campaign videos: Opus 5.5 writes a seek(t) film, Chromium paints it, ffmpeg stitches it (see docs/superpowers/specs)."""
+"""Campaign videos: Opus 5.5 writes a seek(t) film, Chromium paints it, ffmpeg stitches it."""

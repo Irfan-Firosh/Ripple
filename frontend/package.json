@@ -9,8 +9,7 @@
     "build:static": "VITE_SNAPSHOT=1 tsc -b && VITE_SNAPSHOT=1 vite build && node scripts/static-dist.mjs",
     "snapshot:media": "node scripts/snapshot-media.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "playwright test",
-    "render:demo": "node scripts/render-demo.mjs"
+    "test": "playwright test"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

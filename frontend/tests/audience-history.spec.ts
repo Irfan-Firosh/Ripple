@@ -125,11 +125,3 @@ test('mobile history fits, supports Escape, and recovers from read errors', asyn
   await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open history' })).toBeFocused();
 });
-
-test('visual playground graph has no intercluster edges', async ({ page }) => {
-  await page.goto('/visuals');
-  const canvas = page.locator('.network-canvas');
-  await expect(canvas).toBeVisible();
-  await expect(canvas).toHaveAttribute('data-bridge-edge-count', '0');
-  await expect(page.locator('.scene-legend .bridge-key')).toHaveCount(0);
-});
