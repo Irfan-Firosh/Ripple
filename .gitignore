@@ -37,3 +37,7 @@ frontend/public/generated/videos/
 data/research/
 frontend/public/generated/brands/
 .playwright-mcp/
+
+# Local Beads task tracker data
+.beads/
+.beads.gate.lock

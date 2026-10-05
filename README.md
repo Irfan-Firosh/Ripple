@@ -63,59 +63,6 @@ Setup and the full chat walkthrough: [docs/fetch-ai-demo.md](docs/fetch-ai-demo.
 | `scripts/` | Fetch.ai demo launcher and preflight checks |
 | `docs/` | Architecture diagrams and the Fetch.ai demo guide |
 
-## Getting started
-
-Requirements: Node.js 24+, Python 3.12+ with [uv](https://docs.astral.sh/uv/), the [SpacetimeDB CLI](https://spacetimedb.com/install) (`spacetime login`) and FFmpeg for video.
-
-**1. Configure.** Create `.env` at the repo root (never commit it):
-
-```bash
-CLAUDE_API_KEY=                      # twins, Lab scoring and replies
-CLAUDE_API_KEY_2=                    # brand writer and video pipeline
-ELEVENLABS_API_KEY=                  # video voiceover
-XAI_API_KEY=                         # Grok Imagine images and thumbnails
-EXA_API_KEY=                         # campaign research
-X_AUTH_TOKEN=                        # auth_token cookie of a logged-in x.com session (add X_AUTH_TOKEN_2, ...)
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=   # Clerk publishable key, mapped to the frontend
-STDB_URL=https://maincloud.spacetimedb.com
-STDB_DATABASE=ripple-mhacks
-# Fetch.ai agents: ASI_ONE_API_KEY, AGENTVERSE_API_KEY, AGENT_SEED_ORCHESTRATOR, AGENT_SEED_AUDIENCE
-```
-
-A `VITE_CLERK_PUBLISHABLE_KEY` in `frontend/.env.local` overrides the Clerk key for the frontend only.
-
-**2. Publish the database module.**
-
-```bash
-cd x-followers-db && npm install
-spacetime publish --no-config -s maincloud ripple-mhacks --delete-data=never -y
-spacetime generate --lang typescript --out-dir ../frontend/src/module_bindings --module-path . -y
-```
-
-**3. Start everything.** `./scripts/fetch_demo.sh` starts the agents, workers and UI in one command (`check` runs a preflight, `status` shows the services). To run the workers individually from `backend/` after `uv sync`:
-
-```bash
-uv run python -m twins onboarding-worker   # scrape followers, build twins and the audience graph
-uv run python -m twins lab-worker          # run Lab A/B simulations
-uv run python -m creative worker           # research, briefs and concept images
-uv run python -m video copy-worker         # write the tweet copy for each draft
-uv run python -m video worker              # render campaign videos
-uv run python -m ripple_agents             # Fetch.ai agents, registered on Agentverse
-```
-
-**4. Run the app.** `cd frontend && npm install && npm run dev`, or `./ripple.sh` from the repo root to serve it at https://ripple.test. Open `/ops` to control twins per brand, video length and voice, pause workers, and toggle the demo switches.
-
-## Tests
-
-```bash
-cd backend && uv run pytest            # workers and agents
-cd frontend && npx playwright test     # web app
-```
-
-## Deployment
-
-The Vercel deployment is a static build. `npm run build:static` serves a recorded snapshot of the showcase brand (`frontend/snapshot/`) instead of the live database and makes the deployed site read-only. `frontend/vercel.json` holds the build settings.
-
 ## Team
 
 Built by Ansh and Irfan at MHacks 2026.
