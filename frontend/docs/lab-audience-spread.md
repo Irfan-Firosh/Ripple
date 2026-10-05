@@ -1,6 +1,6 @@
 # Lab audience spread
 
-The approved audience graphs live inside Lab's **Side-by-side analysis**, above the existing recorded engagement-over-time graphs and checkpoint tables. The standalone spread preview route has been removed. The embedded graphs omit counts, ratios, percentages and the interest legend.
+The approved audience graphs live inside Lab's **Analysis**, above the existing recorded engagement-over-time graphs and checkpoint tables. The standalone spread preview route has been removed. The embedded graphs omit counts, ratios, percentages and the interest legend.
 
 ## Audience and campaign context
 
@@ -16,7 +16,7 @@ Each draft starts in an interest group relevant to its text and branches through
 
 ## Popups, controls and layout
 
-The shared notice schedule includes every bridge repost and at least 40% of each draft's illustrative repost events, rounded up. It prioritizes reposts over likes and staggers A/B notices chronologically. Each popup lasts 1.8 seconds, followed by a 250ms gap. The illustration runs at least 1.6 times more slowly; each draft's event, arrival and handoff timestamps are retimed together so a selected repost popup starts exactly when that repost and its outgoing connection start. Other events interpolate between those anchors. Selected notices are never dropped or shown early, and the illustration finishes after the last notice. If a draft has no reposts, it can show one featured like.
+The shared notice schedule includes every bridge repost and at least 40% of each draft's illustrative repost events, rounded up. It prioritizes reposts over likes and staggers A/B notices chronologically. The illustration now runs twice as fast as the previous presentation. Each popup lasts 900ms, followed by a 125ms gap, with 100ms entry/exit transitions. The base event time scale is 0.8; each draft's event, arrival and handoff timestamps are retimed together so a selected repost popup starts exactly when that repost and its outgoing connection start. Other events interpolate between those anchors. Selected notices are never dropped or shown early, and the illustration finishes after the last notice. If a draft has no reposts, it can show one featured like.
 
 Clicking a person pins their real profile details; clicking again or pressing Escape while focused dismisses them. Hover and focus also reveal details. Pause/restart affects only the illustration and reuses the loaded audience. Reduced motion shows the final still view without automatic popups.
 

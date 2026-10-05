@@ -36,7 +36,7 @@ async function database(page: Page, brand = 'raycast') {
       case 'lab_draft_media': rows = [{ video_id: 'video-10' }]; break;
       case 'campaign_video': rows = [{ video_url: '/videos/ripple-demo-dark.mp4', thumbnail_url: '/login-dark.png', title: 'Launch video', status: 'done' }]; break;
       case 'sim_projection': rows = [{ brand: 'raycast', mode: 'linear', audience: 22632, simulated: 60, factor: 377.2 }]; break;
-      case 'campaign_flow': case 'sim_node_signal': case 'sim_signal_source': case 'sim_outside_tick': case 'archived_profile': case 'audience_snapshot': case 'ops_state': case 'ops_hidden': break;
+      case 'campaign_flow': case 'sim_node_signal': case 'sim_signal_source': case 'sim_outside_tick': case 'archived_profile': case 'audience_snapshot': case 'ops_state': case 'ops_hidden': case 'demo_settings': case 'landing_settings': break;
       default: throw new Error(`Unexpected SQL: ${query}`);
     }
     return route.fulfill({ json: wire(rows) });

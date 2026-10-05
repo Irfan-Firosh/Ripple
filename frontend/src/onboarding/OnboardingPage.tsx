@@ -15,6 +15,7 @@ const choices: { key: string; label: string; goal: Goal }[] = [
   { key: 'C', label: 'Replies', goal: 'replies' }, { key: 'D', label: 'Views', goal: 'views' },
 ];
 const questions = ['Your brand on X', 'Who are you?', 'What are you launching?', 'What matters most?'];
+const QUICK_ONBOARDING = true;
 type FieldProps = { label: string; value: string; onChange: (value: string) => void; required?: boolean; first?: boolean; placeholder?: string; limit?: number; multiline?: boolean };
 function Field({ label, value, onChange, required, first, placeholder, limit, multiline }: FieldProps) {
   const common = { value, required, maxLength: limit, placeholder: placeholder ?? label, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(e.target.value), autoFocus: first };
@@ -26,8 +27,10 @@ function Field({ label, value, onChange, required, first, placeholder, limit, mu
 export default function OnboardingPage() {
   const params = new URLSearchParams(location.search);
   const campaignFlow = params.get("flow") === "campaign";
+  // For now onboarding asks only for the handle; ?brief=1 still walks through the brief (name, campaign, goal).
+  const handleOnly = campaignFlow || (QUICK_ONBOARDING && !params.has('brief'));
   const resume = Number(params.get("build"));
-  const [buildId, setBuildId] = useState<number | null>(campaignFlow && Number.isSafeInteger(resume) && resume > 0 ? resume : null);
+  const [buildId, setBuildId] = useState<number | null>(handleOnly && Number.isSafeInteger(resume) && resume > 0 ? resume : null);
   const reduced = useReducedMotion();
   const [theme, setTheme] = useState(initialTheme);
   const [step, setStep] = useState(buildId ? 5 : 1);
@@ -75,13 +78,13 @@ export default function OnboardingPage() {
         if (accepted.current !== normalized) { await requestOnboarding(normalized); accepted.current = normalized; }
         const next = await findOnboarding(normalized);
         setRequested(next); setHandle(normalized);
-        if (campaignFlow) {
+        if (handleOnly) {
           await updateBrief(next.onboarding_id, { ...brief, campaign: brief.campaign.trim() || `@${normalized}`, goal: 'reposts' });
           setBuildId(next.onboarding_id);
-          history.replaceState(null, '', `/onboarding?flow=campaign&build=${next.onboarding_id}`);
+          history.replaceState(null, '', `/onboarding?${campaignFlow ? 'flow=campaign&' : ''}build=${next.onboarding_id}`);
         }
       } else if (step === 4 && requested) await updateBrief(requested.onboarding_id, brief);
-      setStep(current => campaignFlow ? 5 : Math.min(5, current + 1));
+      setStep(current => handleOnly ? 5 : Math.min(5, current + 1));
     } catch (cause: unknown) { setError(cause instanceof Error ? cause.message : 'Could not continue. Try again.'); }
     finally { setBusy(false); }
   }
@@ -89,11 +92,11 @@ export default function OnboardingPage() {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void advance(); }
   }
   const back = () => { if (!busy) { setError(''); setStep(current => Math.max(1, current - 1)); } };
-  const restart = () => { accepted.current = ''; setRequested(null); setBuildId(null); setError(''); setStep(1); if (campaignFlow) history.replaceState(null, '', '/onboarding?flow=campaign'); };
+  const restart = () => { accepted.current = ''; setRequested(null); setBuildId(null); setError(''); setStep(1); history.replaceState(null, '', campaignFlow ? '/onboarding?flow=campaign' : '/onboarding'); };
   const title = step === 5 ? snapshot?.brand?.name || row?.handle || normalizeHandle(handle) : campaignFlow ? 'New campaign' : 'Connect your brand';
 
   return <main className="on-page">
-    <div className="on-progress" role="progressbar" aria-label="Onboarding progress" aria-valuemin={0} aria-valuemax={campaignFlow ? 2 : 5} aria-valuenow={campaignFlow ? (step === 5 ? 2 : 1) : step}><span style={{ width: `${campaignFlow ? (step === 5 ? 100 : 50) : step / 5 * 100}%` }} /></div>
+    <div className="on-progress" role="progressbar" aria-label="Onboarding progress" aria-valuemin={0} aria-valuemax={handleOnly ? 2 : 5} aria-valuenow={handleOnly ? (step === 5 ? 2 : 1) : step}><span style={{ width: `${handleOnly ? (step === 5 ? 100 : 50) : step / 5 * 100}%` }} /></div>
     <section className="on-sheet" aria-label="Brand onboarding">
       <RippleLogo className="on-logo" href={campaignFlow ? "/home" : "/"} />
       <WorkspaceAccount className="on-account" />
@@ -108,12 +111,12 @@ export default function OnboardingPage() {
           {step === 3 && <><Field label="Campaign name" value={brief.campaign} required first limit={80} onChange={value => setAnswer('campaign', value)} /><Field label="The news" value={brief.news} required limit={600} multiline onChange={value => setAnswer('news', value)} /></>}
           {step === 4 && <div className="on-choices" role="group" aria-label="Campaign goal">{choices.map(choice => <button key={choice.goal} data-choice type="button" className="on-choice" aria-pressed={brief.goal === choice.goal} onClick={() => { setBrief(current => ({ ...current, goal: choice.goal })); setError(''); }}><kbd>{choice.key}</kbd><span>{choice.label}</span>{brief.goal === choice.goal && <Check size={14} aria-hidden="true" />}</button>)}</div>}
           {error && <p className="on-error" role="alert">{error}</p>}
-          <button className="on-primary" type="submit" disabled={!valid || busy}>{busy ? 'Connecting' : campaignFlow ? 'Build audience' : 'Continue'} <ArrowRight size={14} /></button>
+          <button className="on-primary" type="submit" disabled={!valid || busy}>{busy ? 'Connecting' : handleOnly ? 'Build audience' : 'Continue'} <ArrowRight size={14} /></button>
         </form>}
       </motion.div></AnimatePresence>
       {step >= 2 && <div className="on-live" role="status" aria-live="polite">{step < 5 && <>{row && !['ready', 'failed'].includes(row.status) && <ThinkingOrb state="breathing" size={20} theme={theme} paused={Boolean(reduced)} aria-label="Building your audience" />}<span>{liveStatus(row)}</span></>}{readError && <><span className="on-error">{readError}</span><button type="button" onClick={retry}>Try again</button></>}</div>}
     </section>
     {campaignFlow && <a className="on-home" href="/home">Back to campaigns</a>}
-    {!campaignFlow && <nav className="on-navigation" aria-label="Form navigation"><button type="button" aria-label="Previous group" onClick={back} disabled={step === 1 || busy}><ChevronUp size={18} /></button><button type="button" aria-label="Next group" onClick={() => void advance()} disabled={step === 5 || !valid || busy}><ChevronDown size={18} /></button></nav>}
+    {!handleOnly && <nav className="on-navigation" aria-label="Form navigation"><button type="button" aria-label="Previous group" onClick={back} disabled={step === 1 || busy}><ChevronUp size={18} /></button><button type="button" aria-label="Next group" onClick={() => void advance()} disabled={step === 5 || !valid || busy}><ChevronDown size={18} /></button></nav>}
   </main>;
 }

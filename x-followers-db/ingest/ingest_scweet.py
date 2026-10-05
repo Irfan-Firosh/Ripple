@@ -107,7 +107,9 @@ def ingest(username: str, followers: int, posts: int, min_posts: int = 10, offli
     try:
         info = cached(cache / "target.json", offline, lambda: s.get_user_info([username]))
         if not info:
-            raise RuntimeError(f"@{username} not found on X")
+            # Scweet answers empty both for a missing account and when no X_AUTH_TOKEN could be used.
+            raise RuntimeError(f"X returned no profile for @{username}: the handle does not exist, or every "
+                               "X_AUTH_TOKEN is expired or at its daily limit (add or refresh a token)")
         target = user_v2(info[0])
         call("upsert_x_user", *user_args(target))
         raw = cached(cache / f"followers_{followers}.json", offline,

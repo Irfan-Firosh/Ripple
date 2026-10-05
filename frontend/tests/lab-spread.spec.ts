@@ -13,7 +13,7 @@ async function fixture(page: Page, fail = false) {
     twin_niche: people.flatMap(p => [{ user_id: p.id, niche: slugs[p.group], affinity: .9 }, { user_id: p.id, niche: slugs[(p.group + 1) % 6], affinity: .5 }]),
     twin_audience: people.map(p => ({ brand_user_id: 'brand', user_id: p.id })),
     audience_membership: people.map(p => ({ brand_user_id: 'brand', follower_user_id: p.id })),
-    x_post: [], x_post_entity: [], ops_hidden: [],
+    x_post: [], x_post_entity: [], ops_hidden: [], landing_settings: [], demo_settings: [],
     lab_experiment: [{ experiment_id: 32, draft_a: 'Cua Spaces gives every AI agent its own workspace.', draft_b: 'Watch your AI agents work in Cua Spaces.', status: 'done', created_at: 100 }],
   };
   const requests: string[] = [];
@@ -34,7 +34,7 @@ test('audience sampling preserves ratios, connected reach and repost popup cover
   const check = await page.evaluate(async () => {
     const { loadSpreadAudience } = await import('/src/lab-preview/previewAudience.ts');
     const { createSpreadScene } = await import('/src/lab-preview/spreadScene.ts');
-    const { synchronizeSpread, SPREAD_SLOWDOWN } = await import('/src/lab-preview/reactionNotices.ts');
+    const { synchronizeSpread, SPREAD_TIME_SCALE, NOTICE_SECONDS, NOTICE_GAP } = await import('/src/lab-preview/reactionNotices.ts');
     const audience = await loadSpreadAudience('trycua', new AbortController().signal);
     const routes = Array.from({ length: 40 }, (_, i) => {
       const original = createSpreadScene(audience, i + 1, 'A new AI workspace', 'An AI agent for your Mac');
@@ -49,8 +49,9 @@ test('audience sampling preserves ratios, connected reach and repost popup cover
           && handoff.arrives > handoff.at && trial.events.filter(e => audience.people[e.person].group === handoff.to).every(e => e.at > handoff.arrives));
       }));
       const noticeValid = notices.every((notice, index) => (notice.draft === 'A' ? scene.a : scene.b).events.includes(notice.event)
-        && notice.event.featured && Math.abs(notice.at - notice.event.at) < .00001 && (!index || notice.at >= notices[index - 1].until + .25));
-      const slowed = scene.duration >= original.duration * SPREAD_SLOWDOWN;
+        && notice.event.featured && Math.abs(notice.at - notice.event.at) < .00001 && Math.abs(notice.until - notice.at - NOTICE_SECONDS) < .00001
+        && (!index || notice.at >= notices[index - 1].until + NOTICE_GAP));
+      const timeScaled = scene.duration >= original.duration * SPREAD_TIME_SCALE;
       const reached = [scene.a, scene.b].every(trial => new Set(trial.handoffs.map(h => h.to)).size === 6);
       const coverage = (['A', 'B'] as const).every(draft => {
         const count = (draft === 'A' ? scene.a : scene.b).events.filter(e => e.action === 'repost').length;
@@ -58,7 +59,7 @@ test('audience sampling preserves ratios, connected reach and repost popup cover
         return shown >= Math.ceil(count * .4);
       });
       const bothNotified = new Set(notices.map(notice => notice.draft)).size === 2;
-      return { a: scene.a.events.length, b: scene.b.events.length, valid, noticeValid, slowed, reached, coverage, bothNotified, firstNotice: notices[0]?.draft };
+      return { a: scene.a.events.length, b: scene.b.events.length, valid, noticeValid, timeScaled, reached, coverage, bothNotified, firstNotice: notices[0]?.draft };
     });
     const crypto = audience.communities.findIndex(group => group.slug === 'crypto_web3');
     const disconnected = { ...audience, links: audience.links.filter(link => link.a !== crypto && link.b !== crypto) };
@@ -79,7 +80,7 @@ test('audience sampling preserves ratios, connected reach and repost popup cover
   expect(check.routes.some(route => route.a > route.b)).toBe(true);
   expect(check.routes.some(route => route.b > route.a)).toBe(true);
   expect(check.routes.every(route => route.noticeValid)).toBe(true);
-  expect(check.routes.every(route => route.slowed)).toBe(true);
+  expect(check.routes.every(route => route.timeScaled)).toBe(true);
   expect(check.routes.every(route => route.bothNotified)).toBe(true);
   expect(new Set(check.routes.map(route => route.firstNotice)).size).toBe(2);
 });

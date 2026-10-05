@@ -17,10 +17,17 @@ import { useReplayTick } from './useReplayTick';
 import './lab.css';
 import './lab-history.css';
 import { HistoryDrawer } from '../history/HistoryDrawer';
-import { DEFAULT_BRAND } from '../snapshot';
+import { DEMO_BRAND } from '../snapshot';
+import { DemoDelay } from '../components/DemoDelay';
+import { campaignReplayOn } from '../flow/flowApi';
 
 const params = () => new URLSearchParams(location.search);
-const initialBrand = () => params().get('brand')?.toLowerCase() || DEFAULT_BRAND;
+const initialBrand = () => params().get('brand')?.toLowerCase() || DEMO_BRAND;
+
+// Demo (/ops campaign replay on): the Lab lists only the test that was opened (?exp=), else the newest one.
+const focusExp = params().get('exp');
+const demoView = (all: LabExperimentSummary[], demo: boolean) =>
+  demo ? (all.filter(x => x.id === focusExp).length ? all.filter(x => x.id === focusExp) : all.slice(0, 1)) : all;
 
 function useExperiments(brand: string, refreshKey: number) {
   const [list, setList] = useState<LabExperimentSummary[] | null>(null);
@@ -29,7 +36,8 @@ function useExperiments(brand: string, refreshKey: number) {
     const controller = new AbortController();
     setList(null); setError(null);
     let timer = 0;
-    const poll = () => listExperiments(brand, controller.signal).then(next => {
+    const poll = () => Promise.all([listExperiments(brand, controller.signal), campaignReplayOn()]).then(([all, demo]) => {
+      const next = demoView(all, demo);
       setList(next); setError(null);
       if (next.some(x => x.status === 'queued' || x.status === 'running')) timer = window.setTimeout(poll, 3000);
     }).catch((e: unknown) => { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Could not read experiments.'); });
@@ -43,6 +51,8 @@ export default function LabPage() {
   const [theme, setTheme] = useState(initialTheme);
   const [brand, setBrand] = useState<string>(initialBrand);
   const [brands, setBrands] = useState<ActiveBrand[]>([]);
+  // Opened from a campaign (View performance / Watch it in the Lab): results arrive after a short loading screen.
+  const [fromCampaign] = useState(() => params().get('from') === 'campaign');
   const [expId, setExpId] = useState<string | null>(() => params().get('exp'));
   const [analyzing, setAnalyzing] = useState(false);
   const [resimulating, setResimulating] = useState(false);
@@ -64,8 +74,9 @@ export default function LabPage() {
   const b = useReplayTick(experiment?.b ?? null);
   useEffect(() => {
     const controller = new AbortController();
-    listActiveBrands(controller.signal).then(rows => {
+    listActiveBrands(controller.signal).then(all => {
       if (controller.signal.aborted) return;
+      const rows = all.filter(row => row.handle === DEMO_BRAND); // the demo shows one brand
       setBrands(rows);
       if (!params().has('brand') && rows.length && !rows.some(row => row.handle === brand)) setBrand(rows[0].handle);
     }).catch(() => { /* Experiments and their history remain readable independently. */ });
@@ -128,11 +139,12 @@ export default function LabPage() {
     : null;
 
   return <main className="lab-page">
+    {fromCampaign && <DemoDelay label="Loading the results…" />}
     <header className="lab-header workspace-header">
       <RippleLogo />
       <span className="lab-crumb">Lab</span>
       <RippleWorkspaceNav brand={brand} />
-      <nav className="lab-brands" aria-label="Audience">{[...brands, ...(!brands.some(x => x.handle === brand) ? [{ handle: brand, label: `@${brand}` }] : [])].map(x => <button key={x.handle} aria-current={x.handle === brand ? 'page' : undefined} onClick={() => switchBrand(x.handle)}>{x.label}</button>)}</nav>
+      <nav className="lab-brands" aria-label="Audience">{[...brands, ...(!brands.some(x => x.handle === brand) && brand === DEMO_BRAND ? [{ handle: brand, label: `@${brand}` }] : [])].map(x => <button key={x.handle} aria-current={x.handle === brand ? 'page' : undefined} onClick={() => switchBrand(x.handle)}>{x.label}</button>)}</nav>
       <div className="lab-header-actions">
         <button className="lab-icon" aria-label="Open history" onClick={() => setShowHistory(true)}><History size={16} /></button>
         <a className="lab-icon" href="/dashboard" aria-label="Back to dashboard"><ArrowLeft size={15} /></a>

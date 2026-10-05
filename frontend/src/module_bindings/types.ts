@@ -178,6 +178,13 @@ export const CampaignFlow = __t.object("CampaignFlow", {
 });
 export type CampaignFlow = __Infer<typeof CampaignFlow>;
 
+export const CampaignReplay = __t.object("CampaignReplay", {
+  campaignId: __t.string(),
+  sourceCampaignId: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type CampaignReplay = __Infer<typeof CampaignReplay>;
+
 export const CampaignVideo = __t.object("CampaignVideo", {
   videoId: __t.string(),
   brand: __t.string(),
@@ -261,6 +268,13 @@ export const CreativeJob = __t.object("CreativeJob", {
 });
 export type CreativeJob = __Infer<typeof CreativeJob>;
 
+export const DemoSettings = __t.object("DemoSettings", {
+  key: __t.string(),
+  campaignReplay: __t.bool(),
+  updatedAt: __t.timestamp(),
+});
+export type DemoSettings = __Infer<typeof DemoSettings>;
+
 export const DraftCopy = __t.object("DraftCopy", {
   copyId: __t.string(),
   campaignId: __t.string(),
@@ -307,6 +321,13 @@ export const LabExperiment = __t.object("LabExperiment", {
   createdAt: __t.timestamp(),
 });
 export type LabExperiment = __Infer<typeof LabExperiment>;
+
+export const LandingSettings = __t.object("LandingSettings", {
+  key: __t.string(),
+  workspaceTarget: __t.string(),
+  updatedAt: __t.timestamp(),
+});
+export type LandingSettings = __Infer<typeof LandingSettings>;
 
 export const Niche = __t.object("Niche", {
   slug: __t.string(),

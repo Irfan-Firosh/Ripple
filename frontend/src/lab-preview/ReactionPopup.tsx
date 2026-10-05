@@ -40,7 +40,7 @@ export function ReactionPopup({ scene, trial, time, angle, inspect, reduced, aut
   const group = person ? scene.communities[person.group] : null;
   return <AnimatePresence>{visible && person && group && <motion.div key={inspect === null ? event?.id : `inspect-${person.id}`}
     ref={ref} className="spread-popup" data-action={event?.action ?? 'profile'} data-user-id={person.userId}
-    initial={reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: reduced ? 0 : .2 }}
+    initial={reduced ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: reduced ? 0 : .1 }}
     style={{ left, top }}>
     <ProfilePhoto key={person.userId} person={person} /><div className="spread-popup-copy"><strong>{person.name || person.handle}</strong>
       <a href={person.profileUrl} target="_blank" rel="noreferrer">@{person.handle}</a>

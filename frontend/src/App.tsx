@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LandingLoader } from "./LandingLoader";
 import { STATIC_SNAPSHOT } from "./snapshot";
+import { useWorkspaceHref } from "./landing/workspaceTarget";
 import { ClerkLoading, Show, UserButton } from "@clerk/react";
 import {
   ArrowUpRight,
@@ -139,6 +140,7 @@ function DemoVideo({ theme }: { theme: Theme }) {
 }
 export function App() {
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const workspaceHref = useWorkspaceHref();
   const [menu, setMenu] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const heroRef = useRef<HTMLElement>(null);
@@ -218,7 +220,7 @@ export function App() {
             <a className="nav-cta" href="/auth">Get started</a>
           </Show>
           <Show when="signed-in">
-            <a className="nav-cta" href="/home">Open workspace</a>
+            <a className="nav-cta" href={workspaceHref}>Open workspace</a>
             <UserButton />
           </Show>
           <button

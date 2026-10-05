@@ -720,6 +720,27 @@ const videoSettings = table({ name: 'video_settings', public: true }, {
 
 // Campaign video mode from /ops: generate (default), off (no videos), or reuse existing videos for every new draft
 // (reuseA for draft A, reuseB for draft B; an empty reuseB reuses A's video for both) - for demoing one product.
+// Demo switch from /ops: Generate replays the brand's last finished campaign (drafts, images, videos) in seconds.
+const demoSettings = table({ name: 'demo_settings', public: true }, {
+  key: t.string().primaryKey(),
+  campaignReplay: t.bool(),
+  updatedAt: t.timestamp(),
+});
+
+// Campaigns made by replay_campaign, and the finished campaign each one copies (so a replay never copies a replay).
+const campaignReplay = table({ name: 'campaign_replay', public: true }, {
+  campaignId: t.string().primaryKey(),
+  sourceCampaignId: t.string(),
+  createdAt: t.timestamp(),
+});
+
+// Where the landing page's "Open workspace" button leads, from /ops: home (default) or onboarding.
+const landingSettings = table({ name: 'landing_settings', public: true }, {
+  key: t.string().primaryKey(),
+  workspaceTarget: t.string(),
+  updatedAt: t.timestamp(),
+});
+
 const videoMode = table({ name: 'video_mode', public: true }, {
   key: t.string().primaryKey(),
   mode: t.string(),
@@ -795,6 +816,9 @@ const spacetimedb = schema({
   opsHidden,
   videoSettings,
   videoMode,
+  landingSettings,
+  demoSettings,
+  campaignReplay,
 });
 export default spacetimedb;
 
@@ -2644,4 +2668,88 @@ export const setVideoMode = spacetimedb.reducer({ mode: t.string(), reuseA: t.st
   if (a.mode === 'reuse' && !a.reuseA) throw new SenderError('pick a video to reuse');
   const row = { key: 'global', mode: a.mode, reuseA: a.reuseA, reuseB: a.reuseB, updatedAt: ctx.timestamp };
   if (ctx.db.videoMode.key.find('global')) ctx.db.videoMode.key.update(row); else ctx.db.videoMode.insert(row);
+});
+
+export const setWorkspaceTarget = spacetimedb.reducer({ target: t.string() }, (ctx, { target }) => {
+  requireOps(ctx);
+  if (!['home', 'onboarding'].includes(target)) throw new SenderError('target must be home or onboarding');
+  const row = { key: 'global', workspaceTarget: target, updatedAt: ctx.timestamp };
+  if (ctx.db.landingSettings.key.find('global')) ctx.db.landingSettings.key.update(row); else ctx.db.landingSettings.insert(row);
+});
+
+export const setCampaignReplay = spacetimedb.reducer({ on: t.bool() }, (ctx, { on }) => {
+  requireOps(ctx);
+  const row = { key: 'global', campaignReplay: on, updatedAt: ctx.timestamp };
+  if (ctx.db.demoSettings.key.find('global')) ctx.db.demoSettings.key.update(row); else ctx.db.demoSettings.insert(row);
+});
+
+// The finished Lab test of a campaign, when its winner is clear (A or B).
+function decidedTest(ctx: Ctx, campaignId: string) {
+  const exp = ctx.db.campaignFlow.campaignId.find(campaignId)?.experimentId ?? 0n;
+  const row = exp > 0n ? ctx.db.labExperiment.experimentId.find(exp) : undefined;
+  return row?.status === 'done' && (row.winner === 'A' || row.winner === 'B') ? row : undefined;
+}
+
+// The brand's newest original generated campaign whose two drafts are written and whose two videos are finished,
+// preferring one whose Lab test already picked a winner.
+function replaySource(ctx: Ctx, brandUserId: string): string | undefined {
+  const finished = (campaignId: string) => !ctx.db.campaignReplay.campaignId.find(campaignId)
+    && ctx.db.campaignFlow.campaignId.find(campaignId)?.source === 'generate'
+    && (['A', 'B'] as const).every(d => {
+      const copy = ctx.db.draftCopy.copyId.find(`${campaignId}:${d}`);
+      const link = ctx.db.campaignDraftVideo.linkId.find(`${campaignId}:${d}`);
+      return copy?.status === 'done' && link && ctx.db.campaignVideo.videoId.find(link.videoId)?.status === 'done';
+    })
+    && [...ctx.db.adVariant.campaignId.filter(campaignId)].filter(v => v.status === 'ready').length >= 2;
+  const candidates = [...ctx.db.campaign.brandUserId.filter(brandUserId)]
+    .sort((a, b) => Number(b.createdAt.microsSinceUnixEpoch - a.createdAt.microsSinceUnixEpoch))
+    .filter(c => finished(c.campaignId));
+  return (candidates.find(c => decidedTest(ctx, c.campaignId)) ?? candidates[0])?.campaignId;
+}
+
+// Demo: a new campaign owned by the caller that copies the source's brief, concepts, written drafts and video links.
+export const replayCampaign = spacetimedb.reducer({ campaignId: t.string(), brandUserId: t.string() }, (ctx, a) => {
+  if (!ctx.db.demoSettings.key.find('global')?.campaignReplay) throw new SenderError('campaign replay is off');
+  creativeText(a.campaignId, 'campaign id', 100);
+  if (ctx.db.campaign.campaignId.find(a.campaignId) || ctx.db.campaignFlow.campaignId.find(a.campaignId)) throw new SenderError('campaign id already exists');
+  const source = replaySource(ctx, a.brandUserId);
+  if (!source) throw new SenderError('no finished campaign to replay for this brand yet');
+  const id = (old: string) => old.replace(source, a.campaignId);
+  const now = ctx.timestamp;
+  ctx.db.campaign.insert({ ...ctx.db.campaign.campaignId.find(source)!, campaignId: a.campaignId, createdBy: ctx.sender, createdAt: now });
+  for (const b of ctx.db.creativeBrief.campaignId.filter(source)) {
+    ctx.db.creativeBrief.insert({ ...b, briefId: id(b.briefId), campaignId: a.campaignId, createdAt: now });
+  }
+  const variants = [...ctx.db.adVariant.campaignId.filter(source)].filter(v => v.status === 'ready')
+    .sort((x, y) => x.variantId.localeCompare(y.variantId));
+  const vid = (old: string) => `${a.campaignId}:${old}`;
+  for (const v of variants) {
+    ctx.db.adVariant.insert({ ...v, variantId: vid(v.variantId), campaignId: a.campaignId, briefId: id(v.briefId),
+      rootVariantId: vid(v.rootVariantId), parentVariantId: v.parentVariantId ? vid(v.parentVariantId) : undefined,
+      createdAt: now, updatedAt: now });
+  }
+  for (const d of ['A', 'B'] as const) {
+    const copy = ctx.db.draftCopy.copyId.find(`${source}:${d}`)!;
+    ctx.db.draftCopy.insert({ ...copy, copyId: `${a.campaignId}:${d}`, campaignId: a.campaignId, requestedBy: ctx.sender, updatedAt: now });
+    const link = ctx.db.campaignDraftVideo.linkId.find(`${source}:${d}`)!;
+    ctx.db.campaignDraftVideo.insert({ ...link, linkId: `${a.campaignId}:${d}`, campaignId: a.campaignId, updatedAt: now });
+  }
+  const flow = ctx.db.campaignFlow.campaignId.find(source)!;
+  ctx.db.campaignFlow.insert({
+    campaignId: a.campaignId, brand: flow.brand, source: 'generate', stage: 'concepts', draftA: '', draftB: '',
+    experimentId: 0n, videoId: '', winnerText: '', requestedBy: ctx.sender, createdAt: now, updatedAt: now, shippedAt: undefined,
+  } as Row<'campaignFlow'>);
+  ctx.db.campaignReplay.insert({ campaignId: a.campaignId, sourceCampaignId: source, createdAt: now });
+});
+
+// Demo: "Test A vs B" on a replayed campaign points it at its source's finished Lab test.
+export const replayTest = spacetimedb.reducer({ campaignId: t.string() }, (ctx, { campaignId }) => {
+  if (!ctx.db.demoSettings.key.find('global')?.campaignReplay) throw new SenderError('campaign replay is off');
+  const replay = ctx.db.campaignReplay.campaignId.find(campaignId);
+  const flow = ctx.db.campaignFlow.campaignId.find(campaignId);
+  if (!replay || !flow) throw new SenderError('not a replayed campaign');
+  if (!flow.requestedBy.equals(ctx.sender)) throw new SenderError('not your campaign');
+  const test = decidedTest(ctx, replay.sourceCampaignId);
+  if (!test) throw new SenderError('the source campaign has no finished test');
+  ctx.db.campaignFlow.campaignId.update({ ...flow, stage: 'testing', experimentId: test.experimentId, updatedAt: ctx.timestamp });
 });

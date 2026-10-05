@@ -17,7 +17,10 @@ export const AFTER_AUTH = STATIC_SNAPSHOT ? '/home' : '/onboarding';
 
 // The static campaign page opens the showcase campaign, and its results live in the showcase Lab.
 export const SHOWCASE_CAMPAIGN = STATIC_SNAPSHOT ? SHOWCASE.campaignId : null;
-export const SHOWCASE_LAB_HREF = `/lab?brand=${SHOWCASE.brand}&exp=${SHOWCASE.experimentId}`;
+export const SHOWCASE_LAB_HREF = `/lab?brand=${SHOWCASE.brand}&exp=${SHOWCASE.experimentId}&from=campaign`;
+
+// The demo brand: the Lab only lists this brand and its campaigns.
+export const DEMO_BRAND = SHOWCASE.brand;
 
 // Pages opened without ?brand= show this brand.
 export const DEFAULT_BRAND = STATIC_SNAPSHOT ? SHOWCASE.brand : 'raycast';

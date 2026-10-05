@@ -2,9 +2,9 @@ import type { Reaction, SpreadScene, SpreadTrial } from './spreadScene';
 
 export type ReactionNotice = { draft: 'A' | 'B'; event: Reaction; at: number; until: number };
 export const REPOST_NOTICE_SHARE = .4;
-export const NOTICE_SECONDS = 1.8;
-export const NOTICE_GAP = .25;
-export const SPREAD_SLOWDOWN = 1.6;
+export const NOTICE_SECONDS = .9;
+export const NOTICE_GAP = .125;
+export const SPREAD_TIME_SCALE = .8;
 
 /** Reserve at least 40% of each draft's illustrative reposts, including every bridge actor. */
 export function reactionNotices(scene: SpreadScene, seed: number): ReactionNotice[] {
@@ -24,7 +24,7 @@ export function reactionNotices(scene: SpreadScene, seed: number): ReactionNotic
   let available = 0, previousEvent = 0, previousNotice = 0;
   const notices: ReactionNotice[] = [];
   for (const candidate of ordered) {
-    const at = Math.max(previousNotice + (candidate.event.at - previousEvent) * SPREAD_SLOWDOWN, available), until = at + NOTICE_SECONDS;
+    const at = Math.max(previousNotice + (candidate.event.at - previousEvent) * SPREAD_TIME_SCALE, available), until = at + NOTICE_SECONDS;
     notices.push({ ...candidate, at, until });
     available = until + NOTICE_GAP;
     previousEvent = candidate.event.at; previousNotice = at;
@@ -41,7 +41,7 @@ export function synchronizeSpread(scene: SpreadScene, seed: number): { scene: Sp
       if (!Number.isFinite(original)) return original;
       const next = anchors.findIndex(anchor => anchor.original >= original);
       if (next === 0) return 0;
-      if (next < 0) { const last = anchors.at(-1)!; return last.display + (original - last.original) * SPREAD_SLOWDOWN; }
+      if (next < 0) { const last = anchors.at(-1)!; return last.display + (original - last.original) * SPREAD_TIME_SCALE; }
       const start = anchors[next - 1], end = anchors[next];
       return start.display + (original - start.original) / (end.original - start.original) * (end.display - start.display);
     };
@@ -51,5 +51,5 @@ export function synchronizeSpread(scene: SpreadScene, seed: number): { scene: Sp
   };
   const a = retime('A', scene.a), b = retime('B', scene.b);
   const notices = plan.map(notice => ({ ...notice, event: (notice.draft === 'A' ? a.trial : b.trial).events.find(event => event.id === notice.event.id)! }));
-  return { scene: { ...scene, a: a.trial, b: b.trial, duration: Math.max(a.duration, b.duration, (notices.at(-1)?.until ?? 0) + .3) }, notices };
+  return { scene: { ...scene, a: a.trial, b: b.trial, duration: Math.max(a.duration, b.duration, (notices.at(-1)?.until ?? 0) + .15) }, notices };
 }

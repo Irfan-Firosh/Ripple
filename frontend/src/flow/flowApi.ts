@@ -137,3 +137,9 @@ export async function myIdentity(): Promise<string> {
   const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { hex_identity?: string };
   return json.hex_identity ?? '';
 }
+
+// /ops demo switch: Generate replays the brand's last finished campaign instead of running the agents.
+export async function campaignReplayOn(): Promise<boolean> {
+  const rows = await sql<{ campaign_replay: boolean }>("SELECT * FROM demo_settings WHERE key = 'global'").catch(() => []);
+  return Boolean(rows[0]?.campaign_replay);
+}

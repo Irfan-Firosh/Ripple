@@ -6,7 +6,7 @@ import { initialTheme } from '../App';
 import { RippleWorkspaceNav } from '../components/ui/floating-dock';
 import { audienceSegments } from '../creative/model';
 import { useCreative } from '../creative/useCreative';
-import { brandUserId, call, recentPosts, requestDraftCopy, requestDraftVideo, testInLab, tweetText, type BrandPost } from './flowApi';
+import { brandUserId, call, campaignReplayOn, recentPosts, requestDraftCopy, requestDraftVideo, testInLab, tweetText, type BrandPost } from './flowApi';
 import { ImportStep, LaunchStep, StartChoice, TestStep } from './FlowSteps';
 import { DraftsStep, type DraftCopy } from './FlowDrafts';
 import { useFlowData } from './useFlowData';
@@ -17,6 +17,10 @@ import { DEFAULT_BRAND, SHOWCASE_CAMPAIGN, SHOWCASE_LAB_HREF, STATIC_SNAPSHOT } 
 const params = () => new URLSearchParams(location.search);
 const STEPS = ['Audience', 'Concepts', 'Test', 'Launch'] as const;
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+const REPLAY_PAUSE_MS = 4000; // long enough to see the campaign start, well under ten seconds
+const REPLAY_VIDEO_MS = 5000; // replayed videos show a short rendering state first
+const REPLAY_TEST_MS = 3000; // a replayed campaign's A/B test opens its source's finished results after this
 
 export default function CampaignFlowPage({ preview = false }: { preview?: boolean }) {
   const brand = (params().get('brand') || DEFAULT_BRAND).toLowerCase().replace(/^@/, '');
@@ -29,6 +33,7 @@ export default function CampaignFlowPage({ preview = false }: { preview?: boolea
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   const [post, setPost] = useState('');
+  const [videoHoldUntil, setVideoHoldUntil] = useState(0);
   const creative = useCreative(brandId, campaignId);
   // The Lab is where results live: fetch its code while the campaign is on screen so the jump is instant.
   useEffect(() => { void import('../lab/LabPage'); }, []);
@@ -68,6 +73,15 @@ export default function CampaignFlowPage({ preview = false }: { preview?: boolea
       return;
     }
     setWaitingAudience(false);
+    if (await campaignReplayOn()) { // demo: reuse the brand's last finished campaign, ready in seconds
+      const id = crypto.randomUUID();
+      await new Promise(resolve => window.setTimeout(resolve, REPLAY_PAUSE_MS));
+      await call('replay_campaign', [id, brandId]);
+      setVideoHoldUntil(Date.now() + REPLAY_VIDEO_MS);
+      requested.current = false;
+      setCampaignId(id);
+      return;
+    }
     const goal = `Grow @${brand}'s reach with ${top.label.toLowerCase()} on X`;
     const id = crypto.randomUUID();
     await creative.run(conn => conn.reducers.createCampaign({ campaignId: id, brandUserId: brandId, name: `@${brand} · ${top.label}`,
@@ -138,6 +152,11 @@ export default function CampaignFlowPage({ preview = false }: { preview?: boolea
 
   const test = () => act(async () => {
     if (!copyA || !copyB) return;
+    if (await campaignReplayOn()) { // demo: point at the source campaign's finished Lab test
+      await new Promise(resolve => window.setTimeout(resolve, REPLAY_TEST_MS));
+      const reused = await call('replay_test', [campaignId]).then(() => true, () => false);
+      if (reused) return;
+    }
     const id = await testInLab(brand, `@${brand} campaign`, copyA.text, copyB.text);
     for (const d of ['A', 'B'] as const) {
       const v = drafts[d];
@@ -198,12 +217,12 @@ export default function CampaignFlowPage({ preview = false }: { preview?: boolea
       {!campaignId && (busy || waitingAudience) && <><h1>Starting your campaign…</h1><p className="flow-waiting" role="status">Reading @{brand}'s audience.</p></>}
       {!campaignId && !busy && !waitingAudience && mode === 'import' && <><div className="flow-section-heading"><h2>Bring your drafts.</h2><button className="flow-text-button" onClick={() => setMode('choose')}><ArrowLeft size={14} />Back</button></div><ImportStep brand={brand} posts={posts} busy={busy} onSubmit={importDrafts} /></>}
       {campaignId && step === 1 && <><h1>Your two drafts.</h1>
-        <DraftsStep brand={brand} brandId={brandId} campaignId={campaignId} a={copyA} b={copyB} videos={drafts} busy={busy} waiting={waiting} preview={preview} onTest={() => void test()} onSaved={() => setRevision(r => r + 1)} /></>}
+        <DraftsStep brand={brand} brandId={brandId} campaignId={campaignId} a={copyA} b={copyB} videos={drafts} busy={busy} waiting={waiting} preview={preview} onTest={() => void test()} onSaved={() => setRevision(r => r + 1)} videoHoldUntil={videoHoldUntil} /></>}
       {campaignId && step === 2 && <><h1>{experiment?.status === 'done' ? 'Results are in.' : 'Testing on your audience.'}</h1>
-        <TestStep experiment={experiment} labHref={`/lab?brand=${brand}&exp=${flow?.experiment_id}`} busy={busy} onApprove={d => void approve(d)} /></>}
+        <TestStep experiment={experiment} labHref={`/lab?brand=${brand}&exp=${flow?.experiment_id}&from=campaign`} busy={busy} onApprove={d => void approve(d)} /></>}
       {campaignId && step === 3 && <><h1>{stage === 'shipped' ? 'Shipped.' : 'Ready to ship.'}</h1>
         <LaunchStep brand={brand} brandId={brandId} text={post || flow?.winner_text || ''} onText={setPost} video={winnerVideo ?? video} shipped={stage === 'shipped'} busy={busy} onShip={ship}
-          labHref={STATIC_SNAPSHOT ? SHOWCASE_LAB_HREF : Number(flow?.experiment_id ?? 0) > 0 ? `/lab?brand=${brand}&exp=${flow?.experiment_id}` : undefined} /></>}
+          labHref={STATIC_SNAPSHOT ? SHOWCASE_LAB_HREF : Number(flow?.experiment_id ?? 0) > 0 ? `/lab?brand=${brand}&exp=${flow?.experiment_id}&from=campaign` : undefined} /></>}
       </div>
       <CampaignResearch brand={brand} campaignId={campaignId} flow={flow} campaigns={creative.campaigns ?? []} brief={brief} jobs={creative.jobs}
         onSelect={id => { requested.current = false; setCampaignId(id); setError(''); }} />

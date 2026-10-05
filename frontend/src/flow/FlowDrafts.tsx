@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FlaskConical, PenLine, X } from 'lucide-react';
+import { FlaskConical, LoaderCircle, PenLine, X } from 'lucide-react';
 import { requestDraftVideo, requestVideoEdit, scriptOf, type Draft, type DraftVideos, type ScriptBeat, type VideoRow } from './flowApi';
 import { VideoCard } from './FlowSteps';
 import { ClientTweetCard } from '@/registry/magicui/client-tweet-card';
@@ -7,6 +7,29 @@ import type { TweetAuthor } from '../components/ui/tweet-card';
 import { useBrandAuthor, useVideoOff } from './useFlowMeta';
 
 export type DraftCopy = { text: string; image?: string; writing?: boolean };
+const B_EXTRA_MS = 1500; // draft B's film lands a moment after A's
+
+// True until `until` (epoch ms) has passed.
+function useHolding(until: number): boolean {
+  const [holding, setHolding] = useState(() => Date.now() < until);
+  useEffect(() => {
+    const left = until - Date.now();
+    setHolding(left > 0);
+    if (left <= 0) return;
+    const timer = window.setTimeout(() => setHolding(false), left);
+    return () => clearTimeout(timer);
+  }, [until]);
+  return holding;
+}
+
+// A short "rendering" state shown before a ready video appears (campaign replay).
+function RenderingVideo({ poster, ms }: { poster?: string; ms: number }) {
+  return <div className="flow-video flow-video-pending flow-video-rendering" role="status">
+    {poster && <img src={poster} alt="" />}
+    <div className="flow-video-progress"><span><LoaderCircle size={14} className="flow-spin" aria-hidden="true" />Rendering the video…</span>
+      <div className="flow-bar"><i style={{ animationDuration: `${ms}ms` }} /></div></div>
+  </div>;
+}
 
 function VideoEditor({ video, onClose, onSaved }: { video: VideoRow; onClose: () => void; onSaved: () => void }) {
   const original = scriptOf(video);
@@ -35,32 +58,35 @@ function VideoEditor({ video, onClose, onSaved }: { video: VideoRow; onClose: ()
   </div>;
 }
 
-function DraftColumn({ campaignId, draft, copy, video, author, onSaved, videoOff, imagePreview = false }: { campaignId: string; draft: Draft; copy: DraftCopy; video: VideoRow | null; author: TweetAuthor; onSaved: () => void; videoOff: boolean; imagePreview?: boolean }) {
+function DraftColumn({ campaignId, draft, copy, video, author, onSaved, videoOff, imagePreview = false, holdUntil = 0 }: { campaignId: string; draft: Draft; copy: DraftCopy; video: VideoRow | null; author: TweetAuthor; onSaved: () => void; videoOff: boolean; imagePreview?: boolean; holdUntil?: number }) {
   const [editing, setEditing] = useState(false);
+  const [holdMs] = useState(() => Math.max(0, holdUntil - Date.now()));
+  const rendering = useHolding(holdUntil) && video?.status === 'done';
   const retry = () => void requestDraftVideo(campaignId, draft, copy.text).then(onSaved).catch(() => undefined);
   return <section className="flow-draft">
     <span className="flow-draft-label">Draft {draft}</span>
     <ClientTweetCard className="flow-tweet" label={`Draft ${draft}`} scrollable busy={copy.writing}
       draft={{ author, text: copy.text }}>
       {copy.writing && <span className="flow-writing" role="status">Writing the tweet…</span>}
-      {imagePreview && copy.image ? <img className="flow-still" src={copy.image} alt="" /> : videoOff && !video ? copy.image && <img className="flow-still" src={copy.image} alt="" /> : <VideoCard video={video} poster={copy.image} />}
+      {imagePreview && copy.image ? <img className="flow-still" src={copy.image} alt="" /> : videoOff && !video ? copy.image && <img className="flow-still" src={copy.image} alt="" /> : rendering ? <RenderingVideo poster={copy.image || video?.thumbnail_url} ms={holdMs} /> : <VideoCard video={video} poster={copy.image} />}
     </ClientTweetCard>
     {video?.status === 'failed' && <button className="flow-secondary flow-edit" onClick={retry}>Try again</button>}
-    {video?.status === 'done' && !editing && <button className="flow-secondary flow-edit" onClick={() => setEditing(true)}><PenLine size={14} />Edit video</button>}
+    {video?.status === 'done' && !rendering && !editing && <button className="flow-secondary flow-edit" onClick={() => setEditing(true)}><PenLine size={14} />Edit video</button>}
     {editing && video && <VideoEditor video={video} onClose={() => setEditing(false)} onSaved={onSaved} />}
   </section>;
 }
 
-export function DraftsStep({ brand, brandId, campaignId, a, b, videos, busy, waiting, onTest, onSaved, preview = false }: {
+export function DraftsStep({ brand, brandId, campaignId, a, b, videos, busy, waiting, onTest, onSaved, preview = false, videoHoldUntil = 0 }: {
   brand: string; brandId: string; campaignId: string; a: DraftCopy | null; b: DraftCopy | null; videos: DraftVideos; busy: boolean; waiting: string; onTest: () => void; onSaved: () => void; preview?: boolean;
+  videoHoldUntil?: number; // replayed campaigns show their ready videos as rendering until then
 }) {
   const author = useBrandAuthor(brand, brandId);
   const videoOff = useVideoOff();
   return <div className="flow-drafts-step">
     {waiting && <p className="flow-waiting" role="status">{waiting}</p>}
     <div className="flow-pair">
-      {a && <DraftColumn campaignId={campaignId} draft="A" copy={a} video={videos.A} author={author} onSaved={onSaved} videoOff={videoOff} imagePreview={preview} />}
-      {b && <DraftColumn campaignId={campaignId} draft="B" copy={b} video={videos.B} author={author} onSaved={onSaved} videoOff={videoOff} />}
+      {a && <DraftColumn campaignId={campaignId} draft="A" copy={a} video={videos.A} author={author} onSaved={onSaved} videoOff={videoOff} imagePreview={preview} holdUntil={videoHoldUntil} />}
+      {b && <DraftColumn campaignId={campaignId} draft="B" copy={b} video={videos.B} author={author} onSaved={onSaved} videoOff={videoOff} holdUntil={videoHoldUntil && videoHoldUntil + B_EXTRA_MS} />}
     </div>
     <button className="flow-primary" disabled={busy || !a || !b || a.writing || b.writing} onClick={onTest}><FlaskConical size={15} />Test A vs B</button>
   </div>;
