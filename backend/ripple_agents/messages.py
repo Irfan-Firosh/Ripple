@@ -20,7 +20,7 @@ class ReactRequest(Model):
     brand: str
     drafts: list[str]
     niches: list[str] = []
-    sample_size: int = 20
+    sample_size: int = 20  # Default: the 20 most relevant interview personas.
     question: str = ""
 
 
@@ -101,6 +101,7 @@ class LabRequest(Model):
     brand: str
     draft_a: str
     draft_b: str
+    campaign_id: str = ""
 
 
 class LabResult(Model):
@@ -110,4 +111,25 @@ class LabResult(Model):
     lift: float = 0.0  # B's expected engagement over A's (0.58 = +58%)
     summary_a: str = ""
     summary_b: str = ""
+    error: str = ""
+
+
+class CampaignRequest(Model):
+    action: str  # discover | prepare | import | status | video | edit_video | approve
+    brand: str
+    campaign_id: str = ""
+    drafts: list[str] = []
+    draft: str = ""
+    instruction: str = ""
+
+
+class CampaignResult(Model):
+    brand: str
+    campaign_id: str = ""
+    summary: str = ""
+    drafts: list[str] = []
+    image_urls: list[str] = []
+    variant_ids: list[str] = []
+    video_urls: dict[str, str] = {}
+    stage: str = ""
     error: str = ""

@@ -105,12 +105,12 @@ class PaymentGate:
         return list(ctx.storage.get(USED_TX_KEY) or [])
 
     async def request(self, ctx: Context, buyer: str, reference: str, description: str,
-                      on_paid: OnPaid, on_rejected: OnPaid | None = None) -> None:
+                      on_paid: OnPaid, on_rejected: OnPaid | None = None, metadata: dict | None = None) -> None:
         self.pending[reference] = _Pending(buyer, on_paid, on_rejected)
         await ctx.send(buyer, RequestPayment(
             accepted_funds=[Funds(currency="FET", amount=self.price_fet, payment_method="fet_direct")],
             recipient=self.wallet_address, deadline_seconds=DEADLINE_SECONDS, reference=reference,
-            description=f"{description} (put '{reference}' in the transfer memo)", metadata={}))
+            description=f"{description} (put '{reference}' in the transfer memo)", metadata=metadata or {}))
 
     async def _verify(self, ctx: Context, sender: str, msg: CommitPayment, pending: _Pending | None) -> str | None:
         meta = msg.metadata or {}

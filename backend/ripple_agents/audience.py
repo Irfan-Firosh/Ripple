@@ -16,13 +16,12 @@ TOP_PEOPLE = 5
 
 
 def find_brand(stdb, brand: str) -> dict:
-    """The x_user row for an X handle or a Bluesky handle; "raycast" also matches the Bluesky domain "raycast.com"."""
+    """Resolve the exact handle: X and Bluesky are separate audiences."""
     username = brand.strip().lstrip("@").lower()
     if not HANDLE_RE.match(username):
         raise ValueError(f"invalid handle: {brand!r}")
     users = stdb.sql("SELECT user_id, username FROM x_user")
-    match = next((u for u in users if u["username"].lower() == username), None) or \
-        next((u for u in users if u["username"].lower().startswith(username + ".")), None)
+    match = next((u for u in users if u["username"].lower() == username), None)
     if match is None:
         raise LookupError(f"@{username} has not been ingested yet")
     return match
@@ -30,8 +29,11 @@ def find_brand(stdb, brand: str) -> dict:
 
 def brand_twins(stdb, brand: str) -> dict[str, str]:
     """user_id -> username for every twin built for this brand."""
-    rows = stdb.sql(f"SELECT user_id, username FROM twin WHERE brand_user_id = {sql_str(find_brand(stdb, brand)['user_id'])}")
-    return {r["user_id"]: r["username"] for r in rows}
+    brand_id = find_brand(stdb, brand)["user_id"]
+    members = {r["user_id"] for r in stdb.sql(
+        f"SELECT user_id FROM twin_audience WHERE brand_user_id = {sql_str(brand_id)}")}
+    rows = stdb.sql("SELECT user_id, username FROM twin")
+    return {r["user_id"]: r["username"] for r in rows if r["user_id"] in members}
 
 
 def _affinities(stdb, twin_ids) -> dict[str, dict[str, float]]:
@@ -43,14 +45,20 @@ def _affinities(stdb, twin_ids) -> dict[str, dict[str, float]]:
     return out
 
 
-def relevant_twin_ids(stdb, brand: str, niches: list[str], n: int, *, rng: random.Random | None = None) -> list[str]:
+def relevant_twin_ids(stdb, brand: str, niches: list[str], n: int, *, query: str = "", rng: random.Random | None = None) -> list[str]:
     """The n twins whose niches best match; random (but reproducible) when no niche is given or nobody matches."""
     twins = brand_twins(stdb, brand)
     ids = sorted(twins)
     (rng or random.Random(0)).shuffle(ids)  # breaks ties without favouring low ids
-    if niches:
+    if niches or query:
         aff = _affinities(stdb, twins)
-        ids.sort(key=lambda uid: -sum(aff[uid].get(s, 0.0) for s in niches))
+        terms = {word for word in re.findall(r"[a-z0-9]+", query.lower()) if len(word) >= 3 or word in {"ai", "ui"}}
+        profiles = {r["user_id"]: " ".join([r["persona_summary"], *r["hot_buttons"]]).lower()
+                    for r in stdb.sql("SELECT user_id, persona_summary, hot_buttons FROM twin") if r["user_id"] in twins}
+        def relevance(uid):
+            overlap = len(terms & set(re.findall(r"[a-z0-9]+", profiles.get(uid, "")))) / max(1, len(terms))
+            return sum(aff[uid].get(s, 0.0) for s in niches) + overlap
+        ids.sort(key=lambda uid: -relevance(uid))
     return ids[:n]
 
 

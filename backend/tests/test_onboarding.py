@@ -99,3 +99,10 @@ def test_ready_brand_scrapes_for_real_when_the_demo_switch_is_off():
     rec = Recorder()
     run(db, rec)
     assert [c[0] for c in rec.calls] == ["ingest", "build", "edges", "after_ready"]
+
+
+def test_refresh_rebuilds_existing_personas():
+    db, rec = onboarding_db((7, "elorianai", "queued"), (6, "elorianai", "ready")), Recorder()
+    assert run(db, rec) == 1
+    build = next(call for call in rec.calls if call[0] == "build")
+    assert build[2]["skip_existing"] is False

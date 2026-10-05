@@ -62,12 +62,20 @@ def test_failures_become_error_results_not_exceptions():
     assert not res.ok and "not in @spacetimedb's audience" in res.error
 
 
-def test_unknown_brand_is_rejected_before_any_work():
+def test_invalid_handle_is_rejected_before_any_work():
     ctx = FakeCtx()
     called = []
-    run(handle_simulate(ctx, "o", SimulateRequest(request_id="q", brand="nike", draft="d"),
+    run(handle_simulate(ctx, "o", SimulateRequest(request_id="q", brand="x'; DROP", draft="d"),
                         deps(simulate=lambda *a: called.append(a))))
-    assert not ctx.sent[0][1].ok and "nike" in ctx.sent[0][1].error and called == []
+    assert not ctx.sent[0][1].ok and "valid" in ctx.sent[0][1].error and called == []
+
+
+def test_newly_onboarded_brand_can_be_simulated():
+    ctx = FakeCtx()
+    called = []
+    run(handle_simulate(ctx, "orch", SimulateRequest(request_id="q", brand="linear", draft="d"),
+                        deps(simulate=lambda *a: called.append(a) or summary().model_copy(update={"brand": "linear"}))))
+    assert ctx.sent[0][1].ok and ctx.sent[0][1].brand == "linear" and called[0][0] == "linear"
 
 
 def test_compare_and_audience():
@@ -144,7 +152,9 @@ def test_orchestrator_simulate_errors_travel_in_error():
     from ripple_agents.messages import SimulateRequest as OrchSimulate
     from agents.handlers import handle_orchestrator_simulate
     ctx = FakeCtx()
-    run(handle_orchestrator_simulate(ctx, "orch", OrchSimulate(brand="nike", draft="Hi"), deps()))
+    def missing(*args):
+        raise ValueError("@nike is not in x_user")
+    run(handle_orchestrator_simulate(ctx, "orch", OrchSimulate(brand="nike", draft="Hi"), deps(simulate=missing)))
     assert "nike" in ctx.sent[0][1].error and ctx.sent[0][1].reach_high == 0
 
 

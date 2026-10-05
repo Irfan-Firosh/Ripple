@@ -1,17 +1,38 @@
 """Creative specialists share the web worker's queue and persisted campaign state."""
 import asyncio
 import time
+from pathlib import Path
 
 from uagents import Agent, Context
 
 from creative.grok import GrokClient
+from creative.guardrails import clean_text
+from creative.models import BrandKit
 from creative.segments import aggregate_segments
 from creative.worker import process_pending
 from twins.stdb import opt, sql_str
 
 from .audience import find_brand
 from .config import AVATAR_URL, CREATIVE_DIRECTOR, IMAGE_GEN, ORCHESTRATOR
-from .messages import BriefRequest, BriefResult, EditRequest, GenerateRequest, VariantsResult
+from .messages import BriefRequest, BriefResult, CampaignRequest, CampaignResult, EditRequest, GenerateRequest, VariantsResult
+
+PROFILES = Path(__file__).with_name("profiles")
+
+
+def ensure_brand_kit(stdb, brand, goal):
+    """Keep saved branding; initialize new brands from their own public profile."""
+    if stdb.sql(f"SELECT brand_user_id FROM brand_kit WHERE brand_user_id = {sql_str(brand['user_id'])}"):
+        return
+    profile = stdb.sql(f"SELECT name, description FROM x_user WHERE user_id = {sql_str(brand['user_id'])}")[0]
+    name = clean_text(profile.get("name") or brand["username"], limit=100) or brand["username"]
+    description = clean_text(profile.get("description") or "", limit=1000) or clean_text(goal, limit=1000)
+    kit = BrandKit(brand_user_id=brand["user_id"], display_name=name,
+                   product_description=description or f"Campaign for {name}",
+                   value_props=[description] if description else [], palette=[],
+                   visual_style="Clear, minimal composition; use the supplied campaign goal and brand description.",
+                   banned_claims=["guaranteed", "fastest", "free forever"])
+    stdb.call("upsert_brand_kit", kit.brand_user_id, kit.display_name, kit.product_description, kit.value_props,
+              kit.palette, kit.visual_style, kit.banned_claims, kit.reference_image_urls)
 
 
 def _complete(stdb, campaign_id, job_ids=None, *, timeout=600, poll_seconds=0.5):
@@ -35,12 +56,14 @@ def create_briefs(stdb, request: BriefRequest) -> BriefResult:
     if not 2 <= request.n <= 4:
         raise ValueError("Choose two to four concepts per segment")
     brand = find_brand(stdb, request.brand)
-    segments = aggregate_segments(stdb, brand["user_id"], request.segments or None, limit=3)
+    segments = aggregate_segments(stdb, brand["user_id"], request.segments or None, limit=1)
     if not segments:
-        raise ValueError("No eligible audience segments with at least 15 personas")
+        raise ValueError(f"@{request.brand} has no personas yet. Build its audience before generating a campaign.")
+    ensure_brand_kit(stdb, brand, request.goal)
     stdb.call("create_campaign", request.campaign_id, brand["user_id"], request.goal[:100], request.goal,
               opt(request.offer or None), "bluesky" if "." in brand["username"] else "x",
               request.aspect_ratio, [segment.slug for segment in segments], request.n)
+    stdb.call("start_campaign_flow", request.campaign_id, brand["username"], "generate", "", "")
     _complete(stdb, request.campaign_id)
     rows = stdb.sql(f"SELECT brief_id FROM creative_brief WHERE campaign_id = {sql_str(request.campaign_id)}")
     if not rows:
@@ -76,9 +99,10 @@ def create_variants(stdb, request: GenerateRequest | EditRequest) -> VariantsRes
                           image_urls=[row["image_url"] for row in created], warnings=warnings)
 
 
-def build_creative_director(stdb_factory) -> Agent:
-    agent = Agent(name=CREATIVE_DIRECTOR.name, seed=CREATIVE_DIRECTOR.seed, mailbox=True, avatar_url=AVATAR_URL,
-                  description="Turns aggregated audience preferences into evidence-backed creative briefs")
+def build_creative_director(stdb_factory, *, local=False) -> Agent:
+    agent = Agent(name=CREATIVE_DIRECTOR.name, seed=CREATIVE_DIRECTOR.seed, mailbox=not local, avatar_url=AVATAR_URL,
+                  readme_path=str(PROFILES / "creative-director.md"), publish_agent_details=not local,
+                  description="Turn your campaign goal into creative briefs shaped by what each audience group cares about.")
 
     @agent.on_message(BriefRequest, replies=BriefResult)
     async def on_brief(ctx: Context, sender: str, request: BriefRequest):
@@ -90,12 +114,24 @@ def build_creative_director(stdb_factory) -> Agent:
             result = BriefResult(campaign_id=request.campaign_id, error=f"{type(exc).__name__}: {exc}")
         await ctx.send(sender, result)
 
+    @agent.on_message(CampaignRequest, replies=CampaignResult)
+    async def on_campaign(ctx: Context, sender: str, request: CampaignRequest):
+        if sender != ORCHESTRATOR.address:
+            return
+        from .workflow import execute
+        try:
+            result = await asyncio.to_thread(execute, stdb_factory(), request)
+        except Exception as exc:
+            result = CampaignResult(brand=request.brand, campaign_id=request.campaign_id, error=str(exc)[:300])
+        await ctx.send(sender, result)
+
     return agent
 
 
-def build_image_gen(stdb_factory) -> Agent:
-    agent = Agent(name=IMAGE_GEN.name, seed=IMAGE_GEN.seed, mailbox=True, avatar_url=AVATAR_URL,
-                  description="Creates and refines campaign ads with Grok Imagine; saves every take in SpacetimeDB")
+def build_image_gen(stdb_factory, *, local=False) -> Agent:
+    agent = Agent(name=IMAGE_GEN.name, seed=IMAGE_GEN.seed, mailbox=not local, avatar_url=AVATAR_URL,
+                  readme_path=str(PROFILES / "image-gen.md"), publish_agent_details=not local,
+                  description="Make campaign image concepts from your briefs and save each take so you can choose what to test.")
 
     async def handle(ctx: Context, sender: str, request):
         if sender != ORCHESTRATOR.address:

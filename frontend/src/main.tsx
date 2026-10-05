@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { AFTER_AUTH, STATIC_SNAPSHOT } from "./snapshot";
 import "./styles.css";
+const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const AuthPage = lazy(() => import("./components/ui/auth-07"));
 const NetworkTestPage = lazy(() => import("./NetworkTestPage"));
 const LabPage = lazy(() => import("./lab/LabPage"));
@@ -19,7 +20,7 @@ if (STATIC_SNAPSHOT && path === "/onboarding") location.replace("/home");
 document.title = "Ripple";
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ClerkProvider afterSignOutUrl="/" signInUrl="/auth/sign-in" signUpUrl="/auth" signInForceRedirectUrl={AFTER_AUTH} signUpForceRedirectUrl={AFTER_AUTH} appearance={{ theme: shadcn }}>
+    <ClerkProvider publishableKey={clerkPublishableKey} afterSignOutUrl="/" signInUrl="/auth/sign-in" signUpUrl="/auth" signInForceRedirectUrl={AFTER_AUTH} signUpForceRedirectUrl={AFTER_AUTH} appearance={{ theme: shadcn }}>
     {path === "/onboarding" ? (
       <Suspense fallback={<div role="status" style={{ padding: 40 }}>Opening onboarding…</div>}><OnboardingPage /></Suspense>
     ) : path === "/test" ? (

@@ -1,23 +1,7 @@
-# Ripple agents
+# Retired standalone Fetch agents
 
-![tag:innovationlab](https://img.shields.io/badge/innovationlab-3D8BD3)
-![tag:hackathon](https://img.shields.io/badge/hackathon-5F43F1)
+The old `agents.audience_agent` and `agents.simulation_agent` entry points have been removed. Run `python -m ripple_agents` for the current orchestrator and specialists, which share the web application's audience, company research, creative, copy/video, and Lab pipelines.
 
-Ripple tests a post on Claude-built digital twins of a brand's real audience before it goes live.
+Contracts, handler utilities, and payment support in this package remain for existing integration tests. They are not separate running agents.
 
-| Agent | Address | Does |
-| --- | --- | --- |
-| ripple-orchestrator | (teammate fills in) | ASI:One chat, cards, payments |
-| ripple-audience | `agent1q07r393mdp7n306qrp0p2n94drp7f6ku7vnz6faz6tacucdqtpeqkl7xeql` | "Why would @x engage?", audience by niche |
-| ripple-simulation | `agent1qdsk5qq0xfq3x0r8a8wwq7ddtlzc9z9shx4dndxm37nfcx55q40xwqydpm0` | Reach prediction: Claude policy + Monte Carlo cascade in SpacetimeDB |
-
-Run: `cd backend && uv run python -m agents.simulation_agent` and `uv run python -m agents.audience_agent`.
-Needs `.env`: `CLAUDE_API_KEY`, `RIPPLE_AUDIENCE_SEED`, `RIPPLE_SIMULATION_SEED` (+ optional `AGENTVERSE_API_KEY`).
-
-**Before connecting mailboxes, set `RIPPLE_ALLOWED_SENDERS=<orchestrator agent address>`**. Otherwise anyone who finds these agents on Agentverse can spend our Claude credits and get the paid compare for free. Leave it unset only for local development.
-
-Local round trip without Agentverse (no Inspector step): set `RIPPLE_AGENTS_LOCAL=1` for both agents and run
-`uv run python -m agents.dev_client <simulation address> <audience address>`.
-
-## Lab (A/B pre-tests from the browser)
-- `uv run python -m twins lab-worker`: runs experiments queued from `/lab` (`request_lab_experiment`): Claude scores both drafts per twin on likes/reposts/replies/quotes, then two cascades run in SpacetimeDB and the winner + lift are written back.
+See [Fetch.ai workflow and verification](../../docs/fetch-ai-demo.md).

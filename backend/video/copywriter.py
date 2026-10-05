@@ -65,9 +65,11 @@ def make_writer(stdb, client):
     return write
 
 
-def run_pending_copy(stdb, *, write) -> int:
+def run_pending_copy(stdb, *, write, campaign_id=None) -> int:
     handled = 0
     for row in stdb.sql("SELECT * FROM draft_copy WHERE status = 'queued'"):
+        if campaign_id and row["campaign_id"] != campaign_id:
+            continue
         try:
             stdb.call("set_draft_copy", row["copy_id"], "writing", "", "", WORKER_VERSION)
         except StdbError:

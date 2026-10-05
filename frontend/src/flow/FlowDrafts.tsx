@@ -58,7 +58,7 @@ function VideoEditor({ video, onClose, onSaved }: { video: VideoRow; onClose: ()
   </div>;
 }
 
-function DraftColumn({ campaignId, draft, copy, video, author, onSaved, videoOff, imagePreview = false, holdUntil = 0 }: { campaignId: string; draft: Draft; copy: DraftCopy; video: VideoRow | null; author: TweetAuthor; onSaved: () => void; videoOff: boolean; imagePreview?: boolean; holdUntil?: number }) {
+function DraftColumn({ campaignId, draft, copy, video, author, onSaved, videoOff, readOnly, imagePreview = false, holdUntil = 0 }: { campaignId: string; draft: Draft; copy: DraftCopy; video: VideoRow | null; author: TweetAuthor; onSaved: () => void; videoOff: boolean; readOnly: boolean; imagePreview?: boolean; holdUntil?: number }) {
   const [editing, setEditing] = useState(false);
   const [holdMs] = useState(() => Math.max(0, holdUntil - Date.now()));
   const rendering = useHolding(holdUntil) && video?.status === 'done';
@@ -70,14 +70,14 @@ function DraftColumn({ campaignId, draft, copy, video, author, onSaved, videoOff
       {copy.writing && <span className="flow-writing" role="status">Writing the tweet…</span>}
       {imagePreview && copy.image ? <img className="flow-still" src={copy.image} alt="" /> : videoOff && !video ? copy.image && <img className="flow-still" src={copy.image} alt="" /> : rendering ? <RenderingVideo poster={copy.image || video?.thumbnail_url} ms={holdMs} /> : <VideoCard video={video} poster={copy.image} />}
     </ClientTweetCard>
-    {video?.status === 'failed' && <button className="flow-secondary flow-edit" onClick={retry}>Try again</button>}
-    {video?.status === 'done' && !rendering && !editing && <button className="flow-secondary flow-edit" onClick={() => setEditing(true)}><PenLine size={14} />Edit video</button>}
+    {!readOnly && video?.status === 'failed' && <button className="flow-secondary flow-edit" onClick={retry}>Try again</button>}
+    {!readOnly && video?.status === 'done' && !rendering && !editing && <button className="flow-secondary flow-edit" onClick={() => setEditing(true)}><PenLine size={14} />Edit video</button>}
     {editing && video && <VideoEditor video={video} onClose={() => setEditing(false)} onSaved={onSaved} />}
   </section>;
 }
 
-export function DraftsStep({ brand, brandId, campaignId, a, b, videos, busy, waiting, onTest, onSaved, preview = false, videoHoldUntil = 0 }: {
-  brand: string; brandId: string; campaignId: string; a: DraftCopy | null; b: DraftCopy | null; videos: DraftVideos; busy: boolean; waiting: string; onTest: () => void; onSaved: () => void; preview?: boolean;
+export function DraftsStep({ brand, brandId, campaignId, a, b, videos, busy, waiting, onTest, onSaved, readOnly = false, preview = false, videoHoldUntil = 0 }: {
+  brand: string; brandId: string; campaignId: string; a: DraftCopy | null; b: DraftCopy | null; videos: DraftVideos; busy: boolean; waiting: string; onTest: () => void; onSaved: () => void; readOnly?: boolean; preview?: boolean;
   videoHoldUntil?: number; // replayed campaigns show their ready videos as rendering until then
 }) {
   const author = useBrandAuthor(brand, brandId);
@@ -85,8 +85,8 @@ export function DraftsStep({ brand, brandId, campaignId, a, b, videos, busy, wai
   return <div className="flow-drafts-step">
     {waiting && <p className="flow-waiting" role="status">{waiting}</p>}
     <div className="flow-pair">
-      {a && <DraftColumn campaignId={campaignId} draft="A" copy={a} video={videos.A} author={author} onSaved={onSaved} videoOff={videoOff} imagePreview={preview} holdUntil={videoHoldUntil} />}
-      {b && <DraftColumn campaignId={campaignId} draft="B" copy={b} video={videos.B} author={author} onSaved={onSaved} videoOff={videoOff} holdUntil={videoHoldUntil && videoHoldUntil + B_EXTRA_MS} />}
+      {a && <DraftColumn campaignId={campaignId} draft="A" copy={a} video={videos.A} author={author} onSaved={onSaved} videoOff={videoOff} readOnly={readOnly} imagePreview={preview} holdUntil={videoHoldUntil} />}
+      {b && <DraftColumn campaignId={campaignId} draft="B" copy={b} video={videos.B} author={author} onSaved={onSaved} videoOff={videoOff} readOnly={readOnly} holdUntil={videoHoldUntil && videoHoldUntil + B_EXTRA_MS} />}
     </div>
     <button className="flow-primary" disabled={busy || !a || !b || a.writing || b.writing} onClick={onTest}><FlaskConical size={15} />Test A vs B</button>
   </div>;

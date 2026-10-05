@@ -2,7 +2,7 @@
 import os
 import secrets
 
-from twins.config import DEFAULT_ENV_PATH, _dotenv_value
+from twins.config import DEFAULT_ENV_PATH, _dotenv_value, load_secret
 
 PORTS = {"orchestrator": 8101, "audience": 8102, "simulation": 8103}
 
@@ -10,6 +10,8 @@ PORTS = {"orchestrator": 8101, "audience": 8102, "simulation": 8103}
 def seed(name: str) -> str:
     key = f"RIPPLE_{name.upper()}_SEED"
     value = os.environ.get(key, "").strip() or _dotenv_value(DEFAULT_ENV_PATH, key)
+    if not value and name == "simulation":
+        return load_secret("AGENT_SEED_ORCHESTRATOR") + ":ripple-simulation"
     if not value:
         raise RuntimeError(f"{key} is not set. Generate one with: python -c \"import secrets;print(secrets.token_hex(32))\"")
     return value

@@ -45,7 +45,7 @@ def _aggregate(label: str, draft: str, twins: list[Twin], answers: list[TwinAnsw
 def react(stdb, client, brand: str, variants: list[str], niches: list[str], sample_size: int, question: str = "",
           *, workers: int = 8) -> ReactResult:
     # Every variant sees the same personas, so differences come from the post, not the sample.
-    sample = relevant_twin_ids(stdb, brand, niches, sample_size)
+    sample = relevant_twin_ids(stdb, brand, niches, sample_size, query=" ".join([*variants, question]))
     if not sample:
         return ReactResult(brand=brand, error=f"@{brand} has no personas yet")
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -66,7 +66,7 @@ def react(stdb, client, brand: str, variants: list[str], niches: list[str], samp
 
 def render_report(result: ReactResult) -> str:
     lines = [f"**How @{result.brand}'s audience reacts**: the {result.personas} most relevant personas", "",
-             "| Variant | Engaged | Reply | Quote | Repost | Like | Ignore | Avg confidence |",
+             "| Variant | Engaged | Reply | Quote | Repost | Like | Ignore | Model self-rating |",
              "|---|---|---|---|---|---|---|---|"]
     for v in result.variants:
         a = v.actions

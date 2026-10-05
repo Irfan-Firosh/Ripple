@@ -25,8 +25,9 @@ class FakeSession:
 def _stdb():
     return FakeStdb({
         "x_user": [user_row("100", "SpacetimeDB"), user_row("999", "raycast.com")],
-        "twin": [{"user_id": u, "username": n, "brand_user_id": "100"} for u, n in [("1", "ann"), ("2", "bo"), ("3", "cy")]]
-                + [{"user_id": "9", "username": "zed", "brand_user_id": "999"}],
+        "twin": [{"user_id": u, "username": n, "persona_summary": "Builder", "hot_buttons": []} for u, n in [("1", "ann"), ("2", "bo"), ("3", "cy"), ("9", "zed")]],
+        "twin_audience": [{"user_id": u, "brand_user_id": "100"} for u in ("1", "2", "3")]
+                         + [{"user_id": "9", "brand_user_id": "999"}],
         "twin_niche": [{"user_id": "1", "niche": "game_dev", "affinity": 0.9},
                        {"user_id": "2", "niche": "game_dev", "affinity": 0.3},
                        {"user_id": "2", "niche": "backend_infra", "affinity": 0.8},
@@ -53,9 +54,20 @@ def test_plan_defaults_brand_and_reports_errors():
         asi1.chat("k", "s", "u", session=FakeSession([""], status=401))
 
 
+def test_tied_lab_takeaway_cannot_contradict_lab_winner():
+    session = FakeSession(["Variant A is the predicted winner."])
+    report = "**Lab: every follower sees both** (Simulation agent): A and B are tied"
+    summary = asi1.takeaway("k", report, session=session)
+    assert "A and B are tied" in summary
+    assert "A is the predicted winner" not in summary
+    assert session.calls == []
+
+
 def test_brand_twins_is_case_insensitive_and_scoped_to_brand():
     assert brand_twins(_stdb(), "@spacetimedb") == {"1": "ann", "2": "bo", "3": "cy"}
-    assert brand_twins(_stdb(), "@raycast") == brand_twins(_stdb(), "raycast.com") == {"9": "zed"}
+    assert brand_twins(_stdb(), "raycast.com") == {"9": "zed"}
+    with pytest.raises(LookupError):
+        brand_twins(_stdb(), "@raycast")
     with pytest.raises(LookupError):
         brand_twins(_stdb(), "nobody")
     with pytest.raises(ValueError):
@@ -132,7 +144,7 @@ def test_plan_tolerates_create_fields_left_empty_for_other_actions():
     # ASI:One fills unused create fields with 0 / "" / null; that must not sink an audience or react request.
     plan = asi1.CampaignPlan.model_validate({"action": "audience", "brand": "raycast.com", "goal": None, "offer": None,
                                              "n": 0, "aspect_ratio": "", "sample_size": 20, "question": ""})
-    assert (plan.n, plan.aspect_ratio, plan.goal, plan.offer) == (3, "1:1", "", "")
+    assert (plan.n, plan.aspect_ratio, plan.goal, plan.offer) == (2, "16:9", "", "")
 
 
 def test_plan_clamps_ad_count_and_keeps_valid_aspect():

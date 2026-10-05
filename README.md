@@ -12,7 +12,9 @@ Winner at MHacks 2026 · Live demo: [ripple-mhacks.vercel.app](https://ripple-mh
 1. **Twin the audience.** Enter an X handle. Ripple reads the brand's real followers and builds a Claude Haiku twin for each one from who they follow and what they post, then maps the twins into interest niches.
 2. **Generate the campaign.** Exa researches the brand's latest launches, a campaign agent (Claude Opus) writes two drafts with different angles, Grok Imagine creates concept images, and a video agent renders a film for each draft, voiced by ElevenLabs and timed to its word timestamps.
 3. **Test it in the Lab.** Every twin decides in character whether to like, repost, reply or quote. Reposts cascade to the reposters' followers, results are projected to the full audience, and the winner ships to X in one click.
-4. **Ask from anywhere.** Ripple is a Fetch.ai agent on Agentverse, so ASI:One users can test posts in plain language.
+4. **Ask from anywhere.** Ripple is a Fetch.ai agent on Agentverse, so the whole flow also runs from ASI:One chat.
+
+Results are synthetic stress tests grounded in public posts, not validated predictions of individual behaviour. Twins never infer sensitive traits such as race, religion, health, sexual orientation, politics or income.
 
 ## User flow
 
@@ -32,7 +34,21 @@ Winner at MHacks 2026 · Live demo: [ripple-mhacks.vercel.app](https://ripple-mh
 | Models and APIs | Claude Haiku and Opus (Anthropic), ElevenLabs, xAI Grok Imagine, Exa |
 | Agents | Fetch.ai uAgents on Agentverse, ASI:One chat |
 | Video rendering | Playwright (Chromium) and FFmpeg |
-| X data | Scweet with a pool of logged-in sessions |
+| X data | Scweet with a pool of logged-in sessions (not the official X API) |
+
+## Fetch.ai agents
+
+Talk to **@ripple** in [ASI:One](https://asi1.ai), for example "Research @supermemory" or "Compare @supermemory. A: '…' B: '…'". Chat follows the same Audience → Concepts → Test → Launch flow as the web app.
+
+| Agent | Address | Role |
+| --- | --- | --- |
+| `ripple` (orchestrator) | `agent1qvq9ea8vhcvwure28rvzzdjp23k2ffnmcq0d6sed9thmn85kvam5jvqdrlj` | ASI:One entry point. Plans each request and delegates. |
+| `ripple-audience` | `agent1qvl0y3yn06476jkk6wpzj638x0hjh4ws87wgs4200k83n4ugk0nk65ruxnw` | Finds who in the audience cares about a topic and interviews the relevant twins. |
+| `ripple-creative-director` | `agent1qwnufkenp53ewr5rfqxprkvx04ztes96xqmw32uvcegd4674dh5ajkfva3y` | Research, campaign concepts, post copy, videos and approvals. |
+| `ripple-image-gen` | `agent1q0ed307u95982pv35ecz3ekr5u9l6eckx6nfcswahtyp56f4fgv9x7muyse` | Generates and saves campaign images. |
+| `ripple-simulation` | `agent1qtcpquer88v9q83t3p7t83cwjkt9m5t9lt2etw435c04grerdzw26ve3d2f` | Runs the same A/B experiments shown in the web Lab. |
+
+Setup and the full chat walkthrough: [docs/fetch-ai-demo.md](docs/fetch-ai-demo.md).
 
 ## Repository
 
@@ -42,28 +58,31 @@ Winner at MHacks 2026 · Live demo: [ripple-mhacks.vercel.app](https://ripple-mh
 | `backend/twins/` | Twin builder, onboarding worker and Lab simulation worker |
 | `backend/creative/` | Research, brief and concept image worker |
 | `backend/video/` | Tweet writer and video worker |
-| `backend/ripple_agents/`, `backend/agents/` | Fetch.ai agents (see their READMEs) |
+| `backend/ripple_agents/` | Fetch.ai agents |
 | `frontend/` | Web app: landing, Home, Audience, Campaign, Lab, `/ops` and `/logs` |
-| `docs/lucid/` | Architecture diagrams |
+| `scripts/` | Fetch.ai demo launcher and preflight checks |
+| `docs/` | Architecture diagrams and the Fetch.ai demo guide |
 
 ## Getting started
 
 Requirements: Node.js 24+, Python 3.12+ with [uv](https://docs.astral.sh/uv/), the [SpacetimeDB CLI](https://spacetimedb.com/install) (`spacetime login`) and FFmpeg for video.
 
-**1. Configure.** Create `.env` at the repo root (never commit it). The main keys:
+**1. Configure.** Create `.env` at the repo root (never commit it):
 
 ```bash
-CLAUDE_API_KEY=          # twins, Lab scoring and replies
-ELEVENLABS_API_KEY=      # video voiceover
-XAI_API_KEY=             # Grok Imagine images
-EXA_API_KEY=             # campaign research
-X_AUTH_TOKEN=            # auth_token cookie of a logged-in x.com session (X_AUTH_TOKEN_2, ... add more)
+CLAUDE_API_KEY=                      # twins, Lab scoring and replies
+CLAUDE_API_KEY_2=                    # brand writer and video pipeline
+ELEVENLABS_API_KEY=                  # video voiceover
+XAI_API_KEY=                         # Grok Imagine images and thumbnails
+EXA_API_KEY=                         # campaign research
+X_AUTH_TOKEN=                        # auth_token cookie of a logged-in x.com session (add X_AUTH_TOKEN_2, ...)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=   # Clerk publishable key, mapped to the frontend
 STDB_URL=https://maincloud.spacetimedb.com
 STDB_DATABASE=ripple-mhacks
 # Fetch.ai agents: ASI_ONE_API_KEY, AGENTVERSE_API_KEY, AGENT_SEED_ORCHESTRATOR, AGENT_SEED_AUDIENCE
 ```
 
-The frontend reads `frontend/.env.local`: `VITE_CLERK_PUBLISHABLE_KEY`, plus optional `VITE_SPACETIMEDB_URI` and `VITE_SPACETIMEDB_DATABASE`.
+A `VITE_CLERK_PUBLISHABLE_KEY` in `frontend/.env.local` overrides the Clerk key for the frontend only.
 
 **2. Publish the database module.**
 
@@ -73,7 +92,7 @@ spacetime publish --no-config -s maincloud ripple-mhacks --delete-data=never -y
 spacetime generate --lang typescript --out-dir ../frontend/src/module_bindings --module-path . -y
 ```
 
-**3. Start the workers** (from `backend/`, after `uv sync`):
+**3. Start everything.** `./scripts/fetch_demo.sh` starts the agents, workers and UI in one command (`check` runs a preflight, `status` shows the services). To run the workers individually from `backend/` after `uv sync`:
 
 ```bash
 uv run python -m twins onboarding-worker   # scrape followers, build twins and the audience graph
@@ -81,17 +100,10 @@ uv run python -m twins lab-worker          # run Lab A/B simulations
 uv run python -m creative worker           # research, briefs and concept images
 uv run python -m video copy-worker         # write the tweet copy for each draft
 uv run python -m video worker              # render campaign videos
+uv run python -m ripple_agents             # Fetch.ai agents, registered on Agentverse
 ```
 
-**4. Run the app.**
-
-```bash
-cd frontend && npm install && npm run dev
-```
-
-Or run `./ripple.sh` from the repo root to serve it at https://ripple.test. Open `/ops` to control twins per brand, video length and voice, pause workers, and toggle the demo switches.
-
-**Fetch.ai agents:** `cd backend && uv run python -m ripple_agents` starts and registers the agents on Agentverse. See [backend/ripple_agents/README.md](backend/ripple_agents/README.md).
+**4. Run the app.** `cd frontend && npm install && npm run dev`, or `./ripple.sh` from the repo root to serve it at https://ripple.test. Open `/ops` to control twins per brand, video length and voice, pause workers, and toggle the demo switches.
 
 ## Tests
 

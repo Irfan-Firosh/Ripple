@@ -8,7 +8,7 @@ from uagents_core.contrib.protocols.chat import EndSessionContent
 from conftest import FakeStdb
 from ripple_agents import agents, creative
 from ripple_agents.asi1 import CampaignPlan
-from ripple_agents.messages import BriefRequest, BriefResult, EditRequest, GenerateRequest, VariantsResult
+from ripple_agents.messages import AudienceRequest, AudienceResult, BriefRequest, BriefResult, CampaignRequest, CampaignResult, EditRequest, GenerateRequest, VariantsResult
 
 
 class QueueStdb(FakeStdb):
@@ -30,7 +30,7 @@ def campaign_stdb():
 
 
 def test_director_preserves_explicit_segment_goal_and_flat_campaign_contract(monkeypatch):
-    stdb = QueueStdb()
+    stdb = QueueStdb({"x_user": [{"user_id": "brand", "name": "Raycast", "description": "Developer tools"}]})
     selected = []
     monkeypatch.setattr(creative, "find_brand", lambda _db, brand: {"user_id": "brand", "username": "raycast.com"})
     def aggregate(_db, brand_id, segments, **kwargs):
@@ -95,7 +95,7 @@ def test_resize_passes_parent_ratio_without_replacing_campaign_budget(monkeypatc
 class ChatContext:
     def __init__(self):
         self.messages = []
-        self.logger = SimpleNamespace(info=lambda *_: None)
+        self.logger = SimpleNamespace(info=lambda *_: None, warning=lambda *_: None)
     async def send(self, sender, message):
         self.messages.append((sender, message))
 
@@ -111,20 +111,28 @@ def test_create_route_calls_director_then_each_brief_and_surfaces_links(monkeypa
     requests = []
     async def ask(ctx, address, request, reply_type, timeout):
         requests.append((address, request))
+        if isinstance(request, AudienceRequest):
+            return AudienceResult(brand=request.brand, personas=60), ""
         if isinstance(request, BriefRequest):
             return BriefResult(campaign_id=request.campaign_id, brief_ids=["b1", "b2"]), ""
+        if isinstance(request, CampaignRequest):
+            return CampaignResult(brand=request.brand, campaign_id=request.campaign_id, summary="Full posts and https://files-cdn.x.ai/b1.jpg https://files-cdn.x.ai/b2.jpg",
+                                  drafts=["Real A", "Real B"], stage="concepts"), ""
         return VariantsResult(campaign_id=request.campaign_id, variant_ids=[request.brief_id],
                               image_urls=[f"https://files-cdn.x.ai/{request.brief_id}.jpg"]), ""
     monkeypatch.setattr(agents, "_ask", ask)
     ctx = ChatContext()
-    asyncio.run(agents._handle_request(ctx, "user", "Make four AI ads"))
-    assert [address for address, _ in requests] == [agents.CREATIVE_DIRECTOR.address, agents.IMAGE_GEN.address, agents.IMAGE_GEN.address]
-    first = requests[0][1]
+    monkeypatch.setattr(agents, "_stdb", lambda: FakeStdb())
+    asyncio.run(agents._handle_request(ctx, "user", '{"action":"create","brand":"raycast.com","goal":"Launch AI","niches":["dev_tools"],"n":4,"aspect_ratio":"9:16"}'))
+    assert [address for address, _ in requests] == [agents.AUDIENCE.address, agents.CREATIVE_DIRECTOR.address, agents.IMAGE_GEN.address, agents.IMAGE_GEN.address, agents.CREATIVE_DIRECTOR.address]
+    first = requests[1][1]
     assert (first.goal, first.segments, first.n, first.aspect_ratio) == ("Launch AI", ["dev_tools"], 4, "9:16")
-    for _, request in requests[1:]:
+    for _, request in requests[2:4]:
         assert request.campaign_id == first.campaign_id and request.n == 4 and request.aspect_ratio == "9:16"
     assert "https://files-cdn.x.ai/b1.jpg" in chat_text(ctx) and "https://files-cdn.x.ai/b2.jpg" in chat_text(ctx)
-    assert any(isinstance(item, EndSessionContent) for item in ctx.messages[-1][1].content)
+    assert any(item.type == "metadata" for item in ctx.messages[-1][1].content)
+    assert not any(isinstance(item, EndSessionContent) for item in ctx.messages[-1][1].content)
+    assert requests[-1][1].action == "prepare" and ctx._ripple_state["campaign_id"] == first.campaign_id
 
 
 def test_director_failure_stops_image_generation_and_reports_error(monkeypatch):
@@ -133,11 +141,13 @@ def test_director_failure_stops_image_generation_and_reports_error(monkeypatch):
     requests = []
     async def ask(ctx, address, request, reply_type, timeout):
         requests.append(request)
+        if isinstance(request, AudienceRequest):
+            return AudienceResult(brand=request.brand, personas=60), ""
         return BriefResult(campaign_id=request.campaign_id, error="No eligible audience"), "No eligible audience"
     monkeypatch.setattr(agents, "_ask", ask)
     ctx = ChatContext()
-    asyncio.run(agents._handle_request(ctx, "user", "Make ads"))
-    assert len(requests) == 1 and isinstance(requests[0], BriefRequest)
+    asyncio.run(agents._handle_request(ctx, "user", '{"action":"create","brand":"raycast.com","goal":"Launch AI"}'))
+    assert len(requests) == 2 and isinstance(requests[1], BriefRequest)
     assert "No eligible audience" in chat_text(ctx)
 
 

@@ -17,7 +17,7 @@ from .render import check_page, frames, mix, stills
 from .research import research
 from .thumbnail import generate_image, overlay_title
 from .timeline import beat_starts, words_from_alignment
-from .voice import voiceover
+from .voice import fit_voiceover, voiceover
 
 END_HOLD = 1.2  # end card stays up after the last word
 PASS_SCORE = 7
@@ -104,6 +104,8 @@ def make_video(company: str, news: str, goal: str = "", audience: str = "", *, v
         shutil.copy(parent / "voice.mp3", folder / "voice.mp3")
         shutil.copy(parent / "alignment.json", folder / "alignment.json")
     alignment = _cached(folder / "alignment.json", lambda: voiceover(" ".join(lines), folder / "voice.mp3", voice_id=limits().voice_id))
+    alignment = fit_voiceover(alignment, folder / "voice.mp3", limits().max_seconds - END_HOLD)
+    (folder / "alignment.json").write_text(json.dumps(alignment, indent=1))
     words = words_from_alignment(alignment)
     starts = beat_starts(lines, words)
     duration = round(min(limits().max_seconds, words[-1].end + END_HOLD), 3)

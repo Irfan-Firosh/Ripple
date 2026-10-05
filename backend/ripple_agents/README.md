@@ -1,25 +1,12 @@
-# Ripple: see how your audience reacts before you post
+# Ripple: simulate your audience before you publish
 
 ![tag:innovationlab](https://img.shields.io/badge/innovationlab-3D8BD3)
 ![tag:hackathon](https://img.shields.io/badge/hackathon-5F43F1)
 
-Ripple predicts how a brand's real social audience (X or Bluesky) would react to a draft post before it is published. Each follower
-is simulated by a behavioural persona built from their public posts. Ripple asks the most relevant personas
-whether they would reply, quote, repost, like or ignore the draft, and why. Paste one draft, or several to compare.
+Turn your existing audience into a pre-launch test market. Build an audience from an X handle, research your company's recent launches, and generate two campaign drafts with images in your brand's voice. Or bring your own posts.
 
-Personas are synthetic and inferred only from public social signals. Ripple does not infer sensitive traits
-(race, religion, health, sexual orientation, politics or income).
+Test both drafts on the same modeled audience, compare segment reactions and objections, make or edit per-draft videos, and approve the post you want to launch. The result arrives in chat. Campaign and Lab links let you review the same saved work on Ripple's website. Publishing happens in X's composer after you review the copy.
 
-## Try it
+Try **“Open the Ripple menu”**, **“Research @supermemory”**, or **“Generate a campaign for @supermemory promoting our latest launch.”**
 
-- "How would @raycast.com's audience react to: 'Raycast AI now runs your extensions for you. Just ask.'"
-- "Which is better for @raycast.com? A: 'Raycast for Windows is here.' B: 'Stop alt-tabbing. Raycast now on Windows.'"
-- "Who in @raycast.com's audience cares about developer tools?"
-
-## Agents
-
-| Agent | Role |
-|---|---|
-| `ripple` | Chat Protocol orchestrator: plans the request with ASI:One, delegates, and replies in chat |
-| `ripple-audience` | Finds who in the audience cares about a topic, and asks the most relevant personas about each draft |
-| Simulation agent | Projects reach for a draft (built separately) |
+Ripple orchestrates audience, company/creative, image, and simulation specialists through Fetch.ai, with shared live state in SpacetimeDB. Results are synthetic audience stress tests and variant rankings, not measured engagement. Historical engagement anchoring is a baseline adjustment, not a validated accuracy score.

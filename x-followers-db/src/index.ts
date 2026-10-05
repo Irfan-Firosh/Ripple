@@ -2221,6 +2221,7 @@ export const startCampaignVideo = spacetimedb.reducer(
     requireAdmin(ctx);
     requireWorker(a.workerVersion);
     notPaused(ctx);
+    if (a.workerVersion < 2) throw new SenderError(`video worker is out of date (v${a.workerVersion}); pull and restart it`);
     const row = ctx.db.campaignVideo.videoId.find(a.videoId);
     if (row) {
       if (row.status !== 'queued') throw new SenderError(`video ${a.videoId} already claimed`);
