@@ -1,75 +1,109 @@
 # Ripple
 
-## Run the frontend at ripple.test
-
-From this directory, with Node.js 24 or newer:
-
-```bash
-./ripple.sh
-```
-
-Open **https://ripple.test**. The launcher uses the pinned frontend Portless
-dependency, installing frontend dependencies if needed. Run it without `sudo`;
-Portless requests administrator access when needed for port 443, local HTTPS
-trust, and its managed `/etc/hosts` entries. The frontend runs as your normal user.
-
-Ctrl+C stops the frontend. `./ripple.sh --doctor` checks the proxy, certificate,
-and hostname; `./ripple.sh --stop` stops the shared proxy. If another Portless
-proxy has a different configuration, stop that proxy before starting this one.
-The launcher starts only the frontend; backend workers run separately.
+**See the ripple before you post.** Ripple builds AI twins of a brand's real X audience, has a team of agents create the campaign, and tests every draft on the twins before anything goes live.
 
 ![tag:innovationlab](https://img.shields.io/badge/innovationlab-3D8BD3)
 ![tag:hackathon](https://img.shields.io/badge/hackathon-5F43F1)
 
-Ripple predicts how a brand's real social audience would react to a post before it is published. Each follower is
-simulated by a synthetic behavioural persona built from their public posts (X and Bluesky). Personas never infer
-sensitive traits such as race, religion, health, sexual orientation, politics or income.
+Winner at MHacks 2026 · Live demo: [ripple-mhacks.vercel.app](https://ripple-mhacks.vercel.app)
 
-## Use it in ASI:One
+## What it does
 
-Open [ASI:One](https://asi1.ai) and talk to **@ripple**, for example:
+1. **Twin the audience.** Enter an X handle. Ripple reads the brand's real followers and builds a Claude Haiku twin for each one from who they follow and what they post, then maps the twins into interest niches.
+2. **Generate the campaign.** Exa researches the brand's latest launches, a campaign agent (Claude Opus) writes two drafts with different angles, Grok Imagine creates concept images, and a video agent renders a film for each draft, voiced by ElevenLabs and timed to its word timestamps.
+3. **Test it in the Lab.** Every twin decides in character whether to like, repost, reply or quote. Reposts cascade to the reposters' followers, results are projected to the full audience, and the winner ships to X in one click.
+4. **Ask from anywhere.** Ripple is a Fetch.ai agent on Agentverse, so ASI:One users can test posts in plain language.
 
-- "How would @raycast.com's audience react to: 'Raycast AI now runs your extensions for you. Just ask.'"
-- "Which is better for @raycast.com? A: 'Raycast for Windows is here.' B: 'Stop alt-tabbing. Raycast now on Windows.'"
-- "Who in @raycast.com's audience cares about developer tools?"
+## User flow
 
-The demo audience is Raycast's Bluesky followers: 999 personas built from 1,000 followers.
+![Ripple user flow](docs/lucid/user_flow.png)
 
-## Agents (Fetch.ai uAgents, registered on Agentverse)
+## Infrastructure
 
-| Agent | Address | Role |
-|---|---|---|
-| `ripple` (orchestrator, handle `ripple`) | `agent1qvq9ea8vhcvwure28rvzzdjp23k2ffnmcq0d6sed9thmn85kvam5jvqdrlj` | Agent Chat Protocol entry point for ASI:One. Plans each request with the ASI:One LLM, delegates, and replies in chat. |
-| `ripple-audience` | `agent1qvl0y3yn06476jkk6wpzj638x0hjh4ws87wgs4200k83n4ugk0nk65ruxnw` | Finds who in the audience cares about a topic; asks the most relevant personas how they would react to each draft. |
-| Simulation agent | set via `RIPPLE_SIMULATOR_ADDRESS` | Projects reach for a draft. |
+![Ripple infrastructure](docs/lucid/infra.png)
 
-Shared state (raw follower data, personas, niches) lives in the SpacetimeDB database `ripple-mhacks`.
+## Stack
 
-The workspace has separate **Campaigns** and **Lab v2** tabs: audience-backed briefs, Grok Imagine concepts, editable drafts, and a handoff to the existing Lab simulator. Lab v2 also retains the original illustrative comparison, history, and export tools. See [setup and demo instructions](docs/campaign-studio.md).
+| Layer | Technology |
+| --- | --- |
+| Database and server logic | SpacetimeDB (TypeScript module on Maincloud): tables, reducers, job claims and real-time subscriptions |
+| Frontend | React, TypeScript, Vite, Clerk, Recharts |
+| Workers | Python 3.12 with uv: onboarding, Lab simulation, creative, tweet writer and video |
+| Models and APIs | Claude Haiku and Opus (Anthropic), ElevenLabs, xAI Grok Imagine, Exa |
+| Agents | Fetch.ai uAgents on Agentverse, ASI:One chat |
+| Video rendering | Playwright (Chromium) and FFmpeg |
+| X data | Scweet with a pool of logged-in sessions |
 
-## Run the agents
+## Repository
 
-Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), an [ASI:One API key](https://asi1.ai), an
-[Agentverse API key](https://agentverse.ai), an Anthropic API key, and `spacetime login` (or `SPACETIME_TOKEN`).
+| Path | Contents |
+| --- | --- |
+| `x-followers-db/` | SpacetimeDB module (`src/index.ts`) and the X follower ingest (`ingest/`) |
+| `backend/twins/` | Twin builder, onboarding worker and Lab simulation worker |
+| `backend/creative/` | Research, brief and concept image worker |
+| `backend/video/` | Tweet writer and video worker |
+| `backend/ripple_agents/`, `backend/agents/` | Fetch.ai agents (see their READMEs) |
+| `frontend/` | Web app: landing, Home, Audience, Campaign, Lab, `/ops` and `/logs` |
+| `docs/lucid/` | Architecture diagrams |
 
-Put these in `.env` at the repo root:
+## Getting started
+
+Requirements: Node.js 24+, Python 3.12+ with [uv](https://docs.astral.sh/uv/), the [SpacetimeDB CLI](https://spacetimedb.com/install) (`spacetime login`) and FFmpeg for video.
+
+**1. Configure.** Create `.env` at the repo root (never commit it). The main keys:
 
 ```bash
-ASI_ONE_API_KEY=...
-AGENTVERSE_API_KEY=...
-CLAUDE_API_KEY=...
-AGENT_SEED_ORCHESTRATOR=...   # any long random string; it fixes the agent's address
-AGENT_SEED_AUDIENCE=...
-# optional
-RIPPLE_SIMULATOR_ADDRESS=agent1...
-RIPPLE_DASHBOARD_URL=https://...
+CLAUDE_API_KEY=          # twins, Lab scoring and replies
+ELEVENLABS_API_KEY=      # video voiceover
+XAI_API_KEY=             # Grok Imagine images
+EXA_API_KEY=             # campaign research
+X_AUTH_TOKEN=            # auth_token cookie of a logged-in x.com session (X_AUTH_TOKEN_2, ... add more)
+STDB_URL=https://maincloud.spacetimedb.com
+STDB_DATABASE=ripple-mhacks
+# Fetch.ai agents: ASI_ONE_API_KEY, AGENTVERSE_API_KEY, AGENT_SEED_ORCHESTRATOR, AGENT_SEED_AUDIENCE
 ```
 
+The frontend reads `frontend/.env.local`: `VITE_CLERK_PUBLISHABLE_KEY`, plus optional `VITE_SPACETIMEDB_URI` and `VITE_SPACETIMEDB_DATABASE`.
+
+**2. Publish the database module.**
+
 ```bash
-cd backend
-uv sync
-uv run python -m ripple_agents              # starts both agents and registers them on Agentverse
-uv run python -m ripple_agents --addresses  # prints the agent addresses
-uv run python -m ripple_agents.probe "Who in @raycast.com's audience cares about AI agents?"  # test without ASI:One
-uv run pytest                               # unit tests
+cd x-followers-db && npm install
+spacetime publish --no-config -s maincloud ripple-mhacks --delete-data=never -y
+spacetime generate --lang typescript --out-dir ../frontend/src/module_bindings --module-path . -y
 ```
+
+**3. Start the workers** (from `backend/`, after `uv sync`):
+
+```bash
+uv run python -m twins onboarding-worker   # scrape followers, build twins and the audience graph
+uv run python -m twins lab-worker          # run Lab A/B simulations
+uv run python -m creative worker           # research, briefs and concept images
+uv run python -m video copy-worker         # write the tweet copy for each draft
+uv run python -m video worker              # render campaign videos
+```
+
+**4. Run the app.**
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Or run `./ripple.sh` from the repo root to serve it at https://ripple.test. Open `/ops` to control twins per brand, video length and voice, pause workers, and toggle the demo switches.
+
+**Fetch.ai agents:** `cd backend && uv run python -m ripple_agents` starts and registers the agents on Agentverse. See [backend/ripple_agents/README.md](backend/ripple_agents/README.md).
+
+## Tests
+
+```bash
+cd backend && uv run pytest            # workers and agents
+cd frontend && npx playwright test     # web app
+```
+
+## Deployment
+
+The Vercel deployment is a static build. `npm run build:static` serves a recorded snapshot of the showcase brand (`frontend/snapshot/`) instead of the live database and makes the deployed site read-only. `frontend/vercel.json` holds the build settings.
+
+## Team
+
+Built by Ansh and Irfan at MHacks 2026.
