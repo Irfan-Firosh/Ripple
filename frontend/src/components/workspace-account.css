@@ -1,0 +1,5 @@
+.workspace-account{display:flex;align-items:center;justify-content:center;width:32px;height:32px;flex:0 0 32px}
+.workspace-account>a{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--frame);color:var(--fg);text-decoration:none}
+.workspace-account a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.workspace-header-controls{display:flex;align-items:center;gap:12px;margin-left:auto;flex-shrink:0}
+.on-account{position:absolute;top:26px;right:78px}

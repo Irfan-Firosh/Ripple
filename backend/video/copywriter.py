@@ -4,6 +4,7 @@ import json
 import logging
 import re
 
+from twins.config import WORKER_VERSION
 from twins.stdb import StdbError, sql_str
 
 log = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ def run_pending_copy(stdb, *, write, campaign_id=None) -> int:
         if campaign_id and row["campaign_id"] != campaign_id:
             continue
         try:
-            stdb.call("set_draft_copy", row["copy_id"], "writing", "", "")
+            stdb.call("set_draft_copy", row["copy_id"], "writing", "", "", WORKER_VERSION)
         except StdbError:
             continue  # another worker took it
         flows = stdb.sql(f"SELECT brand FROM campaign_flow WHERE campaign_id = {sql_str(row['campaign_id'])}")
@@ -81,10 +82,10 @@ def run_pending_copy(stdb, *, write, campaign_id=None) -> int:
                          other=siblings[0]["text"] if siblings else "").strip()
             if not text:
                 raise ValueError("the writer returned an empty post")
-            stdb.call("set_draft_copy", row["copy_id"], "done", text, "")
+            stdb.call("set_draft_copy", row["copy_id"], "done", text, "", WORKER_VERSION)
             log.info("tweet %s written (%d chars)", row["copy_id"], len(text))
         except Exception as exc:  # noqa: BLE001 - the page shows the error and falls back to the headline
             log.warning("draft copy %s failed: %s", row["copy_id"], exc)
-            stdb.call("set_draft_copy", row["copy_id"], "failed", "", f"{type(exc).__name__}: {exc}"[:300])
+            stdb.call("set_draft_copy", row["copy_id"], "failed", "", f"{type(exc).__name__}: {exc}"[:300], WORKER_VERSION)
         handled += 1
     return handled

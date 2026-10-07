@@ -33,7 +33,7 @@ def filler_db(reply_p50=12, comments=1):
              user_row("f2", "fan2")]
     return FakeStdb({
         "sim_run": [{"run_id": "r1", "brand_user_id": "b", "replay_max_tick": 20}],
-        "sim_signal": [{"run_id": "r1", "signal": "reply", "p_50": reply_p50}],
+        "sim_signal": [{"run_id": "r1", "signal": "reply", "p_50": reply_p50, "mean": float(reply_p50)}],
         "sim_comment": [{"run_id": "r1", "user_id": "t1", "kind": "reply"}] * comments,
         "audience_membership": [{"brand_user_id": "b", "follower_user_id": u} for u in ("t1", "f1", "f2")],
         "x_user": users,
@@ -52,14 +52,14 @@ def test_fill_replies_writes_extra_replies_from_real_non_twin_followers():
     assert "rust dev" in client.calls[0]["messages"][0]["content"]
 
 
-def test_fill_replies_never_exceeds_the_projected_reply_count():
-    db = filler_db(reply_p50=2, comments=1)
+def test_fill_replies_follows_the_drafts_expected_replies_so_drafts_differ():
+    db = filler_db(reply_p50=1, comments=0)  # this draft expects ~1 reply: it gets 1 comment, not the full 5
     client = FakeClient([{"comments": [{"user_id": "f1", "text": "nice"}, {"user_id": "f2", "text": "cool"}]}])
     assert fill_replies(db, client, "r1", "draft", twin_ids={"t1"}, limit=5) == 1
 
 
-def test_fill_replies_skips_when_nothing_to_fill():
-    db = filler_db(reply_p50=1, comments=1)
+def test_fill_replies_tops_up_to_the_limit_and_stops_there():
+    db = filler_db(comments=5)
     assert fill_replies(db, FakeClient([]), "r1", "draft", twin_ids={"t1"}, limit=5) == 0
     assert not db.reducers("add_sim_comments")
 
@@ -75,6 +75,7 @@ def test_topups_build_more_twins_then_regraph():
                                             "run_id": "topup-3-raycast"})
     assert seen[1] == ("edges", "raycast")
     assert [a[1] for a in db.reducers("set_twin_topup")] == ["running", "done"]
+    assert all(a[-1] == 2 for a in db.reducers("set_twin_topup"))  # worker version
 
 
 def test_failed_topup_is_recorded():
@@ -83,7 +84,7 @@ def test_failed_topup_is_recorded():
     def boom(*a, **kw):
         raise RuntimeError("no audience")
     run_pending_topups(db, None, build=boom, edges=lambda *a: None)
-    assert db.reducers("set_twin_topup")[-1][1:] == ("failed", "RuntimeError: no audience")
+    assert db.reducers("set_twin_topup")[-1][1:] == ("failed", "RuntimeError: no audience", 2)
 
 
 def test_onboarding_uses_the_ops_settings():
@@ -138,3 +139,10 @@ def test_onboarding_creates_the_brand_kit_before_ready():
     assert kit[0] == "1" and kit[1] == "Trycua"
     names = [c[0] for c in db.calls]
     assert names.index("upsert_brand_kit") < max(i for i, c in enumerate(db.calls) if c[0] == "set_onboarding_progress" and c[1][1] == "ready")
+
+
+def test_fill_replies_falls_back_to_quiet_twins_when_every_follower_is_a_twin():
+    db = filler_db(comments=0)
+    db.tables["audience_membership"] = [{"brand_user_id": "b", "follower_user_id": "t1"}]
+    client = FakeClient([{"comments": [{"user_id": "t1", "text": "same here"}]}])
+    assert fill_replies(db, client, "r1", "draft", twin_ids={"t1"}, limit=5) == 1

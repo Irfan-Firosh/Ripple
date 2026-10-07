@@ -14,4 +14,5 @@ export default {
   topupId: __t.u64(),
   status: __t.string(),
   error: __t.string(),
+  workerVersion: __t.u32(),
 };

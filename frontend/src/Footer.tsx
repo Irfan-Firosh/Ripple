@@ -13,9 +13,8 @@ export function Footer() {
           </div>
           <nav className="footer-links" aria-label="Footer navigation">
             <a href="#demo">The demo <ArrowUpRight size={13} /></a>
-            <a href="/visuals">Visual playground <ArrowUpRight size={13} /></a>
-            <a href="/research/ripple-design.md">Project design <ArrowUpRight size={13} /></a>
-            <a href="/research/ripple-fact-check.md">Research <ArrowUpRight size={13} /></a>
+            <a href="#how-it-works">Features <ArrowUpRight size={13} /></a>
+            <a href="#faq">FAQ <ArrowUpRight size={13} /></a>
           </nav>
         </div>
         <div className="footer-art" aria-hidden="true">
@@ -43,7 +42,7 @@ export function Footer() {
         </div>
         <div className="footer-bottom">
           <span>© {new Date().getFullYear()} Ripple</span>
-          <span>Made to explore what happens next.</span>
+          <span>Made with <span aria-label="love" className="footer-heart">♥</span> by Irfan &amp; Ansh</span>
           <a href="#" aria-label="Back to top">Back to top <ArrowUp size={13} /></a>
         </div>
       </div>

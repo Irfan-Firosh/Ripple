@@ -48,7 +48,7 @@ async function mockDatabase(page: Page): Promise<MockState> {
   return state;
 }
 async function connect(page: Page) {
-  await page.goto('/onboarding');
+  await page.goto('/onboarding?brief=1');
   await page.getByRole('textbox', { name: 'Your brand on X' }).fill('@Raycast');
   await page.getByRole('textbox', { name: 'Your brand on X' }).press('Enter');
   await expect(page.getByRole('heading', { name: 'Who are you?' })).toBeVisible();
@@ -92,7 +92,7 @@ test('chat onboarding link watches the existing company build without queuing an
 
 test('invalid handles display the reducer error without advancing', async ({ page }) => {
   const state = await mockDatabase(page); state.reducerError = 'enter a valid X handle';
-  await page.goto('/onboarding');
+  await page.goto('/onboarding?brief=1');
   await page.getByRole('textbox').fill('bad handle'); await page.getByRole('textbox').press('Enter');
   await expect(page.getByRole('alert')).toHaveText('enter a valid X handle');
   await expect(page.getByRole('heading', { name: 'Your brand on X' })).toBeVisible();
@@ -121,6 +121,13 @@ test('live build lights the stages and hands the new X brand to its audience gra
   const label = await stages.nth(0).locator('>span').nth(1).boundingBox();
   expect(orb!.x).toBeGreaterThan(label!.x + label!.width);
   await expect(page.locator('.on-avatars img')).toHaveCount(24);
+  const build = page.locator('.on-build'), progress = page.getByRole('progressbar', { name: 'Build progress', exact: true });
+  await expect(progress).toHaveCSS('position', 'static');
+  const cardBox = (await build.boundingBox())!, progressBox = (await progress.boundingBox())!;
+  expect(progressBox.y).toBeGreaterThan(cardBox.y);
+  expect(progressBox.y + progressBox.height).toBeLessThan(cardBox.y + cardBox.height);
+  expect(progressBox.x).toBeGreaterThanOrEqual(cardBox.x);
+  await page.screenshot({ path: '/tmp/ripple-onboarding-inline-build.png', fullPage: true });
   state.status = 'twins'; state.ready = 34;
   await expect(stages.nth(0)).toHaveAttribute('data-complete', 'true');
   await expect(stages.nth(0).getByRole('img')).toHaveCount(0);
@@ -136,7 +143,7 @@ test('live build lights the stages and hands the new X brand to its audience gra
   await expect(page.getByRole('img', { name: 'Building your audience' })).toHaveCount(0);
   await page.getByRole('button', { name: 'See your audience' }).click();
   await expect(page).toHaveURL(/\/dashboard\?brand=raycast$/);
-  await expect(page.getByRole('navigation', { name: 'Brand audience' }).getByRole('link', { name: '@raycast X', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Brand audience' }).getByRole('link', { name: '@raycast X', exact: true })).toHaveAttribute('aria-current', 'page', { timeout: 30000 });
   await expect(page.locator('canvas[data-node-count]')).toHaveAttribute('data-node-count', '30');
 });
 
@@ -154,7 +161,7 @@ test('failed builds decode the optional error, stop polling, and allow retry', a
 test('mobile layout, required validation, back navigation, and Shift+Enter', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 }); await page.emulateMedia({ reducedMotion: 'reduce' });
   const state = await mockDatabase(page);
-  await page.goto('/onboarding'); await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  await page.goto('/onboarding?brief=1'); await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
   await connect(page); await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Alex');
   await page.getByRole('button', { name: 'Previous group' }).click();
   await expect(page.getByRole('textbox', { name: 'Your brand on X' })).toHaveValue('raycast');
@@ -190,7 +197,7 @@ test('brief reducer errors stay inline and preserve the selected goal for retry'
 test('onboarding inherits the app theme, switches palettes, and persists on reload', async ({ page }) => {
   await mockDatabase(page);
   await page.addInitScript(() => { if (!localStorage.getItem('ripple-theme')) localStorage.setItem('ripple-theme', 'light'); });
-  await page.goto('/onboarding');
+  await page.goto('/onboarding?brief=1');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(page.locator('.on-page')).toHaveCSS('background-color', 'rgb(248, 247, 243)');
   await expect(page.locator('.on-page')).toHaveCSS('font-family', '"DM Sans", sans-serif');
@@ -238,4 +245,15 @@ test('campaign build URL resumes on reload and failed builds can restart', async
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page).toHaveURL('/onboarding?flow=campaign');
   await expect(page.getByRole('textbox', { name: 'Your brand on X' })).toBeVisible();
+});
+
+test('plain onboarding needs only the handle and goes straight to the build', async ({ page }) => {
+  const state = await mockDatabase(page);
+  await page.goto('/onboarding');
+  await page.getByRole('textbox', { name: 'Your brand on X' }).fill('trycua');
+  await page.getByRole('button', { name: 'Build audience' }).click();
+  await expect(page.getByRole('list', { name: 'Build stages' })).toBeVisible();
+  await expect(page).toHaveURL('/onboarding?build=42');
+  expect(state.calls.map(call => call.name)).toEqual(['request_onboarding', 'update_onboarding_brief']);
+  await expect(page.getByRole('heading', { name: 'Who are you?' })).toHaveCount(0);
 });

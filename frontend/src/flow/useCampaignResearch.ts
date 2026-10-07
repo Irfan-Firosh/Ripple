@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { listCampaignFlows } from '../home/homeData';
-import type { FlowRow } from './flowApi';
+import { campaignReplayOn, type FlowRow } from './flowApi';
 import type { ResearchSnapshot } from './researchTypes';
+import { STATIC_SNAPSHOT } from '../snapshot';
 
 export function useCampaignResearch(brand: string, campaignId: string | null) {
   const [flows, setFlows] = useState<FlowRow[] | null>(null);
@@ -14,12 +15,15 @@ export function useCampaignResearch(brand: string, campaignId: string | null) {
     setFlows(null); setResearch(null); setFlowError(''); setResearchError('');
     async function refresh() {
       await Promise.all([
-        listCampaignFlows(abort.signal).then(rows => {
-          if (!abort.signal.aborted) { setFlows(rows.filter(row => row.brand === brand)); setFlowError(''); }
+        Promise.all([listCampaignFlows(abort.signal), campaignReplayOn()]).then(([rows, demo]) => {
+          const mine = rows.filter(row => row.brand === brand);
+          // Demo (/ops campaign replay): history shows only the newest campaign.
+          if (!abort.signal.aborted) { setFlows(demo ? mine.slice(0, 1) : mine); setFlowError(''); }
         }).catch(() => { if (!abort.signal.aborted) setFlowError('Could not read your campaigns.'); }),
         (async () => {
           try {
-            const response = await fetch(`/api/campaign-research?${new URLSearchParams({ brand })}`, { signal: abort.signal });
+            const response = await fetch(STATIC_SNAPSHOT ? `/research-snapshot/${encodeURIComponent(brand)}.json`
+              : `/api/campaign-research?${new URLSearchParams({ brand })}`, { signal: abort.signal });
             if (!response.ok) throw new Error('Research unavailable');
             const snapshot: ResearchSnapshot = await response.json();
             if (!Array.isArray(snapshot.sources) || !Array.isArray(snapshot.calls)) throw new Error('Research unavailable');

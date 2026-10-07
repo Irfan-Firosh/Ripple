@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import type { LabExperiment } from './labData';
+import { LabAudienceSpread } from './LabAudienceSpread';
 import { LabTimeline } from './LabTimeline';
 
 export function LabAnalysis({ experiment, onClose }: { experiment: LabExperiment; tickA?: number; tickB?: number; onClose: () => void }) {
@@ -19,7 +20,8 @@ export function LabAnalysis({ experiment, onClose }: { experiment: LabExperiment
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('keydown', onKey); previous?.focus(); };
   }, [onClose]);
-  return <div className="lab-analysis-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section ref={ref} className="lab-analysis" role="dialog" aria-modal="true" aria-labelledby="lab-analysis-title"><header><div><span className="lab-analysis-eyebrow">A / B</span><h2 id="lab-analysis-title">Side-by-side analysis</h2></div><button className="lab-icon" aria-label="Close analysis" onClick={onClose}><X size={17} /></button></header>
+  return <div className="lab-analysis-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><section ref={ref} className="lab-analysis lab-analysis-with-audience" role="dialog" aria-modal="true" aria-labelledby="lab-analysis-title"><header><div><span className="lab-analysis-eyebrow">A / B</span><h2 id="lab-analysis-title">Analysis</h2></div><button className="lab-icon" aria-label="Close analysis" onClick={onClose}><X size={17} /></button></header>
+    <LabAudienceSpread key={experiment.id} experiment={experiment} />
     <LabTimeline a={experiment.a} b={experiment.b} />
   </section></div>;
 }

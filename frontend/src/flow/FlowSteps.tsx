@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { ArrowRight, Check, Download, FlaskConical, Import, Send, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { listActiveBrands, type ActiveBrand } from '../history/historyData';
+import { ArrowRight, BarChart3, Check, Download, FlaskConical, Import, Send, Sparkles } from 'lucide-react';
 import type { Variant } from '../creative/model';
 import { MAX_POST, shipIntent, type BrandPost, type ExperimentRow, type VideoRow } from './flowApi';
 import { ClientTweetCard } from '@/registry/magicui/client-tweet-card';
@@ -11,13 +12,36 @@ const STAGE_LABEL: Record<string, string> = {
   thumbnail: 'Making the thumbnail', done: 'Ready', failed: 'Failed',
 };
 
-export function StartChoice({ busy, onGenerate, onImport }: { busy: boolean; onGenerate: () => void; onImport: () => void }) {
-  return <div className="flow-start">
-    <button className="flow-choice flow-choice-primary" disabled={busy} onClick={onGenerate}>
-      <Sparkles size={14} />Generate new campaign</button>
+// Pick the project (a brand with an analysed audience) the campaign is for; switching reloads the page for that brand.
+function ProjectPicker({ brand }: { brand: string }) {
+  const [brands, setBrands] = useState<ActiveBrand[] | null>(null);
+  useEffect(() => {
+    const abort = new AbortController();
+    listActiveBrands(abort.signal).then(list => {
+      setBrands(list);
+      if (list.length && !list.some(b => b.handle.toLowerCase() === brand)) open(list[0].handle, true);
+    }).catch(() => setBrands([]));
+    return () => abort.abort();
+  }, [brand]);
+  const open = (handle: string, replace = false) => {
+    const url = `/campaign?${new URLSearchParams({ brand: handle })}`;
+    if (replace) location.replace(url); else location.assign(url);
+  };
+  return <label className="flow-project"><span className="flow-eyebrow">PROJECT</span>
+    <select aria-label="Project" value={brand} disabled={!brands} onChange={e => e.target.value === '__add' ? location.assign('/onboarding?flow=campaign') : open(e.target.value)}>
+      {!brands && <option value={brand}>Loading projects…</option>}
+      {brands?.map(b => <option key={b.handle} value={b.handle.toLowerCase()}>@{b.handle}</option>)}
+      {brands && <option value="__add">+ Add a project</option>}
+    </select></label>;
+}
+
+export function StartChoice({ brand, busy, onGenerate, onImport }: { brand: string; busy: boolean; onGenerate: () => void; onImport: () => void }) {
+  return <section className="flow-setup" aria-label="New campaign setup"><h2>New campaign</h2><div className="flow-setup-row"><ProjectPicker brand={brand} /><div className="flow-start">
+    <button className="flow-choice flow-choice-primary" aria-label="Generate new campaign" disabled={busy} onClick={onGenerate}>
+      <Sparkles size={14} />Generate</button>
     <button className="flow-choice" disabled={busy} onClick={onImport}>
       <Import size={14} />Import drafts</button>
-  </div>;
+  </div></div></section>;
 }
 
 export function ImportStep({ brand, posts, busy, onSubmit }: { brand: string; posts: BrandPost[]; busy: boolean; onSubmit: (a: string, b: string) => void }) {
@@ -82,8 +106,9 @@ export function TestStep({ experiment, labHref, busy, onApprove }: {
   </div>;
 }
 
-export function LaunchStep({ brand, brandId, text, onText, video, shipped, busy, onShip }: {
+export function LaunchStep({ brand, brandId, text, onText, video, shipped, busy, onShip, labHref }: {
   brand: string; brandId: string; text: string; onText: (t: string) => void; video: VideoRow | null; shipped: boolean; busy: boolean; onShip: () => void;
+  labHref?: string;
 }) {
   const author = useBrandAuthor(brand, brandId);
   // The post exactly as it will look (same card as the Lab), with the text editable underneath.
@@ -94,6 +119,7 @@ export function LaunchStep({ brand, brandId, text, onText, video, shipped, busy,
     <label className="flow-post"><span className="flow-eyebrow">EDIT THE POST</span><textarea rows={4} maxLength={MAX_POST} value={text} onChange={e => onText(e.target.value)} />
       <i>{text.length}/{MAX_POST}</i></label>
     <div className="flow-row">
+      {labHref && <a className="flow-primary" href={labHref}><BarChart3 size={15} />View performance</a>}
       <a className="flow-primary" href={shipIntent(text)} target="_blank" rel="noreferrer"
         onClick={() => { if (!busy) onShip(); }}><Send size={15} />{shipped ? 'Post again on X' : 'Ship it to X'}</a>
       {video?.status === 'done' && <>

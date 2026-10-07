@@ -1,7 +1,7 @@
 // Side-by-side analysis over time: the recorded trial's cumulative likes / reposts / replies / quotes (left axis)
 // and impressions (right axis) per draft, on shared scales, plus the actual numbers at four checkpoints.
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { countsAt, SIGNALS, SIGNAL_LABEL, viewsAt, type LabRun, type Signal } from './labData';
+import { countsAt, finalCounts, SIGNALS, SIGNAL_LABEL, viewsAt, type LabRun, type Signal } from './labData';
 
 type Point = Record<Signal | 'views', number> & { t: number };
 type Key = Signal | 'views';
@@ -47,6 +47,13 @@ function series(run: LabRun): Point[] {
     let total = 0;
     inc.forEach((d, i) => { total += d; out[i][k] = total; });
   }
+  // End exactly on the numbers the Lab card shows (finalCounts); the recorded run only supplies the shape over time.
+  const target = finalCounts(run), last = out[STEPS];
+  for (const k of KEYS) {
+    const shape = last[k] > 0 ? k : last.views > 0 ? 'views' : null;
+    out.forEach(row => { row[k] = shape ? Math.round((row[shape] / last[shape]) * target[k]) : 0; });
+  }
+  out[STEPS] = { ...target };
   return out.map((v, i) => ({ t: i / STEPS, ...v }));
 }
 

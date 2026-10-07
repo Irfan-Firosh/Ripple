@@ -61,7 +61,7 @@ test('audience is fully visible in 3D without a source node, post edges, or casc
   await page.screenshot({ path: '/tmp/ripple-audience-connectivity-light.png' });
   await expect(page.getByRole('group', { name: 'Network dimension' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Replay|Pause cascade|Play cascade/ })).toHaveCount(0);
-  await expect(page.getByLabel('Niche index')).not.toContainText('Building profiles'); // unanalysed followers join real niches
+  await expect(page.getByLabel('Interest index')).not.toContainText('Building profiles'); // unanalysed followers join real niches
   await page.getByRole('button', { name: 'Zoom in' }).click();
   await expect.poll(async () => Number(await canvas.getAttribute('data-camera-zoom'))).toBeGreaterThan(1);
 });
@@ -124,12 +124,4 @@ test('mobile history fits, supports Escape, and recovers from read errors', asyn
   await page.screenshot({ path: '/tmp/ripple-history-mobile.png' });
   await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open history' })).toBeFocused();
-});
-
-test('visual playground graph has no intercluster edges', async ({ page }) => {
-  await page.goto('/visuals');
-  const canvas = page.locator('.network-canvas');
-  await expect(canvas).toBeVisible();
-  await expect(canvas).toHaveAttribute('data-bridge-edge-count', '0');
-  await expect(page.locator('.scene-legend .bridge-key')).toHaveCount(0);
 });

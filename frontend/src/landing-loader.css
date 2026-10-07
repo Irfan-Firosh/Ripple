@@ -1,0 +1,18 @@
+.landing-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  padding-inline: 16px;
+  background: var(--bg);
+  color: var(--muted);
+  text-align: center;
+  transition: opacity 400ms ease;
+}
+.landing-loader.is-leaving { opacity: 0; pointer-events: none; }
+.landing-loader p { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; }
+.landing-loader p svg { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .landing-loader { transition: none; } }

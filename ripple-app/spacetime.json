@@ -1,8 +1,0 @@
-{
-  "dev": {
-    "run": "npm run dev"
-  },
-  "server": "maincloud",
-  "module-path": "./spacetimedb",
-  "database": "ripple-muj7o"
-}

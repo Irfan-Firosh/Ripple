@@ -3,6 +3,7 @@ import json
 import logging
 import time
 
+from twins.config import WORKER_VERSION
 from twins.stdb import StdbError, sql_str
 
 log = logging.getLogger(__name__)

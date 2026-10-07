@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { BRANDS, loadAudience, sql } from '../audience/liveAudience';
 import { groupByNiche } from '../visuals/liveNetwork';
 import { loadAudienceSnapshot } from '../history/historyData';
+import { assertLive } from '../snapshot';
 
 const DB = 'https://maincloud.spacetimedb.com';
 const DB_NAME = 'ripple-mhacks';
@@ -84,12 +85,18 @@ async function loadRun(runId: string, draft: 'A' | 'B', signal?: AbortSignal): P
   const p = projections[0];
   const projection: LabProjection | null = p ? { mode: p.mode, audience: Number(p.audience), simulated: p.simulated, factor: p.factor } : null;
   const twinIds = new Set(shares.map(r => r.user_id as string));
+  const signals = counted.length ? Object.fromEntries(counted.map(r => [r.signal, range(r)])) as Record<Signal, SignalRange> : null;
+  // Every reply written (twins + projected followers) is counted: the reply total never shows fewer than the comments.
+  const writtenReplies = comments.filter(c => c.kind === 'reply').length;
+  if (signals?.reply && signals.reply.p50 < writtenReplies) {
+    signals.reply = { ...signals.reply, p50: writtenReplies, mean: Math.max(signals.reply.mean, writtenReplies), p90: Math.max(signals.reply.p90, writtenReplies) };
+  }
   const projected = projection?.mode === 'linear'
-    ? await projectedPeople(runId, run.brand_user_id, draft, twinIds, counted, events, run.replay_max_tick, signal)
+    ? await projectedPeople(runId, run.brand_user_id, draft, new Set([...twinIds, ...comments.map(c => c.user_id as string)]), counted, events, run.replay_max_tick, signal)
     : [];
   return {
     runId, status: run.status, replayTick: run.replay_tick, replayMaxTick: run.replay_max_tick, people: run.people,
-    signals: counted.length ? Object.fromEntries(counted.map(r => [r.signal, range(r)])) as Record<Signal, SignalRange> : null,
+    signals,
     views: view ? range(view) : null,
     events: events.map(e => ({ userId: e.user_id, ...person(e.user_id), signal: e.signal, tick: e.tick, draft })).sort((x, y) => x.tick - y.tick),
     shares: new Map(shares.map(s => [s.user_id as string, { like: s.like_share, repost: s.repost_share, reply: s.reply_share, quote: s.quote_share }])),
@@ -173,6 +180,7 @@ async function token(): Promise<string> {
 }
 
 export async function requestExperiment(input: { brand: string; title: string; draftA: string; draftB: string }): Promise<void> {
+  assertLive();
   if ([input.draftA, input.draftB].some(draft => !draft.trim() || draft.length > 1000)) {
     throw new Error('drafts must be 1..1000 characters');
   }
@@ -228,4 +236,14 @@ export function useLabExperiment(id: string | null): { experiment: LabExperiment
     return () => { controller.abort(); clearTimeout(timer); };
   }, [id]);
   return { experiment, error };
+}
+
+// The finished numbers the Lab shows for a run: the expected (mean) outcome over all simulated trials, which is
+// continuous, so two drafts do not collide on the same few medians a small twin sample produces. Replies never show
+// fewer than the comments listed. The tweet card, the side-by-side graph and its table all read this.
+export function finalCounts(run: LabRun): Record<Signal | 'views', number> {
+  const m = run.signals, mean = (r?: SignalRange) => Math.round(r?.mean ?? 0);
+  const replies = run.comments.filter(c => c.kind === 'reply').length;
+  return { like: mean(m?.like), repost: mean(m?.repost), reply: Math.max(mean(m?.reply), replies), quote: mean(m?.quote),
+           views: mean(run.views ?? undefined) };
 }

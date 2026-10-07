@@ -1,3 +1,4 @@
+import { percentShares } from './visuals/communityShares';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, History, Moon, Sun, RotateCcw, Plus, Minus, X } from 'lucide-react';
 import { initialTheme } from './App';
@@ -77,20 +78,20 @@ export default function NetworkTestPage({workspace=false}:{workspace?:boolean}) 
   }, [brand]);
   useEffect(()=>{
     document.documentElement.dataset.theme=theme;
-    document.title=workspace?'Dashboard — Ripple':'Network playground — Ripple';
+    document.title = 'Ripple';
     try{localStorage.setItem('ripple-theme',theme);}catch{/* Optional. */}
   },[theme,workspace]);
   const toggleTheme=<button className="nt-icon-button" aria-label={`Switch to ${theme==='dark'?'light':'dark'} mode`} onClick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?<Sun size={17}/>:<Moon size={17}/>}</button>;
   const header=(subtitle:string)=><header className={`nt-header${workspace?' nt-header--workspace workspace-header':''}`}>
     <RippleLogo href={workspace ? "/home" : "/"} />
-    <span className="nt-page-name">{workspace?'Audience':'Network playground'} <i/> {subtitle}</span>
+    {!workspace && <span className="nt-page-name">Network playground <i/> {subtitle}</span>}
     {workspace&&<RippleWorkspaceNav brand={brand.handle}/>}
     {visibleBrands.length > 0 && <nav className="nt-brands" aria-label="Brand audience">{visibleBrands.map(b=><div className={`nt-brand-entry${b.handle===brand.handle?' is-active':''}`} key={b.handle}>
-      <a href={`?brand=${encodeURIComponent(b.handle)}`} aria-current={b.handle===brand.handle?'page':undefined}>{b.label}</a>
+      <a href={`?brand=${encodeURIComponent(b.handle)}`} aria-current={b.handle===brand.handle?'page':undefined}>{b.label}<span>{b.platform==='bluesky'?'Bluesky':'X'}</span></a>
       <button type="button" aria-label={`Remove ${b.label} from audience view`} title="Remove from view"
         onClick={()=>setHiddenBrands(previous=>new Set(previous).add(b.handle))}><X size={12}/></button>
     </div>)}</nav>}
-    <div className="nt-header-actions">{snapshot && <a className="nt-replay" href={`/dashboard?brand=${encodeURIComponent(brand.handle)}`}>Live audience</a>}<button className="nt-icon-button" aria-label="Open history" onClick={() => setShowHistory(true)}><History size={16}/></button>{!workspace&&<a href="/dashboard" aria-label="Back to workspace"><ArrowLeft size={15}/></a>}{toggleTheme}</div>
+    <div className="nt-header-actions">{snapshot && <a className="nt-replay" href={`/dashboard?brand=${encodeURIComponent(brand.handle)}`}>Live audience</a>}<button className="nt-icon-button" aria-label="Open history" onClick={() => setShowHistory(true)}><History size={16}/></button>{!workspace&&<a href="/dashboard" aria-label="Back to workspace"><ArrowLeft size={15}/></a>}{toggleTheme}<WorkspaceAccount /></div>
   </header>;
   const drawer = showHistory && <HistoryDrawer kind="audience" activeId={snapshot} onClose={() => setShowHistory(false)} onSelect={entry => location.assign(entry.kind === 'audience'
       ? `/dashboard?brand=${encodeURIComponent(entry.brand)}&snapshot=${encodeURIComponent(entry.id)}` : `/lab?brand=${encodeURIComponent(entry.brand)}&exp=${encodeURIComponent(entry.id)}`)} />;
@@ -106,6 +107,8 @@ export default function NetworkTestPage({workspace=false}:{workspace?:boolean}) 
 }
 
 function AudienceView({network,theme,header}:{network:CascadeNetwork;theme:'dark'|'light';header:React.ReactNode}) {
+  // Each niche as a share of the whole audience (largest remainder, so the shares add up to exactly 100%).
+  const shares = percentShares(network.communities.map(c => c.size));
   const [selected,setSelected]=useState<number|null>(null);
   const [focus,setFocus]=useState<number|null>(null);
   const [zoomStep,setZoomStep]=useState(0);
@@ -115,7 +118,7 @@ function AudienceView({network,theme,header}:{network:CascadeNetwork;theme:'dark
   const chosen=selected===null?null:network.nodes[selected];
   return <main className="network-test">
     {header}
-    <aside className="nt-index" aria-label="Niche index"><span className="nt-eyebrow">THE AUDIENCE · BY NICHE</span><div className="nt-community-index">{network.communities.map((community,index)=><button key={community.slug} aria-pressed={focus===index} onClick={()=>{setFocus(index);setSelected(null);}}><span className="nt-index-number">{String(index+1).padStart(2,'0')}</span><i style={{background:community.color}}/><span>{community.name}</span><span className="nt-index-count">{community.size}</span></button>)}</div><button className="nt-all" onClick={resetView} aria-pressed={focus===null}>All niches <ArrowLeft size={12}/></button></aside>
+    <aside className="nt-index" aria-label="Interest index"><span className="nt-eyebrow">THE AUDIENCE · BY INTEREST</span><div className="nt-community-index">{network.communities.map((community,index)=><button key={community.slug} aria-pressed={focus===index} onClick={()=>{setFocus(index);setSelected(null);}}><span className="nt-index-number">{String(index+1).padStart(2,'0')}</span><i style={{background:community.color}}/><span>{community.name}</span><span className="nt-index-count">{shares[index]}%</span></button>)}</div><button className="nt-all" onClick={resetView} aria-pressed={focus===null}>All interests <ArrowLeft size={12}/></button></aside>
     <section className="nt-stage" aria-label="Network visualization" aria-busy={!prepared}><CascadeCanvas network={network} view="3d" audienceOnly elapsed={network.duration} theme={theme} selected={selected} focus={focus} zoomStep={zoomStep} reset={reset} onSelect={setSelected} onPrepared={setPrepared}/>{!prepared&&<div className="nt-state" role="status"><Loader shape="ripple" variant="dither" size="lg" color="var(--accent)" aria-hidden="true"/><p>Preparing the network…</p></div>}</section>
     {chosen&&<aside className="nt-selection" aria-label="Selected account"><button className="nt-close" aria-label="Close account details" onClick={()=>setSelected(null)}><X size={15}/></button>
       <div className="nt-person">{chosen.avatar&&<img src={chosen.avatar} alt="" referrerPolicy="no-referrer"/>}<div><h2>{chosen.name}</h2><a href={chosen.member.profileUrl} target="_blank" rel="noreferrer">@{chosen.handle}</a></div></div>
@@ -125,6 +128,7 @@ function AudienceView({network,theme,header}:{network:CascadeNetwork;theme:'dark
     </aside>}
     <StartCampaignBar/>
     <div className="nt-controls"><button className="nt-icon-button" aria-label="Zoom in" onClick={()=>setZoomStep(n=>n+1)}><Plus size={16}/></button><button className="nt-icon-button" aria-label="Zoom out" onClick={()=>setZoomStep(n=>n-1)}><Minus size={16}/></button><button className="nt-icon-button" aria-label="Reset network view" onClick={resetView}><RotateCcw size={14}/></button></div>
-    <span className="nt-hint" title="Cluster links summarize recorded replies, mentions and shared niche interests. Thicker links represent more connections. Nearby people share interests or connections; distances are approximate.">Thicker links = more connections · drag to orbit · scroll to zoom</span>
+    <span className="nt-hint" title="Cluster links summarize recorded replies, mentions and shared interests. Thicker links represent more connections. Nearby people share interests or connections; distances are approximate.">Thicker links = more connections · drag to orbit · scroll to zoom</span>
   </main>;
 }
+import { WorkspaceAccount } from './components/WorkspaceAccount';

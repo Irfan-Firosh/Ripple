@@ -17,8 +17,8 @@ def test_pending_copy_is_claimed_written_and_saved():
                    "campaign_flow": [{"campaign_id": "c1", "brand": "raycast"}]})
     n = run_pending_copy(db, write=lambda brand, headline, **kw: f"{brand}: {headline}. Raycast 2.6 is out.")
     assert n == 1
-    assert db.reducers("set_draft_copy") == [("c1:A", "writing", "", ""),
-                                             ("c1:A", "done", "raycast: Cut memory use in half. Raycast 2.6 is out.", "")]
+    assert db.reducers("set_draft_copy") == [("c1:A", "writing", "", "", 2),
+                                             ("c1:A", "done", "raycast: Cut memory use in half. Raycast 2.6 is out.", "", 2)]
 
 
 def test_failed_writing_is_recorded():

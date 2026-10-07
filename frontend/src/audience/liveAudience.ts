@@ -1,5 +1,7 @@
 // Reads the real Ripple audience (twins, niches, profile pictures) from SpacetimeDB over its public SQL API.
 // CORS on Maincloud allows browser reads, so no backend is needed.
+import { STATIC_SNAPSHOT, liveQuery, recordRows, snapshotRows } from '../snapshot';
+
 const STDB_SQL = 'https://maincloud.spacetimedb.com/v1/database/ripple-mhacks/sql';
 
 type AlgebraicType = Record<string, any>;
@@ -55,11 +57,12 @@ function decode(value: unknown, ty: AlgebraicType): unknown {
 }
 
 async function rawSql<T = Record<string, any>>(query: string, signal?: AbortSignal): Promise<T[]> {
-  const res = await fetch(STDB_SQL, { method: 'POST', body: query, signal });
+  if (STATIC_SNAPSHOT) return snapshotRows<T>(query);
+  const res = await fetch(STDB_SQL, { method: 'POST', body: liveQuery(query), signal });
   if (!res.ok) throw new Error(`SpacetimeDB returned ${res.status} for: ${query}`);
   const statements = (await res.json()) as Statement[];
-  return statements.flatMap(s => s.rows.map(row => Object.fromEntries(
-    s.schema.elements.map((e, i) => [e.name.some, decode(row[i], e.algebraic_type)])) as T));
+  return recordRows(query, statements.flatMap(s => s.rows.map(row => Object.fromEntries(
+    s.schema.elements.map((e, i) => [e.name.some, decode(row[i], e.algebraic_type)])) as T)));
 }
 
 // Hide from /ops = a clean slate for demos: while ops_hidden exists, rows created before its `since` are dropped from

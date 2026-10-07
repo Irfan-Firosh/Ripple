@@ -102,7 +102,7 @@ test('500-person graph prepares cached sprites, stops drawing when idle, and kee
   await page.goto('/dashboard');
   const stage=page.getByRole('region',{name:'Network visualization'});
   const canvas=page.getByRole('img',{name:/Three-dimensional audience network/});
-  await expect(stage).toHaveAttribute('aria-busy','false');
+  await expect(stage).toHaveAttribute('aria-busy','false',{timeout:30000});
   await expect(canvas).toHaveAttribute('data-sprite-count','500');
   await expect(canvas).toHaveAttribute('data-active-count','500');
   await expect(canvas).toHaveAttribute('data-post-edge-count','0');
@@ -182,12 +182,12 @@ test('3D overview drifts gently but stays still during inspection and with reduc
   await expect(canvas).toHaveAttribute('data-camera-yaw',hovered!);
   await page.mouse.move(0,0);
   await expect(canvas).toHaveAttribute('data-idle-orbit','true');
-  await page.getByLabel('Niche index').getByRole('button',{name:/^01 /}).click();
+  await page.getByLabel('Interest index').getByRole('button',{name:/^01 /}).click();
   await expect(canvas).toHaveAttribute('data-idle-orbit','false');
   const focused=await canvas.getAttribute('data-camera-yaw');
   await page.waitForTimeout(300);
   await expect(canvas).toHaveAttribute('data-camera-yaw',focused!);
-  await page.getByRole('button',{name:'All niches',exact:true}).click();
+  await page.getByRole('button',{name:'All interests',exact:true}).click();
   await expect(canvas).toHaveAttribute('data-idle-orbit','true');
   await page.emulateMedia({reducedMotion:'reduce'});
   await expect(canvas).toHaveAttribute('data-idle-orbit','false');

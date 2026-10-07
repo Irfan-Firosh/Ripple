@@ -1,0 +1,20 @@
+.spread-B{--spread-color:#5ec8f2}html[data-theme=light] .spread-B{--spread-color:#1f77b4}
+.spread-stage{position:relative}
+.spread-graph{width:100%;display:block;background-image:radial-gradient(var(--line) .6px,transparent .6px);background-size:18px 18px}
+.spread-niche text{font:10px 'DM Sans',sans-serif;fill:var(--muted);paint-order:stroke;stroke:var(--frame);stroke-width:4px;stroke-linejoin:round}.spread-niche[data-active=true] text{fill:var(--fg)}
+.spread-post text{font:9px 'Space Mono',monospace;fill:var(--muted);paint-order:stroke;stroke:var(--frame);stroke-width:3px}
+.spread-post .spread-source-label{font:700 13px "Space Mono",monospace;fill:var(--spread-color)}
+.spread-post .spread-brand-fallback{font:700 15px "DM Sans",sans-serif;fill:var(--fg);stroke:none}
+.spread-initial{font:6px 'DM Sans',sans-serif;fill:var(--muted);pointer-events:none}
+.spread-person [role=button]{cursor:pointer}.spread-person [role=button]:focus-visible{outline:none;stroke:var(--fg);stroke-width:2.5}
+.spread-share{font:9px 'Space Mono',monospace!important;fill:var(--muted)!important}
+.spread-popup{position:absolute;z-index:5;width:220px;max-width:calc(100% - 36px);max-height:calc(100% - 36px);overflow:auto;display:flex;align-items:flex-start;gap:10px;padding:13px;border:1px solid color-mix(in srgb,var(--spread-color) 35%,var(--line));border-radius:12px;background:color-mix(in srgb,var(--frame) 94%,transparent);backdrop-filter:blur(12px);box-shadow:0 8px 24px #0002;font-size:11px;pointer-events:auto}
+.spread-popup img,.spread-photo-fallback{width:30px;height:30px;object-fit:cover;border-radius:50%;flex-shrink:0;background:var(--soft)}
+.spread-photo-fallback{display:grid;place-items:center;color:var(--fg);font-size:13px}
+.spread-popup-copy{display:flex;flex-direction:column;gap:4px;min-width:0}
+.spread-popup strong{font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spread-popup a{color:var(--muted);text-decoration:none;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spread-popup-action{display:flex;align-items:center;gap:5px;color:var(--spread-color);margin-top:5px;font-size:10px}
+.spread-popup-action small{color:var(--muted);font-size:9px}
+.spread-popup-niche{font-size:9px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
+@media(max-width:760px){.spread-popup{width:200px;padding:11px}.spread-popup img,.spread-photo-fallback{width:26px;height:26px}}

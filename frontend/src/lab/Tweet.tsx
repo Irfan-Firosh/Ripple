@@ -3,9 +3,9 @@ import { shipIntent } from '../flow/flowApi';
 import { ClientTweetCard } from '@/registry/magicui/client-tweet-card';
 import { LabDraftVideo } from './LabDraftVideo';
 import './lab-media.css';
-import { BarChart3, Heart, MessageCircle, Repeat2, Send } from 'lucide-react';
+import { BarChart3, Heart, MessageCircle, Repeat2, Send, Trophy } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { countsAt, viewsAt, type LabBrand, type LabEvent, type LabRun, type Signal } from './labData';
+import { finalCounts, countsAt, viewsAt, type LabBrand, type LabEvent, type LabRun, type Signal } from './labData';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const initials = (name: string) => (name.replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).map(w => w[0]).join('') || '?').slice(0, 2).toUpperCase();
@@ -40,9 +40,11 @@ export function Tweet({ label, brand, draft, run, tick, finished, winner }: Prop
   // While the replay plays, counters follow the replayed run; once it ends they settle on the median outcome.
   const live = run ? countsAt(run, undefined, tick) : { like: 0, repost: 0, reply: 0, quote: 0 };
   const median = run?.signals;
-  const counts = finished && median ? { like: median.like.p50, repost: median.repost.p50, reply: median.reply.p50, quote: median.quote.p50 } : live;
-  const views = finished && run?.views ? run.views.p50 : run ? viewsAt(run, tick) : 0;
-  const people = (run?.events ?? []).filter(e => e.tick <= tick);
+  const final = run && finished && median ? finalCounts(run) : null;
+  const counts = final ? { like: final.like, repost: final.repost, reply: final.reply, quote: final.quote } : live;
+  const views = final && run?.views ? final.views : run ? viewsAt(run, tick) : 0;
+  // Twins first, then the real followers a linear projection adds, so likes/reposts show many people, not a few.
+  const people = [...(run?.events ?? []), ...(run?.projected ?? [])].filter(e => e.tick <= tick).sort((x, y) => x.tick - y.tick);
   const likers = people.filter(e => e.signal === 'like');
   const reposters = people.filter(e => e.signal === 'repost' || e.signal === 'quote');
   const latest = [...people].reverse().slice(0, 4);
@@ -52,9 +54,9 @@ export function Tweet({ label, brand, draft, run, tick, finished, winner }: Prop
     return key === 'views' ? <span {...common}>{icon}<Count value={value} /></span> : <button type="button" onClick={() => setView(key === 'replies' ? 'comments' : key as ReactionView)} {...common}>{icon}<Count value={value} /></button>;
   };
   return <section className="lab-column">
-    <div className="lab-column-head"><span className={`lab-draft-tag lab-draft-${label}`}>Draft {label}</span>{winner && <span className="lab-winner-tag">Winner</span>}
+    <div className="lab-column-head"><span className={`lab-draft-tag lab-draft-${label}`}>Draft {label}</span>{winner && <span className="lab-winner-tag"><Trophy size={13} aria-hidden="true" />Winner</span>}
       <a className="lab-share" href={shipIntent(draft)} target="_blank" rel="noopener noreferrer" aria-label={`Share draft ${label} on X`}><Send size={12} />Share on X</a></div>
-    <ClientTweetCard className="lab-tweet" label={`Draft ${label}`} busy={scoring} draft={{ author: { name: brand.name, handle: brand.handle, avatar: brand.avatar }, text: draft, verified: brand.verified }} footer={
+    <ClientTweetCard className="lab-tweet" label={`Draft ${label}`} scrollable busy={scoring} draft={{ author: { name: brand.name, handle: brand.handle, avatar: brand.avatar }, text: draft, verified: brand.verified }} footer={
         <footer className="lab-metrics" aria-live="polite">
           {metric('replies', <MessageCircle size={17} />, counts.reply, median ? `Likely ${median.reply.p10}–${median.reply.p90}` : 'Replies')}
           {metric('reposts', <Repeat2 size={17} />, counts.repost + counts.quote, median ? `Reposts ${median.repost.p10}–${median.repost.p90}, quotes ${median.quote.p10}–${median.quote.p90}` : 'Reposts and quotes')}
@@ -72,7 +74,6 @@ export function Tweet({ label, brand, draft, run, tick, finished, winner }: Prop
       {latest.map((e: LabEvent) => <li key={`${e.userId}:${e.signal}`} className="lab-activity-row">
         <Avatar src={e.avatar} name={e.name || e.handle} size={20} /><span><b>@{e.handle}</b> {VERB[e.signal]}</span>
       </li>)}
-      {run && finished && run.projection?.mode === 'linear' && <li className="lab-activity-row lab-outside">Projected to {run.projection.audience.toLocaleString()} followers from {run.projection.simulated} simulated (×{Math.round(run.projection.factor).toLocaleString()})</li>}
       {run && finished && run.projection?.mode !== 'linear' && run.outsideShare > 0 && <li className="lab-activity-row lab-outside">{Math.round(run.outsideShare * 100)}% of engagement came from reposts reaching people beyond @{brand.handle}'s followers</li>}
     </ul>
     <LabReactions draft={label} handle={brand.handle} run={run} tick={tick} view={view} onView={setView} />

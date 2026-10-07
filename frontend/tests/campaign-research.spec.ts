@@ -45,7 +45,9 @@ test('Campaign shows owned drafts, live Exa results and a brief-grounded rationa
   const activity = page.getByRole('region', { name: 'Campaign activity' });
   await expect(activity.getByRole('button', { name: /Launch one/ })).toHaveAttribute('aria-current', 'true');
   await expect(activity.getByRole('button', { name: /Launch two/ })).toBeVisible();
-  await expect(activity.getByRole('button')).toHaveCount(2);
+  await expect(activity.getByRole('button')).toHaveCount(3);
+  await expect(activity.getByRole('heading', { name: 'Campaign history' })).toBeInViewport();
+  await expect(activity.getByText('Raycast launch announcement')).toBeInViewport();
   await expect(activity.getByText('Lead with faster development.')).toBeVisible();
   await expect(activity.getByText('For Developer tools · 30 audience profiles · 60% of your audience.')).toBeVisible();
   await expect(activity.getByText('Raycast launch announcement')).toBeVisible();

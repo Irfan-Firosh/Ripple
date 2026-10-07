@@ -9,8 +9,9 @@ import logging
 import time
 from typing import Callable
 
+from .config import WORKER_VERSION
 from .settings import load_settings
-from .stdb import StdbError
+from .stdb import StdbError, sql_str
 
 log = logging.getLogger(__name__)
 LIVE_FOLLOWERS = 300
@@ -19,6 +20,7 @@ LIVE_TIMELINES = 40
 LIVE_TWINS = 60
 LIVE_WORKERS = 8
 MAX_ERROR = 300
+REPLAY_STEP_SECONDS = 4.0  # re-onboarding a ready brand: each stage lands this long after the last
 
 
 def run_id_for(row: dict) -> str:
@@ -62,16 +64,51 @@ def _onboard(stdb, client, row: dict, ingest: Callable, build: Callable, edges: 
     return summary
 
 
+def _demo_on(stdb) -> bool:
+    """The /ops demo switch (campaign replay): only then does onboarding reuse a finished build."""
+    rows = stdb.sql("SELECT * FROM demo_settings WHERE key = 'global'")
+    return bool(rows and rows[0].get("campaign_replay"))
+
+
+def _ready_build(stdb, handle: str) -> dict | None:
+    """With the demo switch on, the newest finished build of this handle whose brand still has twins, or None."""
+    if not _demo_on(stdb):
+        return None
+    done = [r for r in stdb.sql(f"SELECT * FROM onboarding WHERE handle = {sql_str(handle)}")
+            if r.get("status") == "ready" and r.get("brand_user_id") and r.get("ingestion_run_id") and r.get("twin_run_id")]
+    for prior in sorted(done, key=lambda r: int(r["onboarding_id"]), reverse=True):
+        if stdb.sql(f"SELECT user_id FROM twin_audience WHERE brand_user_id = {sql_str(prior['brand_user_id'])}"):
+            return prior
+    return None
+
+
+def _replay(stdb, row: dict, prior: dict, sleep: Callable[[float], None]) -> None:
+    """A brand that is already built reuses its audience: the form steps through every stage in seconds,
+    pointing at the finished scrape and twin runs, instead of reading X again."""
+    oid, ids = row["onboarding_id"], (prior["brand_user_id"], prior["ingestion_run_id"], prior["twin_run_id"])
+    log.info("onboarding %s (@%s): reusing build %s", oid, row["handle"], prior["onboarding_id"])
+    for stage in ("scraping", "twins", "graph"):
+        stdb.call("set_onboarding_progress", oid, stage, *ids)
+        sleep(REPLAY_STEP_SECONDS)
+    stdb.call("set_onboarding_progress", oid, "ready", *ids)
+
+
 def run_pending_onboardings(stdb, client, *, ingest: Callable, build: Callable, edges: Callable,
-                            after_ready: Callable[[dict, dict], None] | None = None, archive: Callable | None = None) -> int:
+                            after_ready: Callable[[dict, dict], None] | None = None, archive: Callable | None = None,
+                            sleep: Callable[[float], None] = time.sleep) -> int:
     handled = 0
     for row in stdb.sql("SELECT * FROM onboarding WHERE status = 'queued'"):
         oid = row["onboarding_id"]
         try:
-            stdb.call("claim_onboarding", oid)
+            stdb.call("claim_onboarding", oid, WORKER_VERSION)
         except StdbError:
             continue  # another worker took it
         try:
+            prior = _ready_build(stdb, row["handle"])
+            if prior:
+                _replay(stdb, row, prior, sleep)
+                handled += 1
+                continue
             summary = _onboard(stdb, client, row, ingest, build, edges, archive)
         except Exception as exc:  # noqa: BLE001 - every failure is shown to the user on the form
             log.exception("onboarding %s failed", oid)

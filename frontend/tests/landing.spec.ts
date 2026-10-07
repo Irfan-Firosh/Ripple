@@ -14,11 +14,7 @@ test("themes switch the supplied artwork and video together and persist", async 
   await expect(page.locator(".hero-rotating-word")).toHaveText("reach.", {
     timeout: 5000,
   });
-  expect(
-    await page
-      .locator(".hero-rotating-word")
-      .evaluate((el) => getComputedStyle(el).textDecorationLine),
-  ).toBe("underline");
+  await expect(page.locator(".hero-rotating-word")).toHaveCSS("text-decoration-line", "underline");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.locator("video")).toHaveAttribute(
     "src",
@@ -46,7 +42,7 @@ test("themes switch the supplied artwork and video together and persist", async 
   expect(errors).toEqual([]);
 });
 
-test("real video decodes, plays, pauses, seeks and restarts", async ({
+test("real video plays and pauses without a timeline bar", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -58,7 +54,11 @@ test("real video decodes, plays, pauses, seeks and restarts", async ({
         duration: (v as HTMLVideoElement).duration,
       })),
     )
-    .toMatchObject({ duration: 28 });
+    .toMatchObject({ ready: 4 });
+  expect(await page.locator("video").evaluate(video => (video as HTMLVideoElement).duration)).toBeGreaterThan(30);
+  await expect(page.getByRole("slider", { name: "Demo video progress" })).toHaveCount(0);
+  await expect(page.locator(".player-controls")).toHaveCount(0);
+  await expect(page.locator("video")).not.toHaveAttribute("controls", "");
   await expect(page.getByRole("button", { name: "Play demo" })).toBeVisible();
   await page.getByRole("button", { name: "Play demo" }).click();
   await expect(page.getByRole("button", { name: "Pause demo" })).toBeVisible();
@@ -74,22 +74,8 @@ test("real video decodes, plays, pauses, seeks and restarts", async ({
     .locator("video")
     .evaluate((v) => (v as HTMLVideoElement).paused);
   expect(paused).toBe(true);
-  await page.getByRole("slider", { name: "Demo video progress" }).fill("19");
-  await expect
-    .poll(() =>
-      page
-        .locator("video")
-        .evaluate((v) => Math.floor((v as HTMLVideoElement).currentTime)),
-    )
-    .toBe(19);
-  await page.getByRole("button", { name: "Restart demo" }).click();
-  await expect
-    .poll(() =>
-      page
-        .locator("video")
-        .evaluate((v) => (v as HTMLVideoElement).currentTime),
-    )
-    .toBeLessThan(3);
+  await expect(page.getByRole("button", { name: "Restart demo" })).toHaveCount(0);
+  expect(await page.locator("video").evaluate(video => (video as HTMLVideoElement).loop)).toBe(true);
 });
 
 test("reduced motion stops background animation and automatic playback", async ({
@@ -139,25 +125,25 @@ test("mobile navigation works without horizontal overflow", async ({
   ).toBe(true);
 });
 
-test("walkthrough uses a saved real audience and preserved Lab screens", async ({ page }) => {
-  test.setTimeout(90000);
-  await page.goto('/');
-  const snapshot = await page.evaluate(async () => {
-    const { listHistory } = await import('/src/history/historyData.ts');
-    const versions = await listHistory('audience', new AbortController().signal);
-    return versions.find(entry => entry.brand === 'spacetimedb')?.id;
-  });
-  expect(snapshot).toBeTruthy();
-  await page.goto(`/?film=1&theme=light&brand=spacetimedb&snapshot=${encodeURIComponent(snapshot!)}`);
-  await page.waitForFunction(() => typeof window.__setDemoTime === "function");
-  await expect(page.locator(".nt-stage>canvas")).toBeVisible({ timeout: 45000 });
-  await expect(page.getByLabel("Niche index")).toBeVisible();
-  expect(Number(await page.locator(".nt-stage>canvas").getAttribute("data-node-count"))).toBeGreaterThan(50);
-  await page.evaluate(() => window.__setDemoTime(12));
-  await expect(page.locator(".lab-post-column, .lab-column")).toHaveCount(2, { timeout: 45000 });
-  await expect(page.locator(".lab-summary, .lab-verdict").first()).toContainText(/A wins|B wins|Too close to call/);
-  await expect(page.locator(".lab-post-column article, .lab-column>article")).toHaveCount(2);
-  await expect(page.locator("body")).not.toContainText(/Illustrative data|counterfactual|New comparison queued/);
+test("animated feature illustrations, short FAQ and creator credit work in both themes", async ({ page }) => {
+  await page.goto('/#how-it-works');
+  const pictures = page.locator('.feature-visual svg');
+  await expect(pictures).toHaveCount(3);
+  await expect(page.locator('.feature-visual img')).toHaveCount(0);
+  await expect(page.getByRole('img', { name: 'Connected audience interests' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'An idea becomes an image and a video' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Two drafts compared through engagement signals' })).toBeVisible();
+  const faq = page.getByRole('region', { name: 'Frequently asked questions' });
+  await faq.locator('summary').filter({ hasText: 'Can Ripple create campaign media?' }).click();
+  await expect(faq.getByText('Yes. Generate campaign ideas, images and videos, or bring your own drafts.')).toBeVisible();
+  await expect(page.locator('footer.ripple-footer')).toContainText('Made with ♥ by Irfan & Ansh');
+  await expect(page.locator('a[href^="/research/"]')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Switch to light mode' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('.feature-card-float').first()).toHaveCSS('animation-name', 'none');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
 test("public planning links resolve", async ({ request }) => {
@@ -196,6 +182,6 @@ test("Get started opens the separate responsive auth page", async ({ page }) => 
   await page.getByRole("link", { name: "Back to Ripple", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await page.goto("/auth/sign-in");
-  await expect(page).toHaveTitle("Sign in — Ripple");
+  await expect(page).toHaveTitle("Ripple");
   await expect(page.locator(".auth-page")).toBeVisible();
 });

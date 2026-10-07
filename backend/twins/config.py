@@ -43,3 +43,6 @@ def load_stdb_token(cli_toml: Path = CLI_TOML, environ: Mapping[str, str] = os.e
     if not value:
         raise MissingSecret("no SpacetimeDB token: run `spacetime login` or set SPACETIME_TOKEN")
     return value
+
+# Every worker claim carries this; the database refuses older workers (e.g. a stale machine sharing the login).
+WORKER_VERSION = 2

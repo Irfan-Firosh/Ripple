@@ -1,25 +1,31 @@
 import { RippleLogo } from '../components/RippleLogo';
+import { WorkspaceAccount } from '../components/WorkspaceAccount';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, Moon, Plus, Sun } from 'lucide-react';
 import { initialTheme } from '../App';
 import { RippleWorkspaceNav } from '../components/ui/floating-dock';
 import { audienceSegments } from '../creative/model';
 import { useCreative } from '../creative/useCreative';
-import { brandUserId, call, recentPosts, requestDraftCopy, requestDraftVideo, testInLab, tweetText, type BrandPost } from './flowApi';
+import { brandUserId, call, campaignReplayOn, recentPosts, requestDraftCopy, requestDraftVideo, testInLab, tweetText, type BrandPost } from './flowApi';
 import { ImportStep, LaunchStep, StartChoice, TestStep } from './FlowSteps';
 import { DraftsStep, type DraftCopy } from './FlowDrafts';
 import { useFlowData } from './useFlowData';
 import { CampaignResearch } from './CampaignResearch';
 import './flow.css';
+import { DEFAULT_BRAND, SHOWCASE_CAMPAIGN, SHOWCASE_LAB_HREF, STATIC_SNAPSHOT } from '../snapshot';
 
 const params = () => new URLSearchParams(location.search);
 const STEPS = ['Audience', 'Concepts', 'Test', 'Launch'] as const;
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export default function CampaignFlowPage() {
-  const brand = (params().get('brand') || 'raycast').toLowerCase().replace(/^@/, '');
+const REPLAY_PAUSE_MS = 4000; // long enough to see the campaign start, well under ten seconds
+const REPLAY_VIDEO_MS = 5000; // replayed videos show a short rendering state first
+const REPLAY_TEST_MS = 3000; // a replayed campaign's A/B test opens its source's finished results after this
+
+export default function CampaignFlowPage({ preview = false }: { preview?: boolean }) {
+  const brand = (params().get('brand') || DEFAULT_BRAND).toLowerCase().replace(/^@/, '');
   const readOnly = params().get('view') === '1'; // Shared chat campaigns are operated by their Fetch identity.
-  const [campaignId, setCampaignId] = useState<string | null>(params().get('id'));
+  const [campaignId, setCampaignId] = useState<string | null>(params().get('id') ?? SHOWCASE_CAMPAIGN);
   const [mode, setMode] = useState<'choose' | 'import'>(params().get('start') === 'import' ? 'import' : 'choose');
   const [theme, setTheme] = useState(initialTheme);
   const [brandId, setBrandId] = useState('');
@@ -28,7 +34,10 @@ export default function CampaignFlowPage() {
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   const [post, setPost] = useState('');
+  const [videoHoldUntil, setVideoHoldUntil] = useState(0);
   const creative = useCreative(brandId, campaignId);
+  // The Lab is where results live: fetch its code while the campaign is on screen so the jump is instant.
+  useEffect(() => { void import('../lab/LabPage'); }, []);
   const { flow, video, drafts, copies, experiment } = useFlowData(campaignId, revision);
   const requested = useRef(false);
   const autoStart = useRef(params().get('start') === 'generate'); // "Generate" on the map is one click
@@ -36,7 +45,7 @@ export default function CampaignFlowPage() {
   const [retryTick, setRetryTick] = useState(0);
   const [waitingAudience, setWaitingAudience] = useState(false);
 
-  useEffect(() => { document.title = 'Campaign · Ripple'; }, []);
+  useEffect(() => { document.title = 'Ripple'; }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; try { localStorage.setItem('ripple-theme', theme); } catch { /* optional */ } }, [theme]);
   useEffect(() => {
     const abort = new AbortController();
@@ -50,7 +59,7 @@ export default function CampaignFlowPage() {
   }, [brand, campaignId]);
 
   const act = async (fn: () => Promise<void>) => {
-    if (readOnly) return;
+    if (preview || readOnly) return;
     setBusy(true); setError('');
     try { await fn(); setRevision(r => r + 1); } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
   };
@@ -65,6 +74,15 @@ export default function CampaignFlowPage() {
       return;
     }
     setWaitingAudience(false);
+    if (await campaignReplayOn()) { // demo: reuse the brand's last finished campaign, ready in seconds
+      const id = crypto.randomUUID();
+      await new Promise(resolve => window.setTimeout(resolve, REPLAY_PAUSE_MS));
+      await call('replay_campaign', [id, brandId]);
+      setVideoHoldUntil(Date.now() + REPLAY_VIDEO_MS);
+      requested.current = false;
+      setCampaignId(id);
+      return;
+    }
     const goal = `Grow @${brand}'s reach with ${top.label.toLowerCase()} on X`;
     const id = crypto.randomUUID();
     await creative.run(conn => conn.reducers.createCampaign({ campaignId: id, brandUserId: brandId, name: `@${brand} · ${top.label}`,
@@ -81,7 +99,7 @@ export default function CampaignFlowPage() {
   });
 
   useEffect(() => {
-    if (!autoStart.current || campaignId || !brandId || !creative.ready || busy || Date.now() < nextTry.current) return;
+    if (preview || !autoStart.current || campaignId || !brandId || !creative.ready || busy || Date.now() < nextTry.current) return;
     autoStart.current = false;
     void generate();
   }, [brandId, creative.ready, campaignId, busy, retryTick]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -89,7 +107,7 @@ export default function CampaignFlowPage() {
   // Once the brief lands, ask for the two concepts (once).
   const brief = creative.briefs[0];
   useEffect(() => {
-    if (readOnly || !brief || requested.current || creative.variants.length || creative.jobs.some(j => j.kind === 'generate')) return;
+    if (preview || readOnly || !brief || requested.current || creative.variants.length || creative.jobs.some(j => j.kind === 'generate')) return;
     requested.current = true;
     void creative.run(conn => conn.reducers.requestCreative({ campaignId: brief.campaignId, kind: 'generate', targetId: brief.briefId }))
       .catch(e => setError(errorText(e)));
@@ -109,7 +127,7 @@ export default function CampaignFlowPage() {
   const copyB: DraftCopy | null = flow?.source === 'import' ? { text: flow.draft_b } : generatedCopy('B', 1);
   const askedCopy = useRef('');
   useEffect(() => {
-    if (readOnly || !campaignId || flow?.source !== 'generate' || ready.length < 2) return;
+    if (preview || readOnly || !campaignId || flow?.source !== 'generate' || ready.length < 2) return;
     const key = `${campaignId}:${ready[0].variantId}:${ready[1].variantId}:${copies.A?.status}:${copies.B?.status}`;
     if (askedCopy.current === key) return;
     const need = (['A', 'B'] as const).filter(d => !copies[d] || copies[d]?.status === 'failed');
@@ -122,7 +140,7 @@ export default function CampaignFlowPage() {
   // Every draft gets its own video, written from its own copy (requested once; edits make new versions).
   const askedFor = useRef('');
   useEffect(() => {
-    if (readOnly || !campaignId || !flow || !copyA || !copyB || copyA.writing || copyB.writing || flow.stage === 'shipped') return;
+    if (preview || readOnly || !campaignId || !flow || !copyA || !copyB || copyA.writing || copyB.writing || flow.stage === 'shipped') return;
     const key = `${campaignId}:${drafts.A ? 1 : 0}${drafts.B ? 1 : 0}`;
     if (drafts.A && drafts.B) return;
     if (askedFor.current === key) return;
@@ -135,6 +153,11 @@ export default function CampaignFlowPage() {
 
   const test = () => act(async () => {
     if (!copyA || !copyB) return;
+    if (await campaignReplayOn()) { // demo: point at the source campaign's finished Lab test
+      await new Promise(resolve => window.setTimeout(resolve, REPLAY_TEST_MS));
+      const reused = await call('replay_test', [campaignId]).then(() => true, () => false);
+      if (reused) return;
+    }
     const id = await testInLab(brand, `@${brand} campaign`, copyA.text, copyB.text);
     for (const d of ['A', 'B'] as const) {
       const v = drafts[d];
@@ -153,7 +176,7 @@ export default function CampaignFlowPage() {
   const attached = useRef(new Set<string>());
   useEffect(() => {
     const exp = Number(flow?.experiment_id ?? 0);
-    if (readOnly || !exp) return;
+    if (preview || readOnly || !exp) return;
     for (const d of ['A', 'B'] as const) {
       const v = drafts[d];
       const key = `${exp}:${d}:${v?.video_id}`;
@@ -165,7 +188,7 @@ export default function CampaignFlowPage() {
   const winnerVideo = flow?.video_id ? [drafts.A, drafts.B, video].find(v => v?.video_id === flow.video_id) ?? null : null;
 
   const stage = flow?.stage ?? null;
-  const step = !campaignId ? 1 : stage === 'testing' ? 2 : stage === 'approved' || stage === 'shipped' ? 3 : 1;
+  const step = preview || !campaignId ? 1 : stage === 'testing' ? 2 : stage === 'approved' || stage === 'shipped' ? 3 : 1;
   const waiting = flow?.source === 'generate' && (!copyA || !copyB)
     ? (creative.briefs.length ? 'Grok is painting two concepts…' : 'Reading your audience and writing the brief…') : '';
 
@@ -173,8 +196,8 @@ export default function CampaignFlowPage() {
     <header className="flow-header workspace-header">
       <RippleLogo />
       <RippleWorkspaceNav brand={brand} />
-      <button className="flow-theme" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button>
+      <div className="workspace-header-controls"><button className="flow-theme" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button><WorkspaceAccount /></div>
     </header>
     <section className="flow-content">
       <section className="flow-hero" aria-labelledby="campaign-title">
@@ -185,24 +208,23 @@ export default function CampaignFlowPage() {
           <p>From your audience to a campaign worth sharing.</p>
           <a className="flow-hero-link" href={`/dashboard?brand=${encodeURIComponent(brand)}`}>Explore your audience <ArrowRight size={14} /></a>
         </div>
-        {campaignId && !readOnly && <button className="flow-secondary flow-new" disabled={busy} onClick={() => { setCampaignId(null); setMode('choose'); setError(''); requested.current = false; }}><Plus size={15} />New campaign</button>}
+        {campaignId && !STATIC_SNAPSHOT && !readOnly && <button className="flow-secondary flow-new" disabled={busy} onClick={() => { setCampaignId(null); setMode('choose'); setError(''); requested.current = false; }}><Plus size={15} />New campaign</button>}
       </section>
-      {!campaignId && <StartChoice busy={busy || readOnly} onGenerate={() => void generate()} onImport={() => setMode('import')} />}
+      {!campaignId && <StartChoice brand={brand} busy={busy || readOnly} onGenerate={() => void generate()} onImport={() => setMode('import')} />}
       <div className="flow-workspace"><div className="flow-workspace-main">
       <ol className="flow-steps" aria-label="Campaign workflow">{STEPS.map((label, i) => <li key={label} data-state={i < step ? 'done' : i === step ? 'active' : 'next'}>
         {i < step ? <Check size={13} /> : <span>{i + 1}</span>}{label}</li>)}</ol>
       {readOnly && <p className="flow-waiting">Continue testing, editing, and approving this campaign in your Ripple chat.</p>}
       {error && <p className="flow-error" role="alert">{error}</p>}
       {!campaignId && (busy || waitingAudience) && <><h1>Starting your campaign…</h1><p className="flow-waiting" role="status">Reading @{brand}'s audience.</p></>}
-      {!campaignId && !busy && !waitingAudience && (mode === 'choose'
-        ? <div className="flow-start-note"><h2>Your next campaign starts here.</h2><p>Generate from your audience or bring two drafts.</p></div>
-        : <><div className="flow-section-heading"><h2>Bring your drafts.</h2><button className="flow-text-button" onClick={() => setMode('choose')}><ArrowLeft size={14} />Back</button></div><ImportStep brand={brand} posts={posts} busy={busy} onSubmit={importDrafts} /></>)}
+      {!campaignId && !busy && !waitingAudience && mode === 'import' && <><div className="flow-section-heading"><h2>Bring your drafts.</h2><button className="flow-text-button" onClick={() => setMode('choose')}><ArrowLeft size={14} />Back</button></div><ImportStep brand={brand} posts={posts} busy={busy} onSubmit={importDrafts} /></>}
       {campaignId && step === 1 && <><h1>Your two drafts.</h1>
-        <DraftsStep brand={brand} brandId={brandId} campaignId={campaignId} a={copyA} b={copyB} videos={drafts} busy={busy || readOnly} readOnly={readOnly} waiting={waiting} onTest={() => void test()} onSaved={() => setRevision(r => r + 1)} /></>}
+        <DraftsStep brand={brand} brandId={brandId} campaignId={campaignId} a={copyA} b={copyB} videos={drafts} busy={busy || readOnly} readOnly={readOnly} waiting={waiting} preview={preview} onTest={() => void test()} onSaved={() => setRevision(r => r + 1)} videoHoldUntil={videoHoldUntil} /></>}
       {campaignId && step === 2 && <><h1>{experiment?.status === 'done' ? 'Results are in.' : 'Testing on your audience.'}</h1>
-        <TestStep experiment={experiment} labHref={`/lab?brand=${brand}&exp=${flow?.experiment_id}`} busy={busy || readOnly} onApprove={d => void approve(d)} /></>}
+        <TestStep experiment={experiment} labHref={`/lab?brand=${brand}&exp=${flow?.experiment_id}&from=campaign`} busy={busy || readOnly} onApprove={d => void approve(d)} /></>}
       {campaignId && step === 3 && <><h1>{stage === 'shipped' ? 'Shipped.' : 'Ready to ship.'}</h1>
-        <LaunchStep brand={brand} brandId={brandId} text={post || flow?.winner_text || ''} onText={setPost} video={winnerVideo ?? video} shipped={stage === 'shipped'} busy={busy || readOnly} onShip={ship} /></>}
+        <LaunchStep brand={brand} brandId={brandId} text={post || flow?.winner_text || ''} onText={setPost} video={winnerVideo ?? video} shipped={stage === 'shipped'} busy={busy || readOnly} onShip={ship}
+          labHref={STATIC_SNAPSHOT ? SHOWCASE_LAB_HREF : Number(flow?.experiment_id ?? 0) > 0 ? `/lab?brand=${brand}&exp=${flow?.experiment_id}&from=campaign` : undefined} /></>}
       </div>
       <CampaignResearch brand={brand} campaignId={campaignId} flow={flow} campaigns={creative.campaigns ?? []} brief={brief} jobs={creative.jobs}
         onSelect={id => { requested.current = false; setCampaignId(id); setError(''); }} />

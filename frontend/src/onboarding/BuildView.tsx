@@ -34,14 +34,14 @@ export function BuildView({ snapshot, row, theme, onRetry }: { snapshot: BuildSn
   best.current = row.status === 'failed' ? best.current : Math.max(best.current, buildProgress(snapshot, row, twins));
   const percent = Math.round(best.current * 100);
   return <div className="on-build">
-    <div className="on-build-agent"><OnboardingAvatar size={96} theme={theme} working={loading} /></div>
+    <div className="on-build-agent"><OnboardingAvatar size={64} theme={theme} working={loading} /></div>
     <ul className="on-stages" aria-label="Build stages">
       {['Followers', 'Analyzing your audience', 'Audience map'].map((label, index) => <li key={label} data-complete={completed[index]} aria-busy={loading && index === active}>
         <span className="on-stage-dot" aria-label={completed[index] ? 'Complete' : loading && index === active ? 'In progress' : 'Waiting'} /><span>{label}</span>
         <span className="on-stage-loading">{loading && index === active && <ThinkingOrb state="breathing" size={32} theme={theme} paused={Boolean(reduced)} aria-label="Building your audience" />}</span>
       </li>)}
     </ul>
-    <div className="on-progress" role="progressbar" aria-label="Build progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} data-done={row.status === 'ready'} data-failed={row.status === 'failed'}>
+    <div className="on-build-progress" role="progressbar" aria-label="Build progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} data-done={row.status === 'ready'} data-failed={row.status === 'failed'}>
       <span className="on-progress-track"><i style={{ width: `${percent}%` }} /></span><b>{row.status === 'ready' ? 'Done' : `${percent}%`}</b>
     </div>
     <div className="on-avatars" aria-label="Discovered followers">{snapshot?.avatars.map(profile => <motion.img key={profile.user_id} src={profile.profile_image_url ?? ''} alt={`@${profile.username}`} referrerPolicy="no-referrer" width={28} height={28}

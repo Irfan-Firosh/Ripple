@@ -45,10 +45,17 @@ html[data-theme="light"] .on-error{color:#b32424!important}
 @media(max-width:700px){.on-theme{right:24px}.on-heading h1{font-size:28px}}
 
 .on-home{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);color:var(--muted);font-size:12px;text-decoration:none}
-.on-progress{display:flex;align-items:center;gap:10px;width:min(320px,100%);margin:4px auto 0;font:11px "Space Mono",monospace;color:var(--muted)}
+.on-build-progress{display:flex;align-items:center;gap:10px;width:100%;margin:24px 0 0;font:11px "Space Mono",monospace;color:var(--muted);position:static}
 .on-progress-track{flex:1;height:4px;border-radius:999px;background:var(--line,#8883);overflow:hidden}
 .on-progress-track i{display:block;height:100%;border-radius:inherit;background:var(--accent,#d6a64a);transition:width .4s ease}
-.on-progress b{font-weight:400;min-width:36px;text-align:right}
-.on-progress[data-done=true] b{color:var(--accent,#d6a64a)}
-.on-progress[data-failed=true] .on-progress-track i{background:#dc7777}
+.on-build-progress b{font-weight:400;min-width:36px;text-align:right}
+.on-build-progress[data-done=true] b{color:var(--accent,#d6a64a)}
+.on-build-progress[data-failed=true] .on-progress-track i{background:#dc7777}
 @media(prefers-reduced-motion:reduce){.on-progress-track i{transition:none}}
+.on-build{padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--panel);width:100%}
+.on-build-agent{justify-content:center;margin-bottom:24px}
+.on-stages{gap:0;position:relative}
+.on-stages li{position:relative;padding:12px 0;min-height:56px;font-size:13px}
+.on-stages li:not(:last-child)::after{content:'';position:absolute;left:7px;top:calc(50% + 10px);bottom:-18px;width:1px;background:var(--line)}
+.on-stage-dot{position:relative;z-index:1;background:var(--panel)}
+.on-build .on-primary{width:100%}

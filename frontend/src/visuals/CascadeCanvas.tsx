@@ -4,6 +4,7 @@ import type { CascadeNetwork, Vec3 } from './liveNetwork';
 import { createNodeSprite, createClusterBadge, loadPortraits } from './nodeSprites';
 import { buildPlanarLayout } from './networkLayout2D';
 import { buildClusterEdges } from './clusterEdges';
+import { percentShares } from './communityShares';
 const GOLDEN_ANGLE=2.399963;
 
 type Props={audienceOnly?:boolean;network:CascadeNetwork;view:'2d'|'3d';elapsed:number;theme:'dark'|'light';selected:number|null;focus:number|null;zoomStep:number;reset:number;onSelect:(id:number)=>void;onPrepared:(ready:boolean)=>void;replay?:{run:SimRunState;tick:number}|null};
@@ -54,7 +55,8 @@ export function CascadeCanvas(props:Props) {
   },[network]);
   useEffect(()=>{
     let cancelled=false;props.onPrepared(false);sprites.current=new Map();revision.current++;
-    badges.current=network.communities.map(c=>createClusterBadge(c.name,c.size,c.color,props.theme));
+    const shares=percentShares(network.communities.map(community=>community.size));
+    badges.current=network.communities.map((community,index)=>createClusterBadge(community.name,shares[index],community.color,props.theme));
     glows.current=network.communities.map(community=>{
       const tile=document.createElement('canvas');tile.width=128;tile.height=128;
       const ctx=tile.getContext('2d')!,gradient=ctx.createRadialGradient(64,64,0,64,64,64);
@@ -186,7 +188,7 @@ export function CascadeCanvas(props:Props) {
   },[]);
   const reached=props.audienceOnly?network.nodes.length:network.arrivals.filter(a=>a.id!==network.sourceId&&a.at<=props.elapsed).length;
   const engagedCount=props.replay?network.nodes.filter(node=>{const sim=props.replay!.run.nodes.get(node.member.userId);return sim?.engagedTick!=null&&sim.engagedTick<=props.replay!.tick;}).length:undefined;
-  return <canvas ref={canvas} role="img" aria-label={props.view==='2d'?'Two-dimensional audience network. Drag to pan, scroll to zoom, or choose a niche to focus it.':'Three-dimensional audience network. Drag to orbit, scroll to zoom, or choose a niche to fly to it.'} tabIndex={0} data-view={props.view}
+  return <canvas ref={canvas} role="img" aria-label={props.view==='2d'?'Two-dimensional audience network. Drag to pan, scroll to zoom, or choose an interest to focus it.':'Three-dimensional audience network. Drag to orbit, scroll to zoom, or choose an interest to fly to it.'} tabIndex={0} data-view={props.view}
     data-source-node-count={props.audienceOnly?0:1} data-node-count={network.nodes.length} data-active-count={reached} data-focus-community={props.focus??'all'} data-complete={props.elapsed>=network.duration} data-run={props.replay?.run.runId} data-engaged-count={engagedCount}
     data-post-edge-count={clusterEdges.filter(edge=>edge.kind==='post').length} data-bridge-edge-count={clusterEdges.filter(edge=>edge.kind==='bridge').length}
     onPointerEnter={()=>{interaction.current.hovered=true;}}

@@ -720,6 +720,27 @@ const videoSettings = table({ name: 'video_settings', public: true }, {
 
 // Campaign video mode from /ops: generate (default), off (no videos), or reuse existing videos for every new draft
 // (reuseA for draft A, reuseB for draft B; an empty reuseB reuses A's video for both) - for demoing one product.
+// Demo switch from /ops: Generate replays the brand's last finished campaign (drafts, images, videos) in seconds.
+const demoSettings = table({ name: 'demo_settings', public: true }, {
+  key: t.string().primaryKey(),
+  campaignReplay: t.bool(),
+  updatedAt: t.timestamp(),
+});
+
+// Campaigns made by replay_campaign, and the finished campaign each one copies (so a replay never copies a replay).
+const campaignReplay = table({ name: 'campaign_replay', public: true }, {
+  campaignId: t.string().primaryKey(),
+  sourceCampaignId: t.string(),
+  createdAt: t.timestamp(),
+});
+
+// Where the landing page's "Open workspace" button leads, from /ops: home (default) or onboarding.
+const landingSettings = table({ name: 'landing_settings', public: true }, {
+  key: t.string().primaryKey(),
+  workspaceTarget: t.string(),
+  updatedAt: t.timestamp(),
+});
+
 const videoMode = table({ name: 'video_mode', public: true }, {
   key: t.string().primaryKey(),
   mode: t.string(),
@@ -795,6 +816,9 @@ const spacetimedb = schema({
   opsHidden,
   videoSettings,
   videoMode,
+  landingSettings,
+  demoSettings,
+  campaignReplay,
 });
 export default spacetimedb;
 
@@ -1354,40 +1378,70 @@ export const setSimProbs = spacetimedb.reducer(
 
 type Range = { min: number; max: number } | null;
 type Floors = { likeRate: number; ratio: Record<Signal, number> };
-type Projection = { scale: Record<Signal | 'view', number>; expected: Record<Signal, Range>; seeRate: number; viewsPerEngagement: number;
+type Projection = { scale: Record<Signal | 'view', number>; expected: Record<Signal, Range>; seeRate: number;
                     floors: Floors | null };
-// Linear floors: a real post never gets 0 replies or reposts at scale. Likes are a share of views (the brand's real
-// likes/views, else DEFAULT_LIKE_RATE); replies / reposts / quotes follow likes at the brand's real ratios (else these),
-// all weighted by how strongly the twins responded to this draft, with per-trial noise.
-const DEFAULT_LIKE_RATE = 0.01;
-const DEFAULT_RATIO: Record<Signal, number> = { like: 1, reply: 0.1, repost: 0.08, quote: 0.03 };
-const TYPICAL_P: Record<Signal, number> = { like: 0.08, repost: 0.02, reply: 0.02, quote: 0.005 };
+// Linear mode keeps real-world ratios. Likes are a share of views (the brand's real likes/views, else
+// DEFAULT_LIKE_RATE); reposts / replies / quotes are shares of likes (the brand's real ratios, else DEFAULT_RATIO).
+// Defaults: Metricool's 2025 X study (avg post: 2,711 impressions, 32.9 likes, 6.7 reposts, 2.6 replies; quotes ~1/3
+// of replies in its 2024 study). Each draft sits in a band around those rates, moved by how strongly the twins
+// responded to it (quality), so drafts differ but no ratio drifts more than ~2x from real life.
+const DEFAULT_LIKE_RATE = 0.012;
+const DEFAULT_RATIO: Record<Signal, number> = { like: 1, repost: 0.2, reply: 0.08, quote: 0.03 };
+const BAND_HI = 1.4; // a strong trial may reach 1.4x the expected rate, never more
+const QUALITY_POWER = 0.5; // likes move with the square root of the draft's pull, keeping like/view near real rates
+const LIKE_RATE_CEILING = 1.6; // no draft's likes exceed 1.6x the brand's real likes-per-view
+const REL_MIN = 0.5, REL_MAX = 1.25; // reposts / replies / quotes stay within 0.5-1.25x their real share of likes
+const VIRAL_CAP = 3; // views stay within 3x the brand's typical reach
+// What twins give an ordinary post (observed mean probabilities across Lab runs, Oct 2026): quality 1 = typical.
+const TYPICAL_P: Record<Signal, number> = { like: 0.02, repost: 0.005, reply: 0.004, quote: 0.0015 };
 const QUALITY_MIN = 0.4, QUALITY_MAX = 2.5;
 
-function draftQuality(p: Map<string, SignalP>): Record<Signal, number> {
-  const out = { like: 1, repost: 1, reply: 1, quote: 1 };
+type Quality = Record<Signal, number> & { total: number };
+// Per signal: the twins' mean probability vs a typical post. total: the draft's exact expected engagement (every
+// probability, plus the outside wave each repost/quote brings from the reposter's own followers) vs the same for a
+// typical post - the quantity that decides the Lab winner (expected_engagements_exact in simulate.py).
+function expectedEngagement(p: Map<string, SignalP>, followers: Map<string, number>, median: number,
+                            probe: (x: SignalP) => SignalP): number {
+  let inside = 0, spread = 0;
+  for (const [id, raw] of p) {
+    const x = probe(raw);
+    inside += SIGNALS.reduce((a, s) => a + x[s], 0);
+    spread += (x.repost + x.quote) * (followers.get(id) ?? median);
+  }
+  return inside + spread * REPOST_VIEW_RATE * OUT_OF_NETWORK * (inside / Math.max(1, p.size));
+}
+
+function draftQuality(p: Map<string, SignalP>, followers: Map<string, number>, median: number): Quality {
+  const out: Quality = { like: 1, repost: 1, reply: 1, quote: 1, total: 1 };
   if (!p.size) return out;
   for (const s of SIGNALS) {
     const mean = [...p.values()].reduce((a, x) => a + x[s], 0) / p.size;
     out[s] = Math.min(QUALITY_MAX, Math.max(QUALITY_MIN, mean / TYPICAL_P[s]));
   }
+  const draft = expectedEngagement(p, followers, median, x => x);
+  const typical = expectedEngagement(p, followers, median, () => TYPICAL_P);
+  out.total = Math.min(QUALITY_MAX, Math.max(QUALITY_MIN, draft / Math.max(1e-9, typical)));
   return out;
 }
 
-function engagementFloors(rand: Rng, views: number, f: Floors, q: Record<Signal, number>): Record<Signal, number> {
-  const noise = () => 0.6 + 0.8 * rand();
-  const likes = Math.max(1, Math.round(views * f.likeRate * q.like * noise()));
-  return {
-    like: likes,
-    reply: Math.max(1, Math.round(likes * f.ratio.reply * (q.reply / q.like) * noise())),
-    repost: Math.max(1, Math.round(likes * f.ratio.repost * (q.repost / q.like) * noise())),
-    quote: Math.round(likes * f.ratio.quote * (q.quote / q.like) * noise()),
+// One trial's counts in linear mode: the twins' projection when it is plausible, otherwise the expected rate with noise
+// (mean 1x); never above BAND_HI x expected. Likes come from views, the rest from those likes.
+function ratioBound(rand: Rng, views: number, projected: Record<Signal, number>, f: Floors, q: Quality): Record<Signal, number> {
+  const pick = (expected: number, proj: number, min: number, ceiling = Infinity) => {
+    const hi = Math.max(min, Math.round(Math.min(expected * BAND_HI, ceiling)));
+    const typical = Math.max(min, Math.round(expected * (0.6 + 0.8 * rand())));
+    return Math.min(hi, proj >= typical ? proj : typical);
   };
+  // The draft's overall pull sets its level (amplified so the winner visibly out-earns the other draft); each other
+  // signal's own pull is square-rooted against likes, so ratios move with the draft but stay near real life.
+  const like = pick(views * f.likeRate * q.total ** QUALITY_POWER, projected.like, 1, views * f.likeRate * LIKE_RATE_CEILING);
+  const rel = (s: Signal) => like * f.ratio[s] * Math.min(REL_MAX, Math.max(REL_MIN, Math.sqrt(q[s] / q.like)));
+  return { like, repost: pick(rel('repost'), projected.repost, 1), reply: pick(rel('reply'), projected.reply, 1),
+           quote: pick(rel('quote'), projected.quote, 0) };
 }
-// Linear views: a follower sees the post at the brand's real reach rate (median views / followers, else DEFAULT_SEE_RATE),
-// and every engagement pushes the post to a few more timelines (X ranks engaged posts higher).
+// Linear views: a follower sees the post at the brand's real reach rate (median views / followers, else DEFAULT_SEE_RATE);
+// reposts and quotes add the outside reach the cascade simulates.
 const DEFAULT_SEE_RATE = 0.3;
-const VIEWS_PER_ENGAGEMENT = 10;
 
 // Linear: counts x (brand followers / people simulated). Anchored: the brand's real median engagement (brand_baseline).
 // A video attached to this run's Lab draft may pin its likes / reposts to an expected range.
@@ -1430,7 +1484,7 @@ function projectionFor(ctx: Ctx, run: Row<'simRun'>, runId: string, simulated: n
           quote: ratio(base.quotes) || DEFAULT_RATIO.quote }
       : DEFAULT_RATIO,
   };
-  return { scale, expected, seeRate, viewsPerEngagement: linear ? VIEWS_PER_ENGAGEMENT : 0, floors };
+  return { scale, expected, seeRate, floors };
 }
 
 // A count outside the expected range is redrawn uniformly inside it, so trials keep a realistic spread.
@@ -1488,21 +1542,22 @@ export const startCascade = spacetimedb.reducer(
     // The twins are a sample of the audience: project each trial onto the real audience (see projectionFor).
     const proj = projectionFor(ctx, run, runId, ids.length);
     // How strongly the twins responded to this draft, per signal, relative to a typical post (drives the floors).
-    const quality = draftQuality(p);
+    const quality = draftQuality(p, followers, medianFollowers);
     const scale = proj.scale;
     for (let trial = 0; trial < n; trial++) {
       const r = signalTrial(rand, audience, trial === 0 ? replay : undefined);
-      // Views first: the engagement floors below are a share of the people who actually saw the post.
+      // Views first: in linear mode likes are a share of the people who actually saw the post.
       // Anchored: the brand's view scale already encodes reach. Linear: this trial's reach varies around the brand's rate
       // (continuous, so a small sample of twins does not snap every draft onto the same few view counts).
       const seen = proj.seeRate < 1 ? Math.round(ids.length * Math.min(1, proj.seeRate * (0.6 + 0.8 * rand())) * 100) / 100 : ids.length;
-      const engagedHere = SIGNALS.reduce((a, s) => a + r.followerCounts[s] + r.outsideCounts[s], 0);
-      const viewTarget = Math.round((seen + r.outsideViews + proj.viewsPerEngagement * engagedHere) * scale.view);
-      const floor = proj.floors ? engagementFloors(rand, viewTarget, proj.floors, quality) : null;
+      const rawViews = Math.round((seen + r.outsideViews) * scale.view);
+      const viewTarget = proj.floors ? Math.min(rawViews, Math.round(ids.length * proj.seeRate * VIRAL_CAP * scale.view)) : rawViews;
+      const projectedAll = { like: 0, repost: 0, reply: 0, quote: 0 };
+      for (const s of SIGNALS) projectedAll[s] = Math.round((r.followerCounts[s] + r.outsideCounts[s]) * scale[s]);
+      const bounded = proj.floors ? ratioBound(rand, viewTarget, projectedAll, proj.floors, quality) : projectedAll;
       let outsideEngaged = 0;
       for (const s of SIGNALS) {
-        const projected = Math.round((r.followerCounts[s] + r.outsideCounts[s]) * scale[s]);
-        const target = withinExpected(rand, floor ? Math.max(projected, floor[s]) : projected, proj.expected[s]);
+        const target = withinExpected(rand, bounded[s], proj.expected[s]);
         const outside = Math.max(0, target - r.followerCounts[s]); // the unsampled audience shows up as outside reach
         total[s].push(r.followerCounts[s] + outside);
         sums.followers[s] += r.followerCounts[s]; sums.outside[s] += outside;
@@ -1662,8 +1717,9 @@ function labRow(ctx: Ctx, experimentId: bigint) {
   return row;
 }
 
-export const claimLabExperiment = spacetimedb.reducer({ experimentId: t.u64() }, (ctx, { experimentId }) => {
+export const claimLabExperiment = spacetimedb.reducer({ experimentId: t.u64(), workerVersion: t.u32() }, (ctx, { experimentId, workerVersion }) => {
   requireAdmin(ctx);
+  requireWorker(workerVersion);
   notPaused(ctx);
   const row = labRow(ctx, experimentId);
   if (row.status !== 'queued') throw new SenderError(`experiment ${experimentId} already claimed`);
@@ -1685,6 +1741,16 @@ export const finishLabExperiment = spacetimedb.reducer(
     notPaused(ctx);
     if (!['A', 'B', 'tie'].includes(winner)) throw new SenderError('winner must be A, B or tie');
     ctx.db.labExperiment.experimentId.update({ ...labRow(ctx, experimentId), status: 'done', winner, lift });
+  }
+);
+
+export const renameLabExperiment = spacetimedb.reducer(
+  { experimentId: t.u64(), title: t.string() },
+  (ctx, { experimentId, title }) => {
+    requireAdmin(ctx);
+    const clean = title.trim();
+    if (!clean || clean.length > MAX_LAB_TITLE) throw new SenderError(`title must be 1..${MAX_LAB_TITLE} characters`);
+    ctx.db.labExperiment.experimentId.update({ ...labRow(ctx, experimentId), title: clean });
   }
 );
 
@@ -1767,8 +1833,9 @@ export const updateOnboardingBrief = spacetimedb.reducer(
   }
 );
 
-export const claimOnboarding = spacetimedb.reducer({ onboardingId: t.u64() }, (ctx, { onboardingId }) => {
+export const claimOnboarding = spacetimedb.reducer({ onboardingId: t.u64(), workerVersion: t.u32() }, (ctx, { onboardingId, workerVersion }) => {
   requireAdmin(ctx);
+  requireWorker(workerVersion);
   notPaused(ctx);
   const row = onboardingRow(ctx, onboardingId);
   if (row.status !== 'queued') throw new SenderError(`onboarding ${onboardingId} already claimed`);
@@ -2077,11 +2144,14 @@ export const upsertVariant = spacetimedb.reducer(adVariantFields, (ctx, fields) 
 });
 // Workers must say which code they run: older workers (no version) can no longer claim, so a stale machine sharing
 // the backend login cannot grab campaigns and fail them with errors the current code has already fixed.
-const CREATIVE_WORKER_VERSION = 2;
+const WORKER_VERSION = 2;
+function requireWorker(version: number) {
+  if (version < WORKER_VERSION) throw new SenderError(`worker is out of date (v${version}); pull the latest code and restart it`);
+}
 export const claimCreativeJob = spacetimedb.reducer({ jobId: t.u64(), workerVersion: t.u32() }, (ctx, { jobId, workerVersion }) => {
   requireAdmin(ctx); const row = ctx.db.creativeJob.jobId.find(jobId);
   notPaused(ctx);
-  if (workerVersion < CREATIVE_WORKER_VERSION) throw new SenderError(`creative worker is out of date (v${workerVersion}); pull and restart it`);
+  requireWorker(workerVersion);
   if (!row || row.status !== 'pending') throw new SenderError('creative job unavailable or already claimed');
   ctx.db.creativeJob.jobId.update({ ...row, status: 'running', claimedBy: ctx.sender, claimedAt: ctx.timestamp });
 });
@@ -2149,6 +2219,7 @@ export const startCampaignVideo = spacetimedb.reducer(
   { videoId: t.string(), brand: t.string(), news: t.string(), goal: t.string(), campaignId: t.string(), workerVersion: t.u32() },
   (ctx, a) => {
     requireAdmin(ctx);
+    requireWorker(a.workerVersion);
     notPaused(ctx);
     if (a.workerVersion < 2) throw new SenderError(`video worker is out of date (v${a.workerVersion}); pull and restart it`);
     const row = ctx.db.campaignVideo.videoId.find(a.videoId);
@@ -2363,9 +2434,10 @@ export const requestDraftCopy = spacetimedb.reducer(
 );
 
 export const setDraftCopy = spacetimedb.reducer(
-  { copyId: t.string(), status: t.string(), text: t.string(), error: t.string() },
+  { copyId: t.string(), status: t.string(), text: t.string(), error: t.string(), workerVersion: t.u32() },
   (ctx, a) => {
     requireAdmin(ctx);
+    requireWorker(a.workerVersion);
     if (a.status !== 'failed') notPaused(ctx);
     const row = ctx.db.draftCopy.copyId.find(a.copyId);
     if (!row) throw new SenderError('unknown draft copy');
@@ -2436,8 +2508,9 @@ export const requestTwinTopup = spacetimedb.reducer({ brand: t.string(), count: 
                             createdAt: ctx.timestamp, updatedAt: ctx.timestamp } as Row<'twinTopup'>);
 });
 
-export const setTwinTopup = spacetimedb.reducer({ topupId: t.u64(), status: t.string(), error: t.string() }, (ctx, a) => {
+export const setTwinTopup = spacetimedb.reducer({ topupId: t.u64(), status: t.string(), error: t.string(), workerVersion: t.u32() }, (ctx, a) => {
   requireAdmin(ctx);
+  requireWorker(a.workerVersion);
   if (a.status !== 'failed') notPaused(ctx);
   const row = ctx.db.twinTopup.topupId.find(a.topupId);
   if (!row) throw new SenderError('unknown top-up');
@@ -2596,4 +2669,88 @@ export const setVideoMode = spacetimedb.reducer({ mode: t.string(), reuseA: t.st
   if (a.mode === 'reuse' && !a.reuseA) throw new SenderError('pick a video to reuse');
   const row = { key: 'global', mode: a.mode, reuseA: a.reuseA, reuseB: a.reuseB, updatedAt: ctx.timestamp };
   if (ctx.db.videoMode.key.find('global')) ctx.db.videoMode.key.update(row); else ctx.db.videoMode.insert(row);
+});
+
+export const setWorkspaceTarget = spacetimedb.reducer({ target: t.string() }, (ctx, { target }) => {
+  requireOps(ctx);
+  if (!['home', 'onboarding'].includes(target)) throw new SenderError('target must be home or onboarding');
+  const row = { key: 'global', workspaceTarget: target, updatedAt: ctx.timestamp };
+  if (ctx.db.landingSettings.key.find('global')) ctx.db.landingSettings.key.update(row); else ctx.db.landingSettings.insert(row);
+});
+
+export const setCampaignReplay = spacetimedb.reducer({ on: t.bool() }, (ctx, { on }) => {
+  requireOps(ctx);
+  const row = { key: 'global', campaignReplay: on, updatedAt: ctx.timestamp };
+  if (ctx.db.demoSettings.key.find('global')) ctx.db.demoSettings.key.update(row); else ctx.db.demoSettings.insert(row);
+});
+
+// The finished Lab test of a campaign, when its winner is clear (A or B).
+function decidedTest(ctx: Ctx, campaignId: string) {
+  const exp = ctx.db.campaignFlow.campaignId.find(campaignId)?.experimentId ?? 0n;
+  const row = exp > 0n ? ctx.db.labExperiment.experimentId.find(exp) : undefined;
+  return row?.status === 'done' && (row.winner === 'A' || row.winner === 'B') ? row : undefined;
+}
+
+// The brand's newest original generated campaign whose two drafts are written and whose two videos are finished,
+// preferring one whose Lab test already picked a winner.
+function replaySource(ctx: Ctx, brandUserId: string): string | undefined {
+  const finished = (campaignId: string) => !ctx.db.campaignReplay.campaignId.find(campaignId)
+    && ctx.db.campaignFlow.campaignId.find(campaignId)?.source === 'generate'
+    && (['A', 'B'] as const).every(d => {
+      const copy = ctx.db.draftCopy.copyId.find(`${campaignId}:${d}`);
+      const link = ctx.db.campaignDraftVideo.linkId.find(`${campaignId}:${d}`);
+      return copy?.status === 'done' && link && ctx.db.campaignVideo.videoId.find(link.videoId)?.status === 'done';
+    })
+    && [...ctx.db.adVariant.campaignId.filter(campaignId)].filter(v => v.status === 'ready').length >= 2;
+  const candidates = [...ctx.db.campaign.brandUserId.filter(brandUserId)]
+    .sort((a, b) => Number(b.createdAt.microsSinceUnixEpoch - a.createdAt.microsSinceUnixEpoch))
+    .filter(c => finished(c.campaignId));
+  return (candidates.find(c => decidedTest(ctx, c.campaignId)) ?? candidates[0])?.campaignId;
+}
+
+// Demo: a new campaign owned by the caller that copies the source's brief, concepts, written drafts and video links.
+export const replayCampaign = spacetimedb.reducer({ campaignId: t.string(), brandUserId: t.string() }, (ctx, a) => {
+  if (!ctx.db.demoSettings.key.find('global')?.campaignReplay) throw new SenderError('campaign replay is off');
+  creativeText(a.campaignId, 'campaign id', 100);
+  if (ctx.db.campaign.campaignId.find(a.campaignId) || ctx.db.campaignFlow.campaignId.find(a.campaignId)) throw new SenderError('campaign id already exists');
+  const source = replaySource(ctx, a.brandUserId);
+  if (!source) throw new SenderError('no finished campaign to replay for this brand yet');
+  const id = (old: string) => old.replace(source, a.campaignId);
+  const now = ctx.timestamp;
+  ctx.db.campaign.insert({ ...ctx.db.campaign.campaignId.find(source)!, campaignId: a.campaignId, createdBy: ctx.sender, createdAt: now });
+  for (const b of ctx.db.creativeBrief.campaignId.filter(source)) {
+    ctx.db.creativeBrief.insert({ ...b, briefId: id(b.briefId), campaignId: a.campaignId, createdAt: now });
+  }
+  const variants = [...ctx.db.adVariant.campaignId.filter(source)].filter(v => v.status === 'ready')
+    .sort((x, y) => x.variantId.localeCompare(y.variantId));
+  const vid = (old: string) => `${a.campaignId}:${old}`;
+  for (const v of variants) {
+    ctx.db.adVariant.insert({ ...v, variantId: vid(v.variantId), campaignId: a.campaignId, briefId: id(v.briefId),
+      rootVariantId: vid(v.rootVariantId), parentVariantId: v.parentVariantId ? vid(v.parentVariantId) : undefined,
+      createdAt: now, updatedAt: now });
+  }
+  for (const d of ['A', 'B'] as const) {
+    const copy = ctx.db.draftCopy.copyId.find(`${source}:${d}`)!;
+    ctx.db.draftCopy.insert({ ...copy, copyId: `${a.campaignId}:${d}`, campaignId: a.campaignId, requestedBy: ctx.sender, updatedAt: now });
+    const link = ctx.db.campaignDraftVideo.linkId.find(`${source}:${d}`)!;
+    ctx.db.campaignDraftVideo.insert({ ...link, linkId: `${a.campaignId}:${d}`, campaignId: a.campaignId, updatedAt: now });
+  }
+  const flow = ctx.db.campaignFlow.campaignId.find(source)!;
+  ctx.db.campaignFlow.insert({
+    campaignId: a.campaignId, brand: flow.brand, source: 'generate', stage: 'concepts', draftA: '', draftB: '',
+    experimentId: 0n, videoId: '', winnerText: '', requestedBy: ctx.sender, createdAt: now, updatedAt: now, shippedAt: undefined,
+  } as Row<'campaignFlow'>);
+  ctx.db.campaignReplay.insert({ campaignId: a.campaignId, sourceCampaignId: source, createdAt: now });
+});
+
+// Demo: "Test A vs B" on a replayed campaign points it at its source's finished Lab test.
+export const replayTest = spacetimedb.reducer({ campaignId: t.string() }, (ctx, { campaignId }) => {
+  if (!ctx.db.demoSettings.key.find('global')?.campaignReplay) throw new SenderError('campaign replay is off');
+  const replay = ctx.db.campaignReplay.campaignId.find(campaignId);
+  const flow = ctx.db.campaignFlow.campaignId.find(campaignId);
+  if (!replay || !flow) throw new SenderError('not a replayed campaign');
+  if (!flow.requestedBy.equals(ctx.sender)) throw new SenderError('not your campaign');
+  const test = decidedTest(ctx, replay.sourceCampaignId);
+  if (!test) throw new SenderError('the source campaign has no finished test');
+  ctx.db.campaignFlow.campaignId.update({ ...flow, stage: 'testing', experimentId: test.experimentId, updatedAt: ctx.timestamp });
 });

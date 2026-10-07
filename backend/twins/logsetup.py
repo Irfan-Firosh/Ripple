@@ -1,7 +1,7 @@
 """Worker log format for /logs: timestamped INFO lines, without the HTTP clients' per-request chatter."""
 import logging
 
-QUIET = ("httpx", "httpcore", "urllib3", "anthropic", "requests")
+QUIET = ("httpx", "httpx2", "httpcore", "urllib3", "anthropic", "requests")
 
 
 def setup_worker_logging() -> None:

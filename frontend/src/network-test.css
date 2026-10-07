@@ -80,11 +80,12 @@
 .nt-brands { display:flex; gap:4px; padding:3px; border:1px solid var(--line); border-radius:9px; margin-left:auto; }
 .nt-brand-entry { display:flex; align-items:center; border-radius:6px; }
 .nt-brand-entry.is-active { background:color-mix(in srgb,var(--accent) 12%,transparent); }
-.nt-brand-entry a { padding:6px 4px 6px 10px; color:var(--muted); font-size:11px; text-decoration:none; }
+.nt-brand-entry a { display:flex; align-items:baseline; gap:6px; padding:6px 4px 6px 10px; color:var(--muted); font-size:11px; text-decoration:none; }
+.nt-brand-entry a span { font:8px "Space Mono",monospace; opacity:.6; }
 .nt-brand-entry a[aria-current="page"] { color:var(--fg); }
 .nt-brand-entry button { display:grid; place-items:center; width:23px; height:25px; padding:0; border:0; border-radius:5px; background:transparent; color:var(--muted); cursor:pointer; }
 .nt-brand-entry button:hover, .nt-brand-entry button:focus-visible { color:var(--fg); background:color-mix(in srgb,var(--accent) 14%,transparent); }
-@media(max-width:650px) { .nt-brand-entry a { padding:5px 3px 5px 7px; font-size:10px; } .nt-brand-entry button { width:20px; } }
+@media(max-width:650px) { .nt-brand-entry a { padding:5px 3px 5px 7px; font-size:10px; } .nt-brand-entry a span { display:none; } .nt-brand-entry button { width:20px; } }
 
 /* Workspace navigation floats above the map, while audience controls stay in the header. */
 .nt-header--workspace { z-index: 6; }
@@ -100,3 +101,14 @@
 .nt-index { left:56px; }
 @media(max-width:1000px) { .nt-index { left:40px; } .nt-stage { left:210px; } }
 @media(max-width:640px) { .nt-index { left:24px; width:calc(100% - 48px); } }
+.nt-index{left:32px;top:130px;width:280px;padding:18px;border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--frame) 94%,transparent);backdrop-filter:blur(12px);max-height:calc(100dvh - 210px);overflow-y:auto;scrollbar-width:thin}
+.nt-eyebrow{font-size:10px;letter-spacing:.06em}
+.nt-community-index{gap:4px;margin-top:16px}
+.nt-community-index button{padding:12px 4px;gap:9px;font-size:14px;line-height:1.45}
+.nt-community-index button>span:nth-last-child(2){flex:1;min-width:0}
+.nt-community-index button>span:last-child{font-size:13px;flex-shrink:0}
+.nt-index-number{font-size:10px;flex-shrink:0}
+.nt-all{font-size:12px;margin-top:18px}
+.nt-stage{left:320px}
+@media(max-width:1000px){.nt-index{left:24px;width:250px}.nt-stage{left:280px}}
+@media(max-width:650px){.nt-index{left:16px;top:130px;width:calc(100% - 32px);max-height:220px;padding:14px}.nt-community-index{margin-top:12px;gap:2px 12px}.nt-community-index button{font-size:13px;padding:8px 0;gap:7px}.nt-eyebrow{font-size:9px}.nt-stage{left:0;top:360px}.nt-all{margin-top:12px}}

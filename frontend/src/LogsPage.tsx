@@ -1,3 +1,4 @@
+import { WorkspaceAccount } from './components/WorkspaceAccount';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { initialTheme } from "./App";
 import "./logs.css";
@@ -47,7 +48,7 @@ export function LogsPage() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = initialTheme();
-    document.title = "Server logs · Ripple";
+    document.title = 'Ripple';
     void refresh();
     const timer = window.setInterval(() => {
       if (!pausedRef.current) void refresh();
@@ -68,7 +69,7 @@ export function LogsPage() {
 
   return (
     <main className="logs-page">
-      <a className="logs-back" href="/dashboard?view=studio">← Back to studio</a>
+      <a className="logs-back" href="/home">← Back to home</a>
       <header className="logs-heading">
         <div>
           <h1>Server logs</h1>
@@ -82,7 +83,7 @@ export function LogsPage() {
             {refreshing ? "Refreshing…" : error ? "Retry" : "Refresh"}
           </button>
         </div>
-      </header>
+      <WorkspaceAccount /></header>
       {error && <p className="logs-error" role="alert">{error}{logs && " Showing the last received logs."}</p>}
       {!logs && !error && <p className="logs-meta" role="status">Loading server logs…</p>}
       {logs && (

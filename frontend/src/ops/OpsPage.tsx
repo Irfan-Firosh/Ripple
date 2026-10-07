@@ -1,3 +1,4 @@
+import { WorkspaceAccount } from '../components/WorkspaceAccount';
 // Hidden operator page (/ops, no nav link): simulation settings, per-video expected ranges, twin top-ups.
 // Open to anyone with the site (no auth by design).
 import { useCallback, useEffect, useState } from 'react';
@@ -42,13 +43,15 @@ export default function OpsPage() {
   const [topup, setTopup] = useState({ brand: '', count: 20 });
   const [note, setNote] = useState('');
   const [ops, setOps] = useState<OpsState>({ paused: false, hidden: false });
+  const [workspaceTarget, setWorkspaceTarget] = useState<'home' | 'onboarding'>('home');
+  const [replay, setReplay] = useState(false);
   const [mode, setMode] = useState<VideoMode>({ mode: 'generate', reuse_a: '', reuse_b: '' });
   const [video, setVideo] = useState<VideoSettings>({ max_seconds: 20, voice_id: 'y0s2ExEMuum3muUnA6Zd' });
 
   useEffect(() => { document.documentElement.dataset.theme = initialTheme(); }, []);
 
   const load = useCallback(async () => {
-    const [rows, vids, exps, tops, twinRows, users, state, videoRow, modeRow] = await Promise.all([
+    const [rows, vids, exps, tops, twinRows, users, state, videoRow, modeRow, landingRow, demoRow] = await Promise.all([
       sql<Settings>("SELECT * FROM sim_settings WHERE key = 'global'"),
       sql<Video>('SELECT video_id, title, status, thumbnail_url, created_at FROM campaign_video'),
       sql<Expectation>('SELECT * FROM video_expectation'),
@@ -58,7 +61,11 @@ export default function OpsPage() {
       sql<OpsState>("SELECT * FROM ops_state WHERE key = 'global'"),
       sql<VideoSettings>("SELECT * FROM video_settings WHERE key = 'global'"),
       sql<VideoMode>("SELECT * FROM video_mode WHERE key = 'global'"),
+      sql<{ workspace_target: string }>("SELECT * FROM landing_settings WHERE key = 'global'"),
+      sql<{ campaign_replay: boolean }>("SELECT * FROM demo_settings WHERE key = 'global'"),
     ]);
+    setWorkspaceTarget(landingRow[0]?.workspace_target === 'onboarding' ? 'onboarding' : 'home');
+    setReplay(Boolean(demoRow[0]?.campaign_replay));
     if (modeRow[0]) setMode({ mode: modeRow[0].mode, reuse_a: modeRow[0].reuse_a, reuse_b: modeRow[0].reuse_b });
     if (videoRow[0]) setVideo({ max_seconds: videoRow[0].max_seconds, voice_id: videoRow[0].voice_id });
     setOps({ paused: Boolean(state[0]?.paused), hidden: Boolean(state[0]?.hidden) });
@@ -81,7 +88,7 @@ export default function OpsPage() {
     setExpect(prev => ({ ...prev, [id]: { ...(prev[id] ?? { video_id: id, like_min: 0, like_max: 0, repost_min: 0, repost_max: 0 }), ...patch } }));
 
   return <main className="ops-page">
-    <header><h1>Ops</h1><p>Simulation controls. Not linked from the app.</p></header>
+    <header><h1>Ops</h1><p>Simulation controls. Not linked from the app.</p><WorkspaceAccount /></header>
 
     <section className="ops-card" aria-labelledby="ops-switches">
       <h2 id="ops-switches">Switches</h2>
@@ -92,6 +99,12 @@ export default function OpsPage() {
         <div className="ops-switch" data-on={ops.hidden}><b>Workspace {ops.hidden ? 'hidden' : 'visible'}</b>
           <small>{ops.hidden ? 'Clean slate: campaigns, Lab tests and brand audiences from before hiding are hidden; new ones show.' : 'Clean slate for a demo: hides every campaign, Lab test and brand audience that exists now. New ones still show. Nothing is deleted.'}</small>
           <button onClick={() => run(ops.hidden ? 'Workspace shown' : 'Workspace hidden', 'set_ops_state', [ops.paused, !ops.hidden])}>{ops.hidden ? 'Unhide' : 'Hide'}</button></div>
+        <div className="ops-switch" data-on={workspaceTarget === 'onboarding'}><b>Open workspace goes to {workspaceTarget === 'onboarding' ? 'Onboarding' : 'Home'}</b>
+          <small>{workspaceTarget === 'onboarding' ? 'Signed-in visitors who click Open workspace on the landing page start onboarding a brand.' : 'Signed-in visitors who click Open workspace on the landing page land on Home.'}</small>
+          <button onClick={() => run('Open workspace target', 'set_workspace_target', [workspaceTarget === 'onboarding' ? 'home' : 'onboarding'])}>{workspaceTarget === 'onboarding' ? 'Send to Home' : 'Send to Onboarding'}</button></div>
+        <div className="ops-switch" data-on={replay}><b>Campaign replay {replay ? 'on' : 'off'}</b>
+          <small>{replay ? "Generate copies the brand's last finished campaign (drafts, images, videos) in about 5 seconds. No agents run." : "Generate runs the full agent pipeline (research, drafts, images, videos)."}</small>
+          <button onClick={() => run(replay ? 'Campaign replay off' : 'Campaign replay on', 'set_campaign_replay', [!replay])}>{replay ? 'Turn off' : 'Turn on'}</button></div>
       </div>
     </section>
 

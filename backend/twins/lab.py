@@ -2,6 +2,7 @@
 import logging
 import time
 
+from .config import WORKER_VERSION
 from .simulate import run_lab
 from .stdb import StdbError
 
@@ -14,7 +15,7 @@ def _run_one(stdb, client, row: dict, runner) -> tuple[bool, object]:
     """Claim and run one queued experiment. Returns (claimed, outcome); outcome is None when it failed."""
     exp_id = row["experiment_id"]
     try:
-        stdb.call("claim_lab_experiment", exp_id)
+        stdb.call("claim_lab_experiment", exp_id, WORKER_VERSION)
     except StdbError:
         return False, None  # another worker took it, or it is no longer queued
     log.info("experiment %s (@%s): simulating", exp_id, row["brand"])

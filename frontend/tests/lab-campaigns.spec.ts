@@ -40,6 +40,11 @@ async function setup(page: Page, empty = false) {
 test('Lab selects a specific owned campaign and opens its existing results', async ({ page }) => {
   const state = await setup(page); await page.goto('/lab?brand=raycast&exp=10');
   const dock = page.getByRole('navigation', { name: 'Experiments' });
+  await expect(dock).toHaveClass('lab-history');
+  const historyBox = (await dock.boundingBox())!, content = (await page.locator('.lab-workspace-content').boundingBox())!;
+  expect(historyBox.x + historyBox.width).toBeLessThan(content.x);
+  await expect(dock.getByRole('heading', { name: 'History' })).toBeVisible();
+  await expect(dock.getByRole('button', { name: /Previous test/ })).toBeVisible();
   await expect(dock.getByRole('button', { name: 'Select campaign' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'New experiment' })).toHaveCount(0);
   await dock.getByRole('button', { name: 'Select campaign' }).click();
@@ -48,6 +53,9 @@ test('Lab selects a specific owned campaign and opens its existing results', asy
   await picker.getByRole('button', { name: /Local launch/ }).click();
   await expect(page).toHaveURL(/brand=raycast&exp=20/);
   await expect(picker).toHaveCount(0); expect(state.reducers).toBe(0);
+  await dock.getByRole('button', { name: /Campaign test/ }).focus();
+  await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/exp=10/);
 });
 
 test('unfinished campaigns resume their flow and selector fits mobile with keyboard dismissal', async ({ page }) => {

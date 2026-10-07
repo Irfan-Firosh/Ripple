@@ -15,10 +15,19 @@ import { LabDock } from './LabDock';
 import { Tweet } from './Tweet';
 import { useReplayTick } from './useReplayTick';
 import './lab.css';
+import './lab-history.css';
 import { HistoryDrawer } from '../history/HistoryDrawer';
+import { DEMO_BRAND } from '../snapshot';
+import { DemoDelay } from '../components/DemoDelay';
+import { campaignReplayOn } from '../flow/flowApi';
 
 const params = () => new URLSearchParams(location.search);
-const initialBrand = () => params().get('brand')?.toLowerCase() || 'raycast';
+const initialBrand = () => params().get('brand')?.toLowerCase() || DEMO_BRAND;
+
+// Demo (/ops campaign replay on): the Lab lists only the test that was opened (?exp=), else the newest one.
+const focusExp = params().get('exp');
+const demoView = (all: LabExperimentSummary[], demo: boolean) =>
+  demo ? (all.filter(x => x.id === focusExp).length ? all.filter(x => x.id === focusExp) : all.slice(0, 1)) : all;
 
 function useExperiments(brand: string, refreshKey: number) {
   const [list, setList] = useState<LabExperimentSummary[] | null>(null);
@@ -27,7 +36,8 @@ function useExperiments(brand: string, refreshKey: number) {
     const controller = new AbortController();
     setList(null); setError(null);
     let timer = 0;
-    const poll = () => listExperiments(brand, controller.signal).then(next => {
+    const poll = () => Promise.all([listExperiments(brand, controller.signal), campaignReplayOn()]).then(([all, demo]) => {
+      const next = demoView(all, demo);
       setList(next); setError(null);
       if (next.some(x => x.status === 'queued' || x.status === 'running')) timer = window.setTimeout(poll, 3000);
     }).catch((e: unknown) => { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Could not read experiments.'); });
@@ -41,6 +51,8 @@ export default function LabPage() {
   const [theme, setTheme] = useState(initialTheme);
   const [brand, setBrand] = useState<string>(initialBrand);
   const [brands, setBrands] = useState<ActiveBrand[]>([]);
+  // Opened from a campaign (View performance / Watch it in the Lab): results arrive after a short loading screen.
+  const [fromCampaign] = useState(() => params().get('from') === 'campaign');
   const [expId, setExpId] = useState<string | null>(() => params().get('exp'));
   const [analyzing, setAnalyzing] = useState(false);
   const [resimulating, setResimulating] = useState(false);
@@ -62,8 +74,9 @@ export default function LabPage() {
   const b = useReplayTick(experiment?.b ?? null);
   useEffect(() => {
     const controller = new AbortController();
-    listActiveBrands(controller.signal).then(rows => {
+    listActiveBrands(controller.signal).then(all => {
       if (controller.signal.aborted) return;
+      const rows = all.filter(row => row.handle === DEMO_BRAND); // the demo shows one brand
       setBrands(rows);
       if (!params().has('brand') && rows.length && !rows.some(row => row.handle === brand)) setBrand(rows[0].handle);
     }).catch(() => { /* Experiments and their history remain readable independently. */ });
@@ -71,7 +84,7 @@ export default function LabPage() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme; document.title = 'Lab — Ripple';
+    document.documentElement.dataset.theme = theme; document.title = 'Ripple';
     try { localStorage.setItem('ripple-theme', theme); } catch { /* optional */ }
   }, [theme]);
   useEffect(() => {
@@ -126,19 +139,22 @@ export default function LabPage() {
     : null;
 
   return <main className="lab-page">
+    {fromCampaign && <DemoDelay label="Loading the results…" />}
     <header className="lab-header workspace-header">
       <RippleLogo />
       <span className="lab-crumb">Lab</span>
       <RippleWorkspaceNav brand={brand} />
-      <nav className="lab-brands" aria-label="Audience">{[...brands, ...(!brands.some(x => x.handle === brand) ? [{ handle: brand, label: `@${brand}` }] : [])].map(x => <button key={x.handle} aria-current={x.handle === brand ? 'page' : undefined} onClick={() => switchBrand(x.handle)}>{x.label}</button>)}</nav>
+      <nav className="lab-brands" aria-label="Audience">{[...brands, ...(!brands.some(x => x.handle === brand) && brand === DEMO_BRAND ? [{ handle: brand, label: `@${brand}` }] : [])].map(x => <button key={x.handle} aria-current={x.handle === brand ? 'page' : undefined} onClick={() => switchBrand(x.handle)}>{x.label}</button>)}</nav>
       <div className="lab-header-actions">
         <button className="lab-icon" aria-label="Open history" onClick={() => setShowHistory(true)}><History size={16} /></button>
         <a className="lab-icon" href="/dashboard" aria-label="Back to dashboard"><ArrowLeft size={15} /></a>
         <button className="lab-icon" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
-      </div>
+      <WorkspaceAccount /></div>
     </header>
 
-    {listError || error ? <div className="lab-state" role="alert">{listError ?? error}<button className="lab-secondary" onClick={() => setRefresh(n => n + 1)}><RotateCcw size={14} /> Try again</button></div>
+    <div className="lab-workspace">
+    <LabDock experiments={list ?? []} activeId={expId} onSelect={setExpId} onCampaigns={openCampaigns} campaignAction={campaignAction} loadingCampaigns={campaigns === null && !campaignError} />
+    <div className="lab-workspace-content">{listError || error ? <div className="lab-state" role="alert">{listError ?? error}<button className="lab-secondary" onClick={() => setRefresh(n => n + 1)}><RotateCcw size={14} /> Try again</button></div>
       : list === null || (expId && !experiment) ? <div className="lab-state" role="status"><Loader shape="ripple" variant="dither" size="lg" color="var(--accent)" aria-hidden="true" /><p>Opening the Lab…</p></div>
       : !list.length ? <div className="lab-state"><h2>No experiments for @{brand} yet</h2><a className="lab-primary" href={createCampaignHref}>Create new campaign</a></div>
       : experiment && profile && <>
@@ -147,7 +163,7 @@ export default function LabPage() {
           {winnerLine && <span className={`lab-verdict lab-draft-${experiment.winner}`}>{winnerLine}</span>}
           {experiment.status === 'failed' && <span className="lab-verdict lab-failed" role="alert">{experiment.error ?? 'This experiment failed.'}</span>}
           {(experiment.status === 'queued') && <span className="lab-verdict" role="status">Queued — waiting for the simulator…</span>}
-          <div className="lab-simulation-actions"><button className="lab-secondary lab-action" onClick={() => setAnalyzing(true)} disabled={experiment.status !== 'done'}>Side-by-side analysis</button><button className="lab-secondary lab-action" onClick={() => void rerun()} disabled={resimulating || experiment.status === 'queued' || experiment.status === 'running'}>{resimulating ? 'Resimulating…' : 'Resimulate'}</button></div>
+          <div className="lab-simulation-actions"><button className="lab-primary lab-action lab-action-primary" onClick={() => setAnalyzing(true)} disabled={experiment.status !== 'done'}>Analysis</button><button className="lab-secondary lab-action" onClick={() => void rerun()} disabled={resimulating || experiment.status === 'queued' || experiment.status === 'running'}>{resimulating ? 'Resimulating…' : 'Resimulate'}</button></div>
         </div>
         {simulationError && <p className="lab-resim-error" role="alert">{simulationError}</p>}
         {experiment.status === 'queued' || experiment.status === 'running' ? <div className="lab-state lab-simulating" role="status" aria-live="polite">
@@ -157,10 +173,9 @@ export default function LabPage() {
           <Tweet label="A" brand={profile} draft={experiment.draftA} run={experiment.a} tick={a.tick} finished={a.finished} winner={Boolean(bothDone && experiment.winner === 'A')} />
           <Tweet label="B" brand={profile} draft={experiment.draftB} run={experiment.b} tick={b.tick} finished={b.finished} winner={Boolean(bothDone && experiment.winner === 'B')} />
         </div>}
-      </>}
+      </>}</div></div>
 
     {analyzing && experiment && <LabAnalysis experiment={experiment} tickA={a.tick} tickB={b.tick} onClose={closeAnalysis} />}
-    <LabDock experiments={list ?? []} activeId={expId} onSelect={setExpId} onCampaigns={openCampaigns} campaignAction={campaignAction} loadingCampaigns={campaigns === null && !campaignError} />
     {showHistory && <HistoryDrawer kind="lab" activeId={expId} onClose={() => setShowHistory(false)} onSelect={entry => {
       if (entry.kind === 'audience') location.assign(`/dashboard?brand=${encodeURIComponent(entry.brand)}&snapshot=${encodeURIComponent(entry.id)}`);
       else { setBrand(entry.brand); setExpId(entry.id); setShowHistory(false); }
@@ -168,3 +183,4 @@ export default function LabPage() {
     {choosingCampaign && <LabCampaignPicker campaigns={campaigns} error={campaignError} createHref={createCampaignHref} onRetry={retryCampaigns} onClose={closeCampaignPicker} onSelect={selectCampaign} />}
   </main>;
 }
+import { WorkspaceAccount } from '../components/WorkspaceAccount';

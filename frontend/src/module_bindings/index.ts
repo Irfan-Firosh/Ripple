@@ -71,7 +71,10 @@ import PublishBriefReducer from "./publish_brief_reducer";
 import PublishTwinReducer from "./publish_twin_reducer";
 import PurgeBrandReducer from "./purge_brand_reducer";
 import RemoveOpsAdminReducer from "./remove_ops_admin_reducer";
+import RenameLabExperimentReducer from "./rename_lab_experiment_reducer";
 import ReplaceAudienceEdgesReducer from "./replace_audience_edges_reducer";
+import ReplayCampaignReducer from "./replay_campaign_reducer";
+import ReplayTestReducer from "./replay_test_reducer";
 import RequestCampaignVideoReducer from "./request_campaign_video_reducer";
 import RequestCreativeReducer from "./request_creative_reducer";
 import RequestDraftCopyReducer from "./request_draft_copy_reducer";
@@ -87,6 +90,7 @@ import RetryCreativeJobReducer from "./retry_creative_job_reducer";
 import RetryOnboardingReducer from "./retry_onboarding_reducer";
 import SetBacktestResultReducer from "./set_backtest_result_reducer";
 import SetBrandBaselineReducer from "./set_brand_baseline_reducer";
+import SetCampaignReplayReducer from "./set_campaign_replay_reducer";
 import SetCampaignVideoProgressReducer from "./set_campaign_video_progress_reducer";
 import SetDraftCopyReducer from "./set_draft_copy_reducer";
 import SetOnboardingProgressReducer from "./set_onboarding_progress_reducer";
@@ -101,6 +105,7 @@ import SetVariantCopyReducer from "./set_variant_copy_reducer";
 import SetVideoExpectationReducer from "./set_video_expectation_reducer";
 import SetVideoModeReducer from "./set_video_mode_reducer";
 import SetVideoSettingsReducer from "./set_video_settings_reducer";
+import SetWorkspaceTargetReducer from "./set_workspace_target_reducer";
 import SetXUserProfileImageReducer from "./set_x_user_profile_image_reducer";
 import StarVariantReducer from "./star_variant_reducer";
 import StartCampaignFlowReducer from "./start_campaign_flow_reducer";
@@ -136,12 +141,15 @@ import BrandKitRow from "./brand_kit_table";
 import CampaignRow from "./campaign_table";
 import CampaignDraftVideoRow from "./campaign_draft_video_table";
 import CampaignFlowRow from "./campaign_flow_table";
+import CampaignReplayRow from "./campaign_replay_table";
 import CampaignVideoRow from "./campaign_video_table";
 import CreativeBriefRow from "./creative_brief_table";
 import CreativeJobRow from "./creative_job_table";
+import DemoSettingsRow from "./demo_settings_table";
 import DraftCopyRow from "./draft_copy_table";
 import LabDraftMediaRow from "./lab_draft_media_table";
 import LabExperimentRow from "./lab_experiment_table";
+import LandingSettingsRow from "./landing_settings_table";
 import NicheRow from "./niche_table";
 import OnboardingRow from "./onboarding_table";
 import OpsAdminRow from "./ops_admin_table";
@@ -341,6 +349,17 @@ const tablesSchema = __schema({
       { name: 'campaign_flow_campaign_id_key', constraint: 'unique', columns: ['campaignId'] },
     ],
   }, CampaignFlowRow),
+  campaignReplay: __table({
+    name: 'campaign_replay',
+    indexes: [
+      { accessor: 'campaignId', name: 'campaign_replay_campaign_id_idx_btree', algorithm: 'btree', columns: [
+        'campaignId',
+      ] },
+    ],
+    constraints: [
+      { name: 'campaign_replay_campaign_id_key', constraint: 'unique', columns: ['campaignId'] },
+    ],
+  }, CampaignReplayRow),
   campaignVideo: __table({
     name: 'campaign_video',
     indexes: [
@@ -389,6 +408,17 @@ const tablesSchema = __schema({
       { name: 'creative_job_job_id_key', constraint: 'unique', columns: ['jobId'] },
     ],
   }, CreativeJobRow),
+  demoSettings: __table({
+    name: 'demo_settings',
+    indexes: [
+      { accessor: 'key', name: 'demo_settings_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'demo_settings_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, DemoSettingsRow),
   draftCopy: __table({
     name: 'draft_copy',
     indexes: [
@@ -437,6 +467,17 @@ const tablesSchema = __schema({
       { name: 'lab_experiment_experiment_id_key', constraint: 'unique', columns: ['experimentId'] },
     ],
   }, LabExperimentRow),
+  landingSettings: __table({
+    name: 'landing_settings',
+    indexes: [
+      { accessor: 'key', name: 'landing_settings_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'landing_settings_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, LandingSettingsRow),
   niche: __table({
     name: 'niche',
     indexes: [
@@ -961,7 +1002,10 @@ const reducersSchema = __reducers(
   __reducerSchema("publish_twin", PublishTwinReducer),
   __reducerSchema("purge_brand", PurgeBrandReducer),
   __reducerSchema("remove_ops_admin", RemoveOpsAdminReducer),
+  __reducerSchema("rename_lab_experiment", RenameLabExperimentReducer),
   __reducerSchema("replace_audience_edges", ReplaceAudienceEdgesReducer),
+  __reducerSchema("replay_campaign", ReplayCampaignReducer),
+  __reducerSchema("replay_test", ReplayTestReducer),
   __reducerSchema("request_campaign_video", RequestCampaignVideoReducer),
   __reducerSchema("request_creative", RequestCreativeReducer),
   __reducerSchema("request_draft_copy", RequestDraftCopyReducer),
@@ -977,6 +1021,7 @@ const reducersSchema = __reducers(
   __reducerSchema("retry_onboarding", RetryOnboardingReducer),
   __reducerSchema("set_backtest_result", SetBacktestResultReducer),
   __reducerSchema("set_brand_baseline", SetBrandBaselineReducer),
+  __reducerSchema("set_campaign_replay", SetCampaignReplayReducer),
   __reducerSchema("set_campaign_video_progress", SetCampaignVideoProgressReducer),
   __reducerSchema("set_draft_copy", SetDraftCopyReducer),
   __reducerSchema("set_onboarding_progress", SetOnboardingProgressReducer),
@@ -991,6 +1036,7 @@ const reducersSchema = __reducers(
   __reducerSchema("set_video_expectation", SetVideoExpectationReducer),
   __reducerSchema("set_video_mode", SetVideoModeReducer),
   __reducerSchema("set_video_settings", SetVideoSettingsReducer),
+  __reducerSchema("set_workspace_target", SetWorkspaceTargetReducer),
   __reducerSchema("set_x_user_profile_image", SetXUserProfileImageReducer),
   __reducerSchema("star_variant", StarVariantReducer),
   __reducerSchema("start_campaign_flow", StartCampaignFlowReducer),

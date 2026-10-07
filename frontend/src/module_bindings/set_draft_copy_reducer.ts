@@ -15,4 +15,5 @@ export default {
   status: __t.string(),
   text: __t.string(),
   error: __t.string(),
+  workerVersion: __t.u32(),
 };

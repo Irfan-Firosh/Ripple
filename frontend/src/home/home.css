@@ -4,4 +4,4 @@
 
 html:not([data-theme="light"]) .home-cloud{filter:grayscale(1)}
 .home-hero h1{white-space:nowrap;font-size:clamp(24px,4vw,36px)}
-.home-hero{min-height:210px}
+.home-hero{min-height:210px;height:210px}
